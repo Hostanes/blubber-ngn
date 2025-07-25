@@ -56,7 +56,7 @@ int main() {
     // Update Loop
     // ===========================
 
-    // Camera update
+    // CAMERA UPDATE ----------
 
     float delta = GetFrameTime();
 
@@ -77,42 +77,65 @@ int main() {
 
     player.camera.target = Vector3Add(player.camera.position, direction);
 
-    // movement update
+    // MOVEMENT LOGIC ----------
+    Vector3 movement = {0};
+
+    const float move_speed = 3.0f * delta;
+    float sprint_multiplier = 1.0f;
+
+    if (IsKeyDown(KEY_LEFT_SHIFT)) {
+      sprint_multiplier = 2.0f;
+      TraceLog(LOG_INFO, "left shift was pressed");
+    }
 
     Vector3 forward = Vector3Normalize((Vector3){direction.x, 0, direction.z});
     Vector3 right = Vector3CrossProduct(forward, (Vector3){0, 1, 0});
 
-    float moveSpeed = 5.0f * delta;
     if (IsKeyDown(KEY_W))
-      player.camera.position =
-          Vector3Add(player.camera.position, Vector3Scale(forward, moveSpeed));
+      movement = Vector3Add(movement, forward);
     if (IsKeyDown(KEY_S))
-      player.camera.position = Vector3Subtract(
-          player.camera.position, Vector3Scale(forward, moveSpeed));
+      movement = Vector3Subtract(movement, forward);
     if (IsKeyDown(KEY_D))
-      player.camera.position =
-          Vector3Add(player.camera.position, Vector3Scale(right, moveSpeed));
+      movement = Vector3Add(movement, right);
     if (IsKeyDown(KEY_A))
-      player.camera.position = Vector3Subtract(player.camera.position,
-                                               Vector3Scale(right, moveSpeed));
-    if (IsKeyDown(KEY_LEFT_SHIFT)) {
-      Vector3Scale(forward, 2);
-      TraceLog(LOG_INFO, "left shift was pressed");
+      movement = Vector3Subtract(movement, right);
+
+    if (Vector3Length(movement) > 0) {
+      movement = Vector3Normalize(movement);
     }
+
+    movement = Vector3Scale(movement, move_speed * sprint_multiplier);
 
     player.velocity.y -= 50.0f * delta;
 
+    player.camera.position = Vector3Add(player.camera.position, movement);
+
+    // JUMP LOGIC ----------
+
+    const float GRAVITY = 1.0f;
+    const float JUMP_FORCE = 10.0f;
+    const float GROUND_LEVEL = 2.0f;
+    const float GROUND_THRESHOLD = 0.1f;
+
+    player.velocity.y -= GRAVITY * delta;
+
+    bool isGrounded =
+        (player.camera.position.y <= GROUND_LEVEL + GROUND_THRESHOLD);
+
+    if (IsKeyPressed(KEY_SPACE) && isGrounded) {
+      player.velocity.y = JUMP_FORCE;
+      TraceLog(LOG_INFO, "Jump!");
+    }
+
+    player.camera.position.x += movement.x;
+    player.camera.position.z += movement.z;
     player.camera.position.y += player.velocity.y * delta;
 
-    if (player.camera.position.y <= 2.0f) {
-      player.camera.position.y = 2.0f;
+    if (isGrounded && player.velocity.y <= 0) {
+      player.camera.position.y = GROUND_LEVEL;
       player.velocity.y = 0.0f;
     }
 
-    if (IsKeyPressed(KEY_SPACE) && player.camera.position.y <= 2.1f) {
-      player.velocity.y = 20.0f;
-      TraceLog(LOG_INFO, "Space bar was pressed");
-    }
     player.camera.target = Vector3Add(player.camera.position, direction);
 
     // ============================
