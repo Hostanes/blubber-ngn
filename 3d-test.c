@@ -53,7 +53,7 @@ int main() {
   while (!WindowShouldClose()) {
 
     // ============================
-    // Update Loop
+    // Update Sub-Loop
     // ===========================
 
     // CAMERA UPDATE ----------
@@ -139,11 +139,11 @@ int main() {
     player.camera.target = Vector3Add(player.camera.position, direction);
 
     // ============================
-    // END Update Loop
+    // END Update Sub-Loop
     // ===========================
 
     // ============================
-    // Render Loop
+    // Render Sub-Loop
     // ============================
 
     BeginDrawing();
@@ -172,7 +172,7 @@ int main() {
     EndDrawing();
 
     // ============================
-    // END Render Loop
+    // END Render Sub-Loop
     // ============================
   }
 
