@@ -37,8 +37,8 @@ int main() {
   Color colors[MAX_COLUMNS] = {0};
   for (int i = 0; i < MAX_COLUMNS; i++) {
     heights[i] = (float)GetRandomValue(1, 12);
-    positions[i] = (Vector3){(float)GetRandomValue(-15, 15), heights[i] / 2.0f,
-                             (float)GetRandomValue(-15, 15)};
+    positions[i] = (Vector3){(float)GetRandomValue(-14, 14), heights[i] / 2.0f,
+                             (float)GetRandomValue(-14, 14)};
     colors[i] = (Color){(float)GetRandomValue(20, 255),
                         (float)GetRandomValue(10, 55), 30, 255};
   }
