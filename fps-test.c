@@ -42,9 +42,9 @@ int main() {
   const int screen_height = 600;
 
   InitWindow(screen_width, screen_height, "raylib 3D world with movement");
-
-  SetTargetFPS(60);
-  DisableCursor(); 
+  ;
+  SetTargetFPS(120);
+  DisableCursor();
 
   // ----------------------------
   // Initialize Player
@@ -125,26 +125,38 @@ int main() {
     // Movement Input
     Vector3 movement = {0};
     const float move_speed = 3.0f;
+    const float sprint_factor = 2.0f;
+    const float strafe_factor = 0.8f;
     float speed = move_speed;
+    bool is_sprinting = false;
 
-    if (IsKeyDown(KEY_LEFT_SHIFT)) {
-      speed *= 2.0f;
-    }
-
-    if (IsKeyDown(KEY_W))
+    if (IsKeyDown(KEY_LEFT_SHIFT) && IsKeyDown(KEY_W)) {
       movement = Vector3Add(movement, forward);
-    if (IsKeyDown(KEY_S))
-      movement = Vector3Subtract(movement, forward);
-    if (IsKeyDown(KEY_D))
-      movement = Vector3Add(movement, right);
-    if (IsKeyDown(KEY_A))
-      movement = Vector3Subtract(movement, right);
+      is_sprinting = true;
+      speed *= sprint_factor;
+    } else {
+      is_sprinting = false;
+      if (IsKeyDown(KEY_W))
+        movement = Vector3Add(movement, forward);
+      if (IsKeyDown(KEY_S))
+        movement = Vector3Subtract(movement, forward);
+      if (IsKeyDown(KEY_D))
+        movement = Vector3Add(movement, right);
+      if (IsKeyDown(KEY_A))
+        movement = Vector3Subtract(movement, right);
+    }
 
     if (Vector3Length(movement) > 0.0f) {
       movement = Vector3Normalize(movement);
+
+      // Check if movement is mostly sideways
+      float forwardDot = Vector3DotProduct(movement, forward);
+      if (fabsf(forwardDot) < 1) { // more sideways than forward/back
+        speed *= strafe_factor;
+      }
+
       movement = Vector3Scale(movement, speed * delta);
     }
-
     player.camera.position = Vector3Add(player.camera.position, movement);
 
     // Gravity & Jumping
@@ -200,8 +212,14 @@ int main() {
 
     EndMode3D();
 
-    DrawText("Move: WASD | Jump: Space | Look: Mouse | Sprint: Shift", 10, 10,
-             20, DARKGREEN);
+    // after movement calculation, before rendering:
+    float playerSpeed = Vector3Length(movement) / delta; // units per second
+
+    // replace your DrawText with:
+    DrawText(TextFormat("Move: WASD | Jump: Space | Look: Mouse | Sprint: "
+                        "Shift | Speed: %.2f",
+                        playerSpeed),
+             10, 10, 20, DARKGREEN);
 
     EndDrawing();
   }
