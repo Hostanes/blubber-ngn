@@ -6,19 +6,55 @@
 
 #define MAX_ENTITIES 1
 
+#define MAX_SOUNDS 128
+#define MAX_SOUND_EVENTS 256
+
+typedef enum {
+  SOUND_FOOTSTEP,
+  SOUND_WEAPON_FIRE,
+  SOUND_EXPLOSION,
+  SOUND_UI_CLICK,
+  SOUND_COUNT
+} SoundType_T;
+
+typedef struct {
+  Sound sound;
+} SoundAsset_t;
+
+typedef struct {
+  SoundType_T type;
+  Vector3 position;
+  float volume;
+  float pitch;
+} SoundEvent_t;
+
+typedef struct {
+  SoundAsset_t assets[MAX_SOUNDS];
+  SoundEvent_t events[MAX_SOUND_EVENTS];
+  int eventCount;
+} SoundSystem_t;
+
 // Stores data for all entities
 typedef struct EntityData {
   int count;
   Vector3 *positions;
   Vector3 *velocities;
+
+  // TODO raptor only, when adding other types of enemies gotta figure out what
+  // to do with this
   float *legYaw;
   float *torsoYaw;
   float *torsoPitch;
+  float *stepCycle; // keeps track where the player is in the step cycle
+  float *stepRate;  // steps per second
+
 } EntityData_t;
 
 typedef struct GameState {
   EntityData_t entities;
   int playerId; // player isnt a unique struct, just entity[0]
+  float pHeadbobTimer;
+
 } GameState_t;
 
 // ==================== Init ====================
@@ -33,6 +69,8 @@ GameState_t InitGame(void) {
   gs.entities.legYaw = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
   gs.entities.torsoYaw = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
   gs.entities.torsoPitch = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
+  gs.entities.stepCycle = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
+  gs.entities.stepRate = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
 
   // Init player
   gs.playerId = 0;
@@ -41,8 +79,23 @@ GameState_t InitGame(void) {
   gs.entities.legYaw[0] = 0.0l;
   gs.entities.torsoYaw[0] = 0.0l;
   gs.entities.torsoPitch[0] = 0.0f;
+  gs.entities.stepCycle[0] = 0.0f;
+  gs.entities.stepRate[0] = 2.0f;
+  gs.pHeadbobTimer = 0;
 
   return gs;
+}
+
+SoundSystem_t InitSoundSystem() {
+  SoundSystem_t sys = {0};
+  InitAudioDevice();
+
+  // sys.assets[SOUND_FOOTSTEP].sound = LoadSound("assets/sfx/footstep.wav");
+  // sys.assets[SOUND_WEAPON_FIRE].sound = LoadSound("assets/sfx/laser.wav");
+  // sys.assets[SOUND_EXPLOSION].sound = LoadSound("assets/sfx/explosion.wav");
+  // sys.assets[SOUND_UI_CLICK].sound = LoadSound("assets/sfx/ui_click.wav");
+
+  return sys;
 }
 
 // ==================== Systems ====================
@@ -95,6 +148,20 @@ void PlayerControlSystem(GameState_t *gs, float dt) {
   if (IsKeyDown(KEY_E)) { // strafe right
     vel[pid].x += right.x * 40.0f * dt;
     vel[pid].z += right.z * 40.0f * dt;
+  }
+  Vector3 velocity = vel[pid];
+  float speed = sqrtf(velocity.x * velocity.x + velocity.z * velocity.z);
+  if (speed > 1.0f) {
+    gs->pHeadbobTimer += dt * 8.0f;
+    gs->entities.stepRate[0] = speed * 0.25f;
+    gs->entities.stepCycle[0] += gs->entities.stepRate[0] * dt;
+
+    // keep it in [0,1)
+    if (gs->entities.stepCycle[0] >= 1.0f)
+      gs->entities.stepCycle[0] -= 1.0f;
+  } else {
+    gs->pHeadbobTimer = 0;
+    gs->entities.stepCycle[0] = 0.0f;
   }
 }
 
@@ -167,6 +234,8 @@ int main(void) {
 
   GameState_t gs = InitGame();
 
+  float bobAmount = 0.2f; // height in meters, visual only
+
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
 
@@ -181,8 +250,18 @@ int main(void) {
     Vector3 forward = {cosf(pitch) * cosf(yaw), sinf(pitch),
                        cosf(pitch) * sinf(yaw)};
 
-    Vector3 eye =
-        (Vector3){playerPos.x, playerPos.y + 1.5f, playerPos.z}; // eye height
+    // bob ammount calculation, skewed sine wave
+
+    // Or sharper descent (triangle wave)
+    float t = gs.entities.stepCycle[0];
+    float bobTri = (t < 0.5f) ? (t * 2) : (2 - t * 2); // 0→1→0
+    bobTri = 1.0f - bobTri;                            // flip to make "drop"
+    float bobY = bobTri * bobAmount;
+
+    //
+
+    Vector3 eye = (Vector3){playerPos.x, playerPos.y + 1.5f + bobY,
+                            playerPos.z}; // eye height
     camera.position = eye;
     camera.target = Vector3Add(eye, forward);
 

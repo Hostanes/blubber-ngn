@@ -8,9 +8,9 @@
 - [ ] Implement custom 3d models
 - [x] Movement
 	- [x] Independent leg and torso
-	- [ ] head bobbing and other visual effects
+	- [x] head bobbing 
 	- [ ] Dashing
-	- [ ] Sound effects
+	- [ ] Sound effects HALF-IMPLEMENTED
 	- [ ] Animations
 - [ ] Ground heightmap and collisions
 - [ ] Primitive shape collisions
