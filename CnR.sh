@@ -10,7 +10,7 @@ filename="$1"
 basename="${filename%.c}"
 outfile="bin/${basename}.out"
 
-gcc "$filename" -o "$outfile" -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+gcc "$filename" -o "$outfile" -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 -lasound
 
 if [ $? -eq 0 ]; then
   echo "Compilation succeeded!! Trying to run $outfile..."
