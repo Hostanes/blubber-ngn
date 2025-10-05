@@ -15,14 +15,14 @@ typedef enum {
   SOUND_EXPLOSION,
   SOUND_UI_CLICK,
   SOUND_COUNT
-} SoundType_T;
+} SoundType_t;
 
 typedef struct {
   Sound sound;
 } SoundAsset_t;
 
 typedef struct {
-  SoundType_T type;
+  SoundType_t type;
   Vector3 position;
   float volume;
   float pitch;
@@ -45,8 +45,10 @@ typedef struct EntityData {
   float *legYaw;
   float *torsoYaw;
   float *torsoPitch;
-  float *stepCycle; // keeps track where the player is in the step cycle
-  float *stepRate;  // steps per second
+  float *stepCycle;     // keeps track where the player is in the step cycle
+  float *prevStepCycle; // keeps track of the previous step cycle, used for
+                        // events on leg stomp
+  float *stepRate;      // steps per second
 
 } EntityData_t;
 
@@ -70,6 +72,7 @@ GameState_t InitGame(void) {
   gs.entities.torsoYaw = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
   gs.entities.torsoPitch = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
   gs.entities.stepCycle = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
+  gs.entities.prevStepCycle = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
   gs.entities.stepRate = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
 
   // Init player
@@ -80,6 +83,7 @@ GameState_t InitGame(void) {
   gs.entities.torsoYaw[0] = 0.0l;
   gs.entities.torsoPitch[0] = 0.0f;
   gs.entities.stepCycle[0] = 0.0f;
+  gs.entities.prevStepCycle[0] = 0.0f;
   gs.entities.stepRate[0] = 2.0f;
   gs.pHeadbobTimer = 0;
 
@@ -90,17 +94,25 @@ SoundSystem_t InitSoundSystem() {
   SoundSystem_t sys = {0};
   InitAudioDevice();
 
-  // sys.assets[SOUND_FOOTSTEP].sound = LoadSound("assets/sfx/footstep.wav");
-  // sys.assets[SOUND_WEAPON_FIRE].sound = LoadSound("assets/sfx/laser.wav");
+  sys.assets[SOUND_FOOTSTEP].sound = LoadSound("assets/audio/mech_step_1.mp3");
+  sys.assets[SOUND_WEAPON_FIRE].sound =
+      LoadSound("assets/audio/cannon_shot_1.mp3");
   // sys.assets[SOUND_EXPLOSION].sound = LoadSound("assets/sfx/explosion.wav");
   // sys.assets[SOUND_UI_CLICK].sound = LoadSound("assets/sfx/ui_click.wav");
 
   return sys;
 }
 
+void QueueSound(SoundSystem_t *sys, SoundType_t type, Vector3 pos, float vol,
+                float pitch) {
+  if (sys->eventCount < MAX_SOUND_EVENTS) {
+    sys->events[sys->eventCount++] = (SoundEvent_t){type, pos, vol, pitch};
+  }
+}
+
 // ==================== Systems ====================
 
-void PlayerControlSystem(GameState_t *gs, float dt) {
+void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   int pid = gs->playerId;
   Vector3 *pos = gs->entities.positions;
   Vector3 *vel = gs->entities.velocities;
@@ -120,13 +132,13 @@ void PlayerControlSystem(GameState_t *gs, float dt) {
   torsoYaw[pid] += mouse.x * mouseSensitivity;
   torsoPitch[pid] += -mouse.y * mouseSensitivity;
 
-  // Clamp pitch between -89° and +89°
+  // clamp pitch between -89° and +89°
   if (torsoPitch[pid] > 1.55f)
     torsoPitch[pid] = 1.55f; // ~89°
   if (torsoPitch[pid] < -1.55f)
     torsoPitch[pid] = -1.55f; // ~-89°
 
-  // Movement is still based on leg direction (not torso)
+  // movement is still based on leg direction (not torso)
   float c = cosf(legYaw[pid]);
   float s = sinf(legYaw[pid]);
   Vector3 forward = {c, 0, s};
@@ -149,19 +161,36 @@ void PlayerControlSystem(GameState_t *gs, float dt) {
     vel[pid].x += right.x * 40.0f * dt;
     vel[pid].z += right.z * 40.0f * dt;
   }
+
+  // step cycle update
   Vector3 velocity = vel[pid];
   float speed = sqrtf(velocity.x * velocity.x + velocity.z * velocity.z);
+
   if (speed > 1.0f) {
     gs->pHeadbobTimer += dt * 8.0f;
-    gs->entities.stepRate[0] = speed * 0.25f;
-    gs->entities.stepCycle[0] += gs->entities.stepRate[0] * dt;
+    gs->entities.stepRate[pid] = speed * 0.25f;
 
-    // keep it in [0,1)
-    if (gs->entities.stepCycle[0] >= 1.0f)
-      gs->entities.stepCycle[0] -= 1.0f;
+    float prev = gs->entities.prevStepCycle[pid];
+    float curr = gs->entities.stepCycle[pid] + gs->entities.stepRate[pid] * dt;
+
+    // wrap cycle to [0,1)
+    if (curr >= 1.0f)
+      curr -= 1.0f;
+
+    // detect stomp at 0.0 (wrap) and 0.5
+    if (prev < 0.5f && curr >= 0.5f) {
+      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 1.0f, 1.0f);
+    }
+    if (prev > curr) { // wrapped around -> stomp
+      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 1.0f, 1.0f);
+    }
+
+    gs->entities.stepCycle[pid] = curr;
+    gs->entities.prevStepCycle[pid] = curr;
   } else {
     gs->pHeadbobTimer = 0;
-    gs->entities.stepCycle[0] = 0.0f;
+    gs->entities.stepCycle[pid] = 0.0f;
+    gs->entities.prevStepCycle[pid] = 0.0f;
   }
 }
 
@@ -218,6 +247,22 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   EndDrawing();
 }
 
+void ProcessSoundSystem(SoundSystem_t *soundSys, Vector3 listenerPos) {
+  for (int i = 0; i < soundSys->eventCount; i++) {
+    SoundEvent_t event = soundSys->events[i];
+    Sound sound = soundSys->assets[event.type].sound;
+
+    // distance volume fade
+    float dist = Vector3Distance(listenerPos, event.position);
+    float atten = 1.0f / (1.0f + 0.1f * dist); // sound falloff
+
+    SetSoundVolume(sound, event.volume * atten);
+    SetSoundPitch(sound, event.pitch);
+    PlaySound(sound);
+  }
+  soundSys->eventCount = 0; // clear for next frame
+}
+
 // ========== Main ==========
 
 int main(void) {
@@ -233,13 +278,14 @@ int main(void) {
   camera.projection = CAMERA_PERSPECTIVE;
 
   GameState_t gs = InitGame();
+  SoundSystem_t soundSys = InitSoundSystem();
 
   float bobAmount = 0.2f; // height in meters, visual only
 
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
 
-    PlayerControlSystem(&gs, dt);
+    PlayerControlSystem(&gs, &soundSys, dt);
     PhysicsSystem(&gs, dt);
 
     int pid = gs.playerId;
@@ -266,6 +312,7 @@ int main(void) {
     camera.target = Vector3Add(eye, forward);
 
     RenderSystem(&gs, camera);
+    ProcessSoundSystem(&soundSys, playerPos);
   }
 
   CloseWindow();

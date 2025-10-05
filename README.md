@@ -10,7 +10,7 @@
 	- [x] Independent leg and torso
 	- [x] head bobbing 
 	- [ ] Dashing
-	- [ ] Sound effects HALF-IMPLEMENTED
+	- [x] Sound effects 
 	- [ ] Animations
 - [ ] Ground heightmap and collisions
 - [ ] Primitive shape collisions
