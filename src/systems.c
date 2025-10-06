@@ -9,7 +9,10 @@
 
 Model mechLeg;
 
-void LoadAssets() { mechLeg = LoadModel("assets/models/raptor1-legs.glb"); }
+void LoadAssets() {
+  mechLeg = LoadModel("assets/models/raptor1-legs.glb");
+  Texture2D mechTex = LoadTexture("assets/textures/legs.png");
+}
 
 void UnloadAssets() { UnloadModel(mechLeg); }
 
@@ -30,7 +33,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
 
   // Torso yaw/pitch from mouse
   Vector2 mouse = GetMouseDelta();
-  float sensitivity = 0.001f;
+  float sensitivity = 0.0005f;
   torso[pid].yaw += mouse.x * sensitivity;
   torso[pid].pitch += -mouse.y * sensitivity;
 
@@ -138,7 +141,6 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   // Vector3 shaftEnd = {base.x + forward.x * 0.95f, base.y,
   //                     base.z + forward.z * 0.95f};
   // DrawCylinderEx(base, shaftEnd, 0.1f, 0.1f, 8, BLUE);
-
   // Vector3 headEnd = {shaftEnd.x + forward.x * 0.55f, shaftEnd.y,
   //                    shaftEnd.z + forward.z * 0.55f};
   // DrawCylinderEx(shaftEnd, headEnd, 0.25f, 0.0f, 8, RED);
@@ -155,10 +157,10 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   DrawModelEx(mechLeg, pos, (Vector3){0, 1, 0},
               gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
-              (Vector3){1, 1, 1}, YELLOW);
-  DrawModelWiresEx(mechLeg, pos, (Vector3){0, 1, 0},
-              gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
-              (Vector3){1, 1, 1}, RED);
+              (Vector3){1, 1, 1}, WHITE);
+  // DrawModelWiresEx(mechLeg, pos, (Vector3){0, 1, 0},
+  //                  gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
+  //                  (Vector3){1, 1, 1}, GREEN);
 
   DrawCircle3D(pos, 3.0f, (Vector3){1, 0, 0}, 90.0f, (Color){0, 0, 0, 100});
 

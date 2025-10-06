@@ -7,6 +7,15 @@
 
 #define MAX_ENTITIES 1
 
+typedef enum {
+  ENTITY_PLAYER,
+  ENTITY_MECH,
+  ENTITY_TANK,
+  ENTITY_TURRET
+} EntityType_t;
+
+typedef enum { STATE_INLEVEL, STATE_MAINMENU } AllState_t;
+
 // Orientation struct to group yaw, pitch, roll
 typedef struct {
   float yaw;
@@ -16,6 +25,9 @@ typedef struct {
 
 typedef struct {
   int count;
+
+  EntityType_t *types;
+
   Vector3 *positions;
   Vector3 *velocities;
 
@@ -30,6 +42,7 @@ typedef struct {
 typedef struct {
   EntityData_t entities;
   int playerId;
+  AllState_t state;
   float pHeadbobTimer;
 } GameState_t;
 
