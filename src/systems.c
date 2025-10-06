@@ -5,6 +5,14 @@
 #include "systems.h"
 #include "raymath.h"
 
+#include "raylib.h"
+
+Model mechLeg;
+
+void LoadAssets() { mechLeg = LoadModel("assets/models/raptor1-legs.glb"); }
+
+void UnloadAssets() { UnloadModel(mechLeg); }
+
 // ---------------- Player Control ----------------
 
 void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
@@ -27,10 +35,10 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   torso[pid].pitch += -mouse.y * sensitivity;
 
   // Clamp torso pitch between -89° and +89°
-  if (torso[pid].pitch > 1.55f)
-    torso[pid].pitch = 1.55f;
-  if (torso[pid].pitch < -1.55f)
-    torso[pid].pitch = -1.55f;
+  if (torso[pid].pitch > 1.2f)
+    torso[pid].pitch = 1.2f;
+  if (torso[pid].pitch < -1.0f)
+    torso[pid].pitch = -1.0f;
 
   // Movement is based on leg orientation
   float c = cosf(leg[pid].yaw);
@@ -125,14 +133,34 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   float yaw = gs->entities.legOrientation[pid].yaw;
   Vector3 forward = {cosf(yaw), 0, sinf(yaw)};
 
-  Vector3 base = {pos.x, pos.y + 0.8f, pos.z};
-  Vector3 shaftEnd = {base.x + forward.x * 0.95f, base.y,
-                      base.z + forward.z * 0.95f};
-  DrawCylinderEx(base, shaftEnd, 0.1f, 0.1f, 8, BLUE);
+  // Cylinder
+  // Vector3 base = {pos.x, pos.y + 0.8f, pos.z};
+  // Vector3 shaftEnd = {base.x + forward.x * 0.95f, base.y,
+  //                     base.z + forward.z * 0.95f};
+  // DrawCylinderEx(base, shaftEnd, 0.1f, 0.1f, 8, BLUE);
 
-  Vector3 headEnd = {shaftEnd.x + forward.x * 0.55f, shaftEnd.y,
-                     shaftEnd.z + forward.z * 0.55f};
-  DrawCylinderEx(shaftEnd, headEnd, 0.25f, 0.0f, 8, RED);
+  // Vector3 headEnd = {shaftEnd.x + forward.x * 0.55f, shaftEnd.y,
+  //                    shaftEnd.z + forward.z * 0.55f};
+  // DrawCylinderEx(shaftEnd, headEnd, 0.25f, 0.0f, 8, RED);
+
+  Matrix legTransform = MatrixRotateY(gs->entities.legOrientation[pid].yaw);
+  legTransform = MatrixMultiply(
+      MatrixRotateX(gs->entities.legOrientation[pid].pitch), legTransform);
+  legTransform = MatrixMultiply(
+      MatrixRotateZ(gs->entities.legOrientation[pid].roll), legTransform);
+
+  // Translate to player position
+  legTransform =
+      MatrixMultiply(MatrixTranslate(pos.x, pos.y, pos.z), legTransform);
+
+  DrawModelEx(mechLeg, pos, (Vector3){0, 1, 0},
+              gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
+              (Vector3){1, 1, 1}, YELLOW);
+  DrawModelWiresEx(mechLeg, pos, (Vector3){0, 1, 0},
+              gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
+              (Vector3){1, 1, 1}, RED);
+
+  DrawCircle3D(pos, 3.0f, (Vector3){1, 0, 0}, 90.0f, (Color){0, 0, 0, 100});
 
   EndMode3D();
 

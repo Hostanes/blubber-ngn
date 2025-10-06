@@ -20,6 +20,8 @@ int main(void) {
   DisableCursor(); // lock mouse for torso look
   SetTargetFPS(60);
 
+  LoadAssets();
+
   Camera3D camera = {0};
   camera.position = (Vector3){0, 10, -10};
   camera.target = (Vector3){0, 1, 0};
@@ -32,7 +34,7 @@ int main(void) {
   GameState_t gs = InitGame();
   SoundSystem_t soundSys = InitSoundSystem();
 
-  const float bobAmount = 0.2f; // height in meters, visual only
+  const float bobAmount = 0.5f; // height in meters, visual only
 
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
@@ -56,7 +58,7 @@ int main(void) {
     float bobY = bobTri * bobAmount;
 
     Vector3 eye =
-        (Vector3){playerPos.x, playerPos.y + 1.5f + bobY, playerPos.z};
+        (Vector3){playerPos.x, playerPos.y + 10.0f + bobY, playerPos.z};
     camera.position = eye;
     camera.target = Vector3Add(eye, forward);
 
