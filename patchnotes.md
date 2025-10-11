@@ -1,8 +1,4 @@
 
 
-REMOVED: global model variables for legs, refactored into modelcollections struct
-
-ADDED: model collections struct that is stored for each entity, stores several models linked
-      specific entity, as well as their independent rotation and position offsets,
-      TODO: fix parent and parent-inherited rotations
-    
+ADDED: dynamic locking for specific axis for child models, can select which of the
+       parent's axis (yaw,pitch,roll) affect the child model    

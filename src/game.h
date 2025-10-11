@@ -4,6 +4,7 @@
 
 #pragma once
 #include "raylib.h"
+#include <stdbool.h>
 
 #define MAX_ENTITIES 3
 
@@ -30,6 +31,7 @@ typedef struct {
   Vector3 *offsets; // offsets for each model with respect to the center
   Orientation *orientations;
   int *parentIds;
+  bool **rotLocks; // 0 to lock orientation inheritance from parent, 1 to unlock
 } ModelCollection_t;
 
 typedef struct {

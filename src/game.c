@@ -4,6 +4,7 @@
 
 #include "game.h"
 #include "raylib.h"
+#include <raymath.h>
 
 GameState_t InitGame(void) {
   GameState_t gs = {0};
@@ -35,14 +36,25 @@ GameState_t InitGame(void) {
   ModelCollection_t *pmc = &gs.entities.modelCollections[0];
   *pmc = (ModelCollection_t){0};
 
-  pmc->countModels = 2;
+  pmc->countModels = 3;
   pmc->models = MemAlloc(sizeof(Model) * pmc->countModels);
   pmc->offsets = MemAlloc(sizeof(Vector3) * pmc->countModels);
   pmc->orientations = MemAlloc(sizeof(Orientation) * pmc->countModels);
   pmc->parentIds = MemAlloc(sizeof(int) * pmc->countModels);
 
+  pmc->rotLocks = MemAlloc(sizeof(bool *) * pmc->countModels);
+  for (int i = 0; i < pmc->countModels; i++) {
+    pmc->rotLocks[i] = MemAlloc(sizeof(bool) * 3); // 3 = yaw, pitch, roll
+    for (int j = 0; j < 3; j++) {
+      pmc->rotLocks[i][j] = true; // initialize all locks to 1
+    }
+  }
+  pmc->rotLocks[2][1] = false;
+  pmc->rotLocks[2][2] = true;
+
   pmc->parentIds[0] = -1;
   pmc->parentIds[1] = -1;
+  pmc->parentIds[2] = 1;
 
   pmc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
   Texture2D mechTex = LoadTexture("assets/textures/legs.png");
@@ -50,6 +62,14 @@ GameState_t InitGame(void) {
 
   pmc->offsets[0] = (Vector3){0, 0, 0};
   pmc->orientations[0] = (Orientation){0, 0, 0};
+
+  Mesh legChild = GenMeshCube(10.0f, 2.0f, 2.0f);
+
+  pmc->models[2] = LoadModelFromMesh(legChild);
+  pmc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
+
+  pmc->offsets[2] = (Vector3){2, 8, -4};
+  pmc->orientations[2] = (Orientation){0, 0, 0};
 
   // ========= CUBE ENTITY =========
   int cubeId = 1;
@@ -69,6 +89,17 @@ GameState_t InitGame(void) {
   cmc->parentIds[1] = -1;
   cmc->parentIds[2] = 1;
 
+  cmc->rotLocks = MemAlloc(sizeof(bool *) * cmc->countModels);
+  for (int i = 0; i < cmc->countModels; i++) {
+    cmc->rotLocks[i] = MemAlloc(sizeof(bool) * 3); // 3 = yaw, pitch, roll
+    for (int j = 0; j < 3; j++) {
+      cmc->rotLocks[i][j] = true; // initialize all locks to 1
+    }
+  }
+  cmc->rotLocks[2][0] = true;
+  cmc->rotLocks[2][1] = true;
+  cmc->rotLocks[2][2] = true;
+
   Mesh cubeMesh = GenMeshCube(50.0f, 20.0f, 20.0f);
   cmc->models[0] = LoadModelFromMesh(cubeMesh);
   cmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
@@ -76,18 +107,18 @@ GameState_t InitGame(void) {
   cmc->offsets[0] = (Vector3){0, 0, 0};
   cmc->orientations[0] = (Orientation){0, 0, 0};
 
-  Mesh cubeMesh2 = GenMeshCube(10.0f, 10.0f, 10.0f);
+  Mesh cubeMesh2 = GenMeshCube(2.0f, 10.0f, 10.0f);
   cmc->models[1] = LoadModelFromMesh(cubeMesh2);
   cmc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
 
   cmc->offsets[1] = (Vector3){0, 25, 0};
-  cmc->orientations[1] = (Orientation){0, 0, 0};
+  cmc->orientations[1] = (Orientation){PI / 4, PI / 4, 0};
 
   Mesh cubeMesh3 = GenMeshCube(2.0f, 2.0f, 10.0f);
   cmc->models[2] = LoadModelFromMesh(cubeMesh3);
   cmc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
 
-  cmc->offsets[2] = (Vector3){10, 25, 0};
+  cmc->offsets[2] = (Vector3){10, 0, 0};
   cmc->orientations[2] = (Orientation){0, 0, 0};
 
   // ========= SPHERE ENTITY =========
@@ -99,12 +130,21 @@ GameState_t InitGame(void) {
   ModelCollection_t *smc = &gs.entities.modelCollections[sphereId];
   *smc = (ModelCollection_t){0};
 
+  smc->countModels = 1;
   smc->models = MemAlloc(sizeof(Model) * 1);
   smc->offsets = MemAlloc(sizeof(Vector3) * 1);
   smc->orientations = MemAlloc(sizeof(Orientation) * 1);
 
   smc->parentIds = MemAlloc(sizeof(int) * smc->countModels);
   smc->parentIds[0] = -1;
+
+  smc->rotLocks = MemAlloc(sizeof(bool *) * smc->countModels);
+  for (int i = 0; i < smc->countModels; i++) {
+    smc->rotLocks[i] = MemAlloc(sizeof(bool) * 3); // 3 = yaw, pitch, roll
+    for (int j = 0; j < 3; j++) {
+      smc->rotLocks[i][j] = true; // initialize all locks to 1
+    }
+  }
 
   Mesh sphereMesh = GenMeshSphere(8.0f, 16, 16); // smoother sphere
   smc->models[0] = LoadModelFromMesh(sphereMesh);

@@ -1,4 +1,3 @@
-
 // systems.c
 // Implements player input, physics, and rendering
 
@@ -6,6 +5,7 @@
 #include "game.h"
 #include "raylib.h"
 #include "raymath.h"
+#include "rlgl.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -196,45 +196,58 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   for (int i = 0; i < gs->entities.count; i++) {
     Vector3 entityPos = gs->entities.positions[i];
     ModelCollection_t *mc = &gs->entities.modelCollections[i];
-
     int numModels = mc->countModels;
+
     for (int m = 0; m < numModels; m++) {
-      Vector3 localOffset = mc->offsets[m];
+      Vector3 localOffset = mc->offsets[m]; // Offset in local space (relative
+                                            // to parent if parented)
       Orientation localRot = mc->orientations[m];
+      int parentId = mc->parentIds[m];
 
-      float yaw, pitch, roll;
+      Vector3 parentWorldPos;
+      float yaw = localRot.yaw; // local rotation
+      float pitch = localRot.pitch;
+      float roll = localRot.roll;
 
-      if (m == 0) { // legs
-        yaw = localRot.yaw;
-        pitch = localRot.pitch;
-        roll = localRot.roll;
-      } else if (m == 1) { // torso
-        yaw = localRot.yaw;
-        pitch = localRot.pitch;
-        roll = localRot.roll;
-      } else if (m == 2) { // weapons
-        // take yaw from torso, pitch/roll from weapon itself
-        yaw = mc->orientations[1].yaw; // torso yaw
-        pitch = localRot.pitch;
-        roll = localRot.roll;
+      // Compute parent world position if parented
+      if (parentId != -1 && parentId < m) {
+        Orientation parentRot = mc->orientations[parentId];
+        float parentYaw = parentRot.yaw * -1.0f;
+        float parentPitch = parentRot.pitch * 1.0f;
+        float parentRoll = parentRot.roll * 1.0f;
+
+        float yawLock = mc->rotLocks[m][0] ? 1.0f : 0.0f;
+        float pitchLock = mc->rotLocks[m][1] ? 1.0f : 0.0f;
+        float rollLock = mc->rotLocks[m][2] ? 1.0f : 0.0f;
+
+        yaw = parentYaw * yawLock + localRot.yaw * (1.0f - yawLock);
+        pitch = parentPitch * pitchLock + localRot.pitch * (1.0f - pitchLock);
+        roll = parentPitch * rollLock + localRot.roll * (1.0f - rollLock);
+
+        // Parent world position
+        parentWorldPos = Vector3Add(entityPos, mc->offsets[parentId]);
+
+        // Rotate child offset relative to parent yaw
+        localOffset = Vector3Transform(localOffset, MatrixRotateY(parentYaw));
       } else {
-        // fallback: fully local
-        yaw = localRot.yaw;
-        pitch = localRot.pitch;
-        roll = localRot.roll;
+        parentWorldPos = entityPos;
+        yaw *= -1.0f;
       }
 
-      // Build rotation matrix
-      Matrix modelRot = MatrixRotateY(yaw);
-      modelRot = MatrixMultiply(MatrixRotateX(pitch), modelRot);
-      modelRot = MatrixMultiply(MatrixRotateZ(roll), modelRot);
+      // Final world position of the model
+      Vector3 drawPos = Vector3Add(parentWorldPos, localOffset);
 
-      // Apply offset and world translation
-      Vector3 rotatedOffset = Vector3Transform(localOffset, modelRot);
-      Vector3 drawPos = Vector3Add(entityPos, rotatedOffset);
+      // Build the model rotation matrix (local pitch/roll + inherited yaw)
+      Matrix rotMat = MatrixRotateY(yaw);
+      rotMat = MatrixMultiply(MatrixRotateX(pitch), rotMat);
+      rotMat = MatrixMultiply(MatrixRotateZ(roll), rotMat);
 
-      DrawModelEx(mc->models[m], drawPos, (Vector3){0, 1, 0},
-                  yaw * RAD2DEG * -1.0f, (Vector3){1, 1, 1}, WHITE);
+      // Draw model using rlgl with full matrix
+      rlPushMatrix();
+      rlTranslatef(drawPos.x, drawPos.y, drawPos.z);
+      rlMultMatrixf(MatrixToFloat(rotMat));
+      DrawModel(mc->models[m], (Vector3){0, 0, 0}, 1.0f, WHITE);
+      rlPopMatrix();
     }
   }
 
