@@ -3,18 +3,66 @@
 // Implements player input, physics, and rendering
 
 #include "systems.h"
-#include "raymath.h"
-
+#include "game.h"
 #include "raylib.h"
+#include "raymath.h"
+#include <stdio.h>
+#include <stdlib.h>
 
-Model mechLeg;
+#define WORLD_SIZE_X 10
+#define WORLD_SIZE_Z 10
+
+typedef enum ChunkType {
+  CHUNK_FLAT,
+  CHUNK_RAMP_UP,
+  CHUNK_RAMP_DOWN,
+  // ... maybe CHUNK_RAMP_LEFT, CHUNK_RAMP_RIGHT later
+} ChunkType_t;
+
+typedef struct {
+  Vector2 gridPos;  // position in chunk grid
+  ChunkType_t type; // which mesh to use
+  Model model;      // model reference
+  Vector3 worldPos; // cached world position for drawing
+} Chunk;
+
+typedef struct {
+  Model levelChunks[3]; // stores the types of chunks
+} Level_t;
+
+Chunk world[WORLD_SIZE_X][WORLD_SIZE_Z];
+
+Level_t *level;
 
 void LoadAssets() {
-  mechLeg = LoadModel("assets/models/raptor1-legs.glb");
-  Texture2D mechTex = LoadTexture("assets/textures/legs.png");
-}
 
-void UnloadAssets() { UnloadModel(mechLeg); }
+  Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
+
+  // Generate flat base meshes
+  Mesh flatMesh = GenMeshPlane(50.0f, 50.0f, 1, 1);
+  // Mesh rampUpMesh = GenMeshPlane(50.0f, 50.0f, 1, 1);
+  // Mesh rampDownMesh = GenMeshPlane(50.0f, 50.0f, 1, 1);
+
+  // Create models
+  Model flatModel = LoadModelFromMesh(flatMesh);
+
+  // Apply textures
+  flatModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
+
+  // Store them
+  level = malloc(sizeof(Level_t));
+  level->levelChunks[CHUNK_FLAT] = flatModel;
+
+  for (int z = 0; z < WORLD_SIZE_Z; z++) {
+    for (int x = 0; x < WORLD_SIZE_X; x++) {
+
+      world[x][z].gridPos = (Vector2){x, z};
+      world[x][z].worldPos = (Vector3){x * 50.0f - 250, 0, z * 50.0f - 250};
+
+      world[x][z].type = CHUNK_FLAT;
+    }
+  }
+}
 
 // ---------------- Player Control ----------------
 
@@ -22,8 +70,8 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   int pid = gs->playerId;
   Vector3 *pos = gs->entities.positions;
   Vector3 *vel = gs->entities.velocities;
-  Orientation *leg = gs->entities.legOrientation;
-  Orientation *torso = gs->entities.torsoOrientation;
+  Orientation *leg = &gs->entities.modelCollections[0].orientations[0];
+  Orientation *torso = &gs->entities.modelCollections[0].orientations[1];
 
   // Rotate legs with A/D
   if (IsKeyDown(KEY_A))
@@ -49,22 +97,27 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   Vector3 forward = {c, 0, s};
   Vector3 right = {-s, 0, c};
 
+  float totalSpeedMult = 1.0f;
+  float forwardSpeedMult = 5.0f * totalSpeedMult;
+  float backwardSpeedMult = 5.0f * totalSpeedMult;
+  float strafeSpeedMult = 2.0f * totalSpeedMult;
+
   // Movement keys
   if (IsKeyDown(KEY_W)) {
-    vel[pid].x += forward.x * 100.0f * dt;
-    vel[pid].z += forward.z * 100.0f * dt;
+    vel[pid].x += forward.x * 100.0f * dt * forwardSpeedMult;
+    vel[pid].z += forward.z * 100.0f * dt * forwardSpeedMult;
   }
   if (IsKeyDown(KEY_S)) {
-    vel[pid].x -= forward.x * 40.0f * dt;
-    vel[pid].z -= forward.z * 40.0f * dt;
+    vel[pid].x -= forward.x * 100.0f * dt * backwardSpeedMult;
+    vel[pid].z -= forward.z * 100.0f * dt * backwardSpeedMult;
   }
   if (IsKeyDown(KEY_Q)) {
-    vel[pid].x += right.x * -40.0f * dt;
-    vel[pid].z += right.z * -40.0f * dt;
+    vel[pid].x += right.x * -100.0f * dt * strafeSpeedMult;
+    vel[pid].z += right.z * -100.0f * dt * strafeSpeedMult;
   }
   if (IsKeyDown(KEY_E)) {
-    vel[pid].x += right.x * 40.0f * dt;
-    vel[pid].z += right.z * 40.0f * dt;
+    vel[pid].x += right.x * 100.0f * dt * strafeSpeedMult;
+    vel[pid].z += right.z * 100.0f * dt * strafeSpeedMult;
   }
 
   // Step cycle update
@@ -73,7 +126,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
 
   if (speed > 1.0f) {
     gs->pHeadbobTimer += dt * 8.0f;
-    gs->entities.stepRate[pid] = speed * 0.25f;
+    gs->entities.stepRate[pid] = speed * 0.07;
 
     float prev = gs->entities.prevStepCycle[pid];
     float curr = gs->entities.stepCycle[pid] + gs->entities.stepRate[pid] * dt;
@@ -120,7 +173,17 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   BeginMode3D(camera);
 
   // ground
-  DrawPlane((Vector3){0, 0, 0}, (Vector2){50, 50}, GREEN);
+  // DrawModel(ground, (Vector3){0, 0, 0}, 1, WHITE);
+
+  for (int z = 0; z < WORLD_SIZE_Z; z++) {
+    for (int x = 0; x < WORLD_SIZE_X; x++) {
+      Chunk c = world[x][z];
+      // printf("%f, %f, %f\n", c.worldPos.x, c.worldPos.y, c.worldPos.z);
+      DrawModel(level->levelChunks[c.type], c.worldPos, 1.0f, WHITE);
+    }
+  }
+
+  // DrawModel(terrain, (Vector3){0, 0, 0}, 1.0f, WHITE);
 
   // walls
   for (int i = -25; i <= 25; i += 10) {
@@ -130,39 +193,84 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
     DrawCube((Vector3){25, 1, i}, 2, 2, 2, GRAY);
   }
 
-  // player arrow
-  int pid = gs->playerId;
-  Vector3 pos = gs->entities.positions[pid];
-  float yaw = gs->entities.legOrientation[pid].yaw;
-  Vector3 forward = {cosf(yaw), 0, sinf(yaw)};
+  for (int i = 0; i < gs->entities.count; i++) {
+    Vector3 entityPos = gs->entities.positions[i];
+    ModelCollection_t *mc = &gs->entities.modelCollections[i];
 
-  // Cylinder
-  // Vector3 base = {pos.x, pos.y + 0.8f, pos.z};
-  // Vector3 shaftEnd = {base.x + forward.x * 0.95f, base.y,
-  //                     base.z + forward.z * 0.95f};
-  // DrawCylinderEx(base, shaftEnd, 0.1f, 0.1f, 8, BLUE);
-  // Vector3 headEnd = {shaftEnd.x + forward.x * 0.55f, shaftEnd.y,
-  //                    shaftEnd.z + forward.z * 0.55f};
-  // DrawCylinderEx(shaftEnd, headEnd, 0.25f, 0.0f, 8, RED);
+    int numModels = mc->countModels;
+    for (int m = 0; m < numModels; m++) {
+      Vector3 localOffset = mc->offsets[m];
+      Orientation localRot = mc->orientations[m];
 
-  Matrix legTransform = MatrixRotateY(gs->entities.legOrientation[pid].yaw);
-  legTransform = MatrixMultiply(
-      MatrixRotateX(gs->entities.legOrientation[pid].pitch), legTransform);
-  legTransform = MatrixMultiply(
-      MatrixRotateZ(gs->entities.legOrientation[pid].roll), legTransform);
+      float yaw, pitch, roll;
 
-  // Translate to player position
-  legTransform =
-      MatrixMultiply(MatrixTranslate(pos.x, pos.y, pos.z), legTransform);
+      if (m == 0) { // legs
+        yaw = localRot.yaw;
+        pitch = localRot.pitch;
+        roll = localRot.roll;
+      } else if (m == 1) { // torso
+        yaw = localRot.yaw;
+        pitch = localRot.pitch;
+        roll = localRot.roll;
+      } else if (m == 2) { // weapons
+        // take yaw from torso, pitch/roll from weapon itself
+        yaw = mc->orientations[1].yaw; // torso yaw
+        pitch = localRot.pitch;
+        roll = localRot.roll;
+      } else {
+        // fallback: fully local
+        yaw = localRot.yaw;
+        pitch = localRot.pitch;
+        roll = localRot.roll;
+      }
 
-  DrawModelEx(mechLeg, pos, (Vector3){0, 1, 0},
-              gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
-              (Vector3){1, 1, 1}, WHITE);
-  // DrawModelWiresEx(mechLeg, pos, (Vector3){0, 1, 0},
-  //                  gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
-  //                  (Vector3){1, 1, 1}, GREEN);
+      // Build rotation matrix
+      Matrix modelRot = MatrixRotateY(yaw);
+      modelRot = MatrixMultiply(MatrixRotateX(pitch), modelRot);
+      modelRot = MatrixMultiply(MatrixRotateZ(roll), modelRot);
 
-  DrawCircle3D(pos, 3.0f, (Vector3){1, 0, 0}, 90.0f, (Color){0, 0, 0, 100});
+      // Apply offset and world translation
+      Vector3 rotatedOffset = Vector3Transform(localOffset, modelRot);
+      Vector3 drawPos = Vector3Add(entityPos, rotatedOffset);
+
+      DrawModelEx(mc->models[m], drawPos, (Vector3){0, 1, 0},
+                  yaw * RAD2DEG * -1.0f, (Vector3){1, 1, 1}, WHITE);
+    }
+  }
+
+  // // player arrow
+  // int pid = gs->playerId;
+  // Vector3 pos = gs->entities.positions[pid];
+  // float yaw = gs->entities.legOrientation[pid].yaw;
+  // Vector3 forward = {cosf(yaw), 0, sinf(yaw)};
+
+  // // Cylinder
+  // // Vector3 base = {pos.x, pos.y + 0.8f, pos.z};
+  // // Vector3 shaftEnd = {base.x + forward.x * 0.95f, base.y,
+  // //                     base.z + forward.z * 0.95f};
+  // // DrawCylinderEx(base, shaftEnd, 0.1f, 0.1f, 8, BLUE);
+  // // Vector3 headEnd = {shaftEnd.x + forward.x * 0.55f, shaftEnd.y,
+  // //                    shaftEnd.z + forward.z * 0.55f};
+  // // DrawCylinderEx(shaftEnd, headEnd, 0.25f, 0.0f, 8, RED);
+
+  // Matrix legTransform = MatrixRotateY(gs->entities.legOrientation[pid].yaw);
+  // legTransform = MatrixMultiply(
+  //     MatrixRotateX(gs->entities.legOrientation[pid].pitch), legTransform);
+  // legTransform = MatrixMultiply(
+  //     MatrixRotateZ(gs->entities.legOrientation[pid].roll), legTransform);
+
+  // // Translate to player position
+  // legTransform =
+  //     MatrixMultiply(MatrixTranslate(pos.x, pos.y, pos.z), legTransform);
+
+  // DrawModelEx(mechLeg, pos, (Vector3){0, 1, 0},
+  //             gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
+  //             (Vector3){1, 1, 1}, WHITE);
+  // // DrawModelWiresEx(mechLeg, pos, (Vector3){0, 1, 0},
+  // //                  gs->entities.legOrientation[pid].yaw * RAD2DEG * -1,
+  // //                  (Vector3){1, 1, 1}, GREEN);
+
+  // DrawCircle3D(pos, 3.0f, (Vector3){1, 0, 0}, 90.0f, (Color){0, 0, 0, 100});
 
   EndMode3D();
 

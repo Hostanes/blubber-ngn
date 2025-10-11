@@ -5,7 +5,7 @@
 #pragma once
 #include "raylib.h"
 
-#define MAX_ENTITIES 1
+#define MAX_ENTITIES 3
 
 typedef enum {
   ENTITY_PLAYER,
@@ -23,6 +23,15 @@ typedef struct {
   float roll;
 } Orientation;
 
+// the center of the each collection is the position of the entity it belongs to
+typedef struct {
+  int countModels;
+  Model *models;
+  Vector3 *offsets; // offsets for each model with respect to the center
+  Orientation *orientations;
+  int *parentIds;
+} ModelCollection_t;
+
 typedef struct {
   int count;
 
@@ -31,12 +40,14 @@ typedef struct {
   Vector3 *positions;
   Vector3 *velocities;
 
-  Orientation *legOrientation;
-  Orientation *torsoOrientation;
+  // Orientation *legOrientation;
+  // Orientation *torsoOrientation;
 
   float *stepCycle;
   float *prevStepCycle;
   float *stepRate;
+
+  ModelCollection_t *modelCollections;
 } EntityData_t;
 
 typedef struct {

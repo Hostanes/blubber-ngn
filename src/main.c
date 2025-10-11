@@ -16,7 +16,15 @@
 int main(void) {
   printf("raylib version: %s\n", RAYLIB_VERSION);
 
-  InitWindow(1280, 720, "Mech Arena Demo (refactor)");
+  int screenWidth = 1280;
+  int screenHeight = 720;
+
+
+  InitWindow(screenWidth, screenHeight, "Mech Arena Demo (refactor)");
+
+  SetConfigFlags(FLAG_VSYNC_HINT);
+  InitWindow(screenWidth, screenHeight, "MechArenaDemo");
+
   DisableCursor(); // lock mouse for torso look
   SetTargetFPS(60);
 
@@ -46,7 +54,7 @@ int main(void) {
     // Camera setup based on torso orientation
     int pid = gs.playerId;
     Vector3 playerPos = gs.entities.positions[pid];
-    Orientation torso = gs.entities.torsoOrientation[pid];
+    Orientation torso = gs.entities.modelCollections[0].orientations[1];
 
     Vector3 forward = {cosf(torso.pitch) * cosf(torso.yaw), sinf(torso.pitch),
                        cosf(torso.pitch) * sinf(torso.yaw)};
