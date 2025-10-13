@@ -1,157 +1,144 @@
-
 // game.c
-// Implements game state initialization
-
 #include "game.h"
 #include "raylib.h"
 #include <raymath.h>
 
+//----------------------------------------
+// Helper: initialize an empty ModelCollection
+//----------------------------------------
+static ModelCollection_t InitModelCollection(int countModels) {
+  ModelCollection_t mc = {0};
+  mc.countModels = countModels;
+
+  mc.models = MemAlloc(sizeof(Model) * countModels);
+  mc.offsets = MemAlloc(sizeof(Vector3) * countModels);
+  mc.orientations = MemAlloc(sizeof(Orientation) * countModels);
+  mc.parentIds = MemAlloc(sizeof(int) * countModels);
+
+  mc.rotLocks = MemAlloc(sizeof(bool *) * countModels);
+  for (int i = 0; i < countModels; i++) {
+    mc.rotLocks[i] = MemAlloc(sizeof(bool) * 3); // yaw, pitch, roll
+    for (int j = 0; j < 3; j++)
+      mc.rotLocks[i][j] = true;
+    mc.parentIds[i] = -1;
+    mc.offsets[i] = (Vector3){0};
+    mc.orientations[i] = (Orientation){0};
+  }
+
+  return mc;
+}
+
+//----------------------------------------
+// Game initialization
+//----------------------------------------
 GameState_t InitGame(void) {
   GameState_t gs = {0};
-
   gs.entities.count = MAX_ENTITIES;
-
-  gs.entities.types =
-      (EntityType_t *)MemAlloc(sizeof(EntityType_t) * MAX_ENTITIES);
-
-  gs.entities.positions = (Vector3 *)MemAlloc(sizeof(Vector3) * MAX_ENTITIES);
-  gs.entities.velocities = (Vector3 *)MemAlloc(sizeof(Vector3) * MAX_ENTITIES);
-  gs.entities.stepCycle = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
-  gs.entities.prevStepCycle = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
-  gs.entities.stepRate = (float *)MemAlloc(sizeof(float) * MAX_ENTITIES);
-  gs.entities.modelCollections =
-      MemAlloc(sizeof(ModelCollection_t) * MAX_ENTITIES);
-
   gs.playerId = 0;
   gs.pHeadbobTimer = 0.0f;
 
-  // ========= PLAYER ENTITY =========
-  gs.entities.types[0] = ENTITY_PLAYER;
-  gs.entities.positions[0] = (Vector3){0, 1, 0};
-  gs.entities.velocities[0] = (Vector3){0, 0, 0};
-  gs.entities.stepCycle[0] = 0.0f;
-  gs.entities.prevStepCycle[0] = 0.0f;
-  gs.entities.stepRate[0] = 2.0f;
+  // Allocate all entity arrays
+  gs.entities.types = MemAlloc(sizeof(EntityType_t) * MAX_ENTITIES);
+  gs.entities.positions = MemAlloc(sizeof(Vector3) * MAX_ENTITIES);
+  gs.entities.velocities = MemAlloc(sizeof(Vector3) * MAX_ENTITIES);
+  gs.entities.stepCycle = MemAlloc(sizeof(float) * MAX_ENTITIES);
+  gs.entities.prevStepCycle = MemAlloc(sizeof(float) * MAX_ENTITIES);
+  gs.entities.stepRate = MemAlloc(sizeof(float) * MAX_ENTITIES);
 
-  ModelCollection_t *pmc = &gs.entities.modelCollections[0];
-  *pmc = (ModelCollection_t){0};
+  gs.entities.modelCollections =
+      MemAlloc(sizeof(ModelCollection_t) * MAX_ENTITIES);
+  gs.entities.collisionCollections =
+      MemAlloc(sizeof(ModelCollection_t) * MAX_ENTITIES);
+  gs.entities.hitboxCollections =
+      MemAlloc(sizeof(ModelCollection_t) * MAX_ENTITIES);
 
-  pmc->countModels = 3;
-  pmc->models = MemAlloc(sizeof(Model) * pmc->countModels);
-  pmc->offsets = MemAlloc(sizeof(Vector3) * pmc->countModels);
-  pmc->orientations = MemAlloc(sizeof(Orientation) * pmc->countModels);
-  pmc->parentIds = MemAlloc(sizeof(int) * pmc->countModels);
+  //----------------------------------------
+  // PLAYER ENTITY
+  //----------------------------------------
+  int playerId = 0;
+  gs.entities.types[playerId] = ENTITY_PLAYER;
+  gs.entities.positions[playerId] = (Vector3){0, 1, 0};
+  gs.entities.velocities[playerId] = (Vector3){0};
+  gs.entities.stepCycle[playerId] = 0;
+  gs.entities.prevStepCycle[playerId] = 0;
+  gs.entities.stepRate[playerId] = 2.0f;
 
-  pmc->rotLocks = MemAlloc(sizeof(bool *) * pmc->countModels);
-  for (int i = 0; i < pmc->countModels; i++) {
-    pmc->rotLocks[i] = MemAlloc(sizeof(bool) * 3); // 3 = yaw, pitch, roll
-    for (int j = 0; j < 3; j++) {
-      pmc->rotLocks[i][j] = true; // initialize all locks to 1
-    }
-  }
-  pmc->rotLocks[2][1] = false;
-  pmc->rotLocks[2][2] = true;
+  // Visuals
+  ModelCollection_t *pmc = &gs.entities.modelCollections[playerId];
+  *pmc = InitModelCollection(3);
+
+  pmc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
+  Texture2D mechTex = LoadTexture("assets/textures/legs.png");
+  pmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
+  pmc->offsets[0] = (Vector3){0, 0, 0};
+
+  Mesh legChild = GenMeshCube(10.0f, 2.0f, 2.0f);
+  pmc->models[2] = LoadModelFromMesh(legChild);
+  pmc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = PURPLE;
+  pmc->offsets[2] = (Vector3){2, 8, -4};
 
   pmc->parentIds[0] = -1;
   pmc->parentIds[1] = -1;
   pmc->parentIds[2] = 1;
 
-  pmc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
-  Texture2D mechTex = LoadTexture("assets/textures/legs.png");
-  pmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
+  pmc->rotLocks[2][0] = true;
+  pmc->rotLocks[2][1] = false;
+  pmc->rotLocks[2][2] = true;
 
-  pmc->offsets[0] = (Vector3){0, 0, 0};
-  pmc->orientations[0] = (Orientation){0, 0, 0};
+  // Movement collision shapes
+  gs.entities.collisionCollections[playerId] = InitModelCollection(1);
+  Mesh moveBox = GenMeshCube(4, 4, 15);
+  gs.entities.collisionCollections[playerId].offsets[0] = (Vector3){0, 5, 0};
+  gs.entities.collisionCollections[playerId].models[0] =
+      LoadModelFromMesh(moveBox);
 
-  Mesh legChild = GenMeshCube(10.0f, 2.0f, 2.0f);
+  // Hitboxes for damage
+  gs.entities.hitboxCollections[playerId] = InitModelCollection(1);
+  Mesh hitbox1 = GenMeshCube(4, 4, 7);
+  gs.entities.hitboxCollections[playerId].models[0] =
+      LoadModelFromMesh(hitbox1);
+  gs.entities.hitboxCollections[playerId].offsets[0] = (Vector3){0, 2, 0};
 
-  pmc->models[2] = LoadModelFromMesh(legChild);
-  pmc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
-
-  pmc->offsets[2] = (Vector3){2, 8, -4};
-  pmc->orientations[2] = (Orientation){0, 0, 0};
-
-  // ========= CUBE ENTITY =========
+  //----------------------------------------
+  // CUBE ENTITY
+  //----------------------------------------
   int cubeId = 1;
   gs.entities.types[cubeId] = ENTITY_MECH;
-  gs.entities.positions[cubeId] = (Vector3){0, 10, 40}; // right of player
-  gs.entities.velocities[cubeId] = (Vector3){0, 0, 0};
+  gs.entities.positions[cubeId] = (Vector3){0, 10, 40};
+  gs.entities.velocities[cubeId] = (Vector3){0};
 
   ModelCollection_t *cmc = &gs.entities.modelCollections[cubeId];
-  *cmc = (ModelCollection_t){0};
-
-  cmc->countModels = 3;
-  cmc->models = MemAlloc(sizeof(Model) * cmc->countModels);
-  cmc->offsets = MemAlloc(sizeof(Vector3) * cmc->countModels);
-  cmc->orientations = MemAlloc(sizeof(Orientation) * cmc->countModels);
-  cmc->parentIds = MemAlloc(sizeof(int) * cmc->countModels);
-  cmc->parentIds[0] = -1;
-  cmc->parentIds[1] = -1;
-  cmc->parentIds[2] = 1;
-
-  cmc->rotLocks = MemAlloc(sizeof(bool *) * cmc->countModels);
-  for (int i = 0; i < cmc->countModels; i++) {
-    cmc->rotLocks[i] = MemAlloc(sizeof(bool) * 3); // 3 = yaw, pitch, roll
-    for (int j = 0; j < 3; j++) {
-      cmc->rotLocks[i][j] = true; // initialize all locks to 1
-    }
-  }
-  cmc->rotLocks[2][0] = true;
-  cmc->rotLocks[2][1] = true;
-  cmc->rotLocks[2][2] = true;
-
-  Mesh cubeMesh = GenMeshCube(50.0f, 20.0f, 20.0f);
+  *cmc = InitModelCollection(2);
+  Mesh cubeMesh = GenMeshCube(50, 20, 20);
   cmc->models[0] = LoadModelFromMesh(cubeMesh);
   cmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
-
   cmc->offsets[0] = (Vector3){0, 0, 0};
-  cmc->orientations[0] = (Orientation){0, 0, 0};
 
-  Mesh cubeMesh2 = GenMeshCube(2.0f, 10.0f, 10.0f);
-  cmc->models[1] = LoadModelFromMesh(cubeMesh2);
+  Mesh cubeTurret = GenMeshCube(10, 5, 10);
+  cmc->models[1] = LoadModelFromMesh(cubeTurret);
   cmc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
+  cmc->offsets[1] = (Vector3){0, 15, 0};
 
-  cmc->offsets[1] = (Vector3){0, 25, 0};
-  cmc->orientations[1] = (Orientation){PI / 4, PI / 4, 0};
+  // Movement collision box for cube entity
+  gs.entities.collisionCollections[cubeId] = InitModelCollection(1);
+  Mesh cubeMoveBox = GenMeshCube(50, 20, 20);
+  gs.entities.collisionCollections[cubeId].models[0] =
+      LoadModelFromMesh(cubeMoveBox);
+  gs.entities.collisionCollections[cubeId].offsets[0] = (Vector3){0, 0, 0};
 
-  Mesh cubeMesh3 = GenMeshCube(2.0f, 2.0f, 10.0f);
-  cmc->models[2] = LoadModelFromMesh(cubeMesh3);
-  cmc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
+  //----------------------------------------
+  // TANK ENTITY
+  //----------------------------------------
+  int tankId = 2;
+  gs.entities.types[tankId] = ENTITY_TANK;
+  gs.entities.positions[tankId] = (Vector3){0, 10, -30};
+  gs.entities.velocities[tankId] = (Vector3){0};
 
-  cmc->offsets[2] = (Vector3){10, 0, 0};
-  cmc->orientations[2] = (Orientation){0, 0, 0};
-
-  // ========= SPHERE ENTITY =========
-  int sphereId = 2;
-  gs.entities.types[sphereId] = ENTITY_TANK;
-  gs.entities.positions[sphereId] = (Vector3){0, 10, -30}; // left of player
-  gs.entities.velocities[sphereId] = (Vector3){0, 0, 0};
-
-  ModelCollection_t *smc = &gs.entities.modelCollections[sphereId];
-  *smc = (ModelCollection_t){0};
-
-  smc->countModels = 1;
-  smc->models = MemAlloc(sizeof(Model) * 1);
-  smc->offsets = MemAlloc(sizeof(Vector3) * 1);
-  smc->orientations = MemAlloc(sizeof(Orientation) * 1);
-
-  smc->parentIds = MemAlloc(sizeof(int) * smc->countModels);
-  smc->parentIds[0] = -1;
-
-  smc->rotLocks = MemAlloc(sizeof(bool *) * smc->countModels);
-  for (int i = 0; i < smc->countModels; i++) {
-    smc->rotLocks[i] = MemAlloc(sizeof(bool) * 3); // 3 = yaw, pitch, roll
-    for (int j = 0; j < 3; j++) {
-      smc->rotLocks[i][j] = true; // initialize all locks to 1
-    }
-  }
-
-  Mesh sphereMesh = GenMeshSphere(8.0f, 16, 16); // smoother sphere
+  ModelCollection_t *smc = &gs.entities.modelCollections[tankId];
+  *smc = InitModelCollection(1);
+  Mesh sphereMesh = GenMeshSphere(8.0f, 16, 16);
   smc->models[0] = LoadModelFromMesh(sphereMesh);
   smc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
-
-  smc->offsets[0] = (Vector3){0, 0, 0};
-  smc->orientations[0] = (Orientation){0, 0, 0};
 
   return gs;
 }

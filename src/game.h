@@ -50,6 +50,8 @@ typedef struct {
   float *stepRate;
 
   ModelCollection_t *modelCollections;
+  ModelCollection_t *collisionCollections;
+  ModelCollection_t *hitboxCollections;
 } EntityData_t;
 
 typedef struct {
