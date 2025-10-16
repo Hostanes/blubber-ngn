@@ -1,4 +1,4 @@
 
+ADDED: terrain with y height clamping for entities
 
-ADDED: dynamic locking for specific axis for child models, can select which of the
-       parent's axis (yaw,pitch,roll) affect the child model    
+ADDED: OBB box collision, doesnt work well yet

@@ -8,6 +8,15 @@
 
 #define MAX_ENTITIES 3
 
+#define TERRAIN_SIZE 100
+#define TERRAIN_SCALE 10.0f
+
+typedef struct {
+  float heights[TERRAIN_SIZE * TERRAIN_SIZE];
+  Mesh mesh;
+  Model model;
+} Terrain_t;
+
 typedef enum {
   ENTITY_PLAYER,
   ENTITY_MECH,
@@ -42,9 +51,6 @@ typedef struct {
   Vector3 *positions;
   Vector3 *velocities;
 
-  // Orientation *legOrientation;
-  // Orientation *torsoOrientation;
-
   float *stepCycle;
   float *prevStepCycle;
   float *stepRate;
@@ -59,6 +65,7 @@ typedef struct {
   int playerId;
   AllState_t state;
   float pHeadbobTimer;
+  Terrain_t terrain;
 } GameState_t;
 
 GameState_t InitGame(void);

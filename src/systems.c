@@ -2,11 +2,11 @@
 // Implements player input, physics, and rendering
 
 #include "systems.h"
-#include <float.h>
 #include "game.h"
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,7 +86,8 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   float sensitivity = 0.0005f;
   torso[pid].yaw += mouse.x * sensitivity;
   torso[pid].pitch += -mouse.y * sensitivity;
-  gs->entities.collisionCollections[pid].orientations[pid].yaw = torso[pid].yaw;
+  // gs->entities.collisionCollections[pid].orientations[pid].yaw =
+  // torso[pid].yaw;
 
   // Clamp torso pitch between -89° and +89°
   if (torso[pid].pitch > 1.2f)
@@ -138,7 +139,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
       curr -= 1.0f; // wrap cycle
 
     if (prev > curr) { // wrapped around -> stomp
-      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 1.0f, 1.0f);
+      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.5f, 1.0f);
     }
 
     gs->entities.stepCycle[pid] = curr;
@@ -151,6 +152,62 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
 }
 
 // ---------------- Physics ----------------
+
+//----------------------------------------
+// Terrain Collision: Keep entity on ground
+//----------------------------------------
+
+static float GetTerrainHeightAtXZ(Terrain_t *terrain, float xWorld,
+                                  float zWorld) {
+  float halfWidth = (TERRAIN_SIZE - 1) * TERRAIN_SCALE * 0.5f;
+
+  // Convert world X,Z to grid coordinates
+  float localX = (xWorld + halfWidth) / TERRAIN_SCALE;
+  float localZ = (zWorld + halfWidth) / TERRAIN_SCALE;
+
+  // Clamp to range
+  if (localX < 0)
+    localX = 0;
+  if (localX > TERRAIN_SIZE - 1)
+    localX = TERRAIN_SIZE - 1;
+  if (localZ < 0)
+    localZ = 0;
+  if (localZ > TERRAIN_SIZE - 1)
+    localZ = TERRAIN_SIZE - 1;
+
+  int x0 = (int)localX;
+  int z0 = (int)localZ;
+  int x1 = (x0 + 1 < TERRAIN_SIZE) ? x0 + 1 : x0;
+  int z1 = (z0 + 1 < TERRAIN_SIZE) ? z0 + 1 : z0;
+
+  float tx = localX - x0;
+  float tz = localZ - z0;
+
+// Access 2D heights array (row-major)
+#define H(x, z) terrain->heights[(z) * TERRAIN_SIZE + (x)]
+
+  // Bilinear interpolation between the four corners
+  float h00 = H(x0, z0);
+  float h10 = H(x1, z0);
+  float h01 = H(x0, z1);
+  float h11 = H(x1, z1);
+
+  float h0 = h00 * (1.0f - tx) + h10 * tx;
+  float h1 = h01 * (1.0f - tx) + h11 * tx;
+  float h = h0 * (1.0f - tz) + h1 * tz;
+
+  return h;
+}
+
+void ApplyTerrainCollision(GameState_t *gs, int entityId) {
+  Vector3 *pos = &gs->entities.positions[entityId];
+  Vector3 *vel = &gs->entities.velocities[entityId];
+
+  float terrainY = GetTerrainHeightAtXZ(&gs->terrain, pos->x, pos->z);
+
+  pos->y = terrainY;
+  vel->y = 0;
+}
 
 static Vector3 OBBGetAxis(const Matrix *rot, int index) {
   // returns the X/Y/Z axis of the rotation matrix
@@ -165,6 +222,8 @@ static Vector3 OBBGetAxis(const Matrix *rot, int index) {
     return (Vector3){0, 0, 0};
   }
 }
+
+// TODO OBB collision doesnt work
 
 // Project vector onto axis
 static float ProjectOBB(const Vector3 *cornerOffsets, int numCorners,
@@ -248,12 +307,19 @@ static bool CheckOBBCollision(Vector3 aPos, ModelCollection_t *aCC,
   return true; // no separating axis -> collision
 }
 
-// ---------------- Physics System ----------------
-
 void PhysicsSystem(GameState_t *gs, float dt) {
   Vector3 *pos = gs->entities.positions;
   Vector3 *vel = gs->entities.velocities;
   int playerId = gs->playerId;
+
+  // -------------- floor clamping ------------
+  for (int i = 0; i < gs->entities.count; i++) {
+    gs->entities.positions[i].x += gs->entities.velocities[i].x * dt;
+    gs->entities.positions[i].y += gs->entities.velocities[i].y * dt;
+    gs->entities.positions[i].z += gs->entities.velocities[i].z * dt;
+
+    ApplyTerrainCollision(gs, i);
+  }
 
   // ---------------- Movement ----------------
   for (int i = 0; i < gs->entities.count; i++) {
@@ -350,13 +416,15 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   BeginMode3D(camera);
 
+  DrawModel(gs->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
+
   // --- Draw world terrain/chunks ---
-  for (int z = 0; z < WORLD_SIZE_Z; z++) {
-    for (int x = 0; x < WORLD_SIZE_X; x++) {
-      Chunk c = world[x][z];
-      DrawModel(level->levelChunks[c.type], c.worldPos, 1.0f, WHITE);
-    }
-  }
+  // for (int z = 0; z < WORLD_SIZE_Z; z++) {
+  //   for (int x = 0; x < WORLD_SIZE_X; x++) {
+  //     Chunk c = world[x][z];
+  //     DrawModel(level->levelChunks[c.type], c.worldPos, 1.0f, WHITE);
+  //   }
+  // }
 
   // --- Boundary walls ---
   for (int i = -25; i <= 25; i += 10) {
@@ -386,5 +454,15 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   EndMode3D();
 
   DrawFPS(10, 10);
+
+  // Draw player position
+  Vector3 playerPos = gs->entities.positions[gs->playerId];
+  char posText[64];
+  snprintf(posText, sizeof(posText), "Player Pos: X: %.2f  Y: %.2f  Z: %.2f",
+           playerPos.x, playerPos.y, playerPos.z);
+
+  int textWidth = MeasureText(posText, 20);
+  DrawText(posText, GetScreenWidth() - textWidth - 10, 10, 20, RAYWHITE);
+
   EndDrawing();
 }
