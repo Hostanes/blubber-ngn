@@ -453,6 +453,8 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   EndMode3D();
 
+  // draw UI segment
+
   DrawFPS(10, 10);
 
   // Draw player position
@@ -463,6 +465,55 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   int textWidth = MeasureText(posText, 20);
   DrawText(posText, GetScreenWidth() - textWidth - 10, 10, 20, RAYWHITE);
+
+  // draw torso leg orientation
+
+  Orientation legs_orientation =
+      gs->entities.modelCollections[gs->playerId].orientations[0];
+
+  Orientation torso_orientation =
+      gs->entities.modelCollections[gs->playerId].orientations[1];
+
+  float legYaw = fmod(legs_orientation.yaw, 2 * PI);
+  if (legYaw < 0)
+    legYaw += 2 * PI;
+
+  float torsoYaw = fmod(torso_orientation.yaw, 2 * PI);
+  if (torsoYaw < 0)
+    torsoYaw += 2 * PI;
+
+  // difference
+  float diff = fmod(torsoYaw - legYaw + PI, 2 * PI);
+  if (diff < 0)
+    diff += 2 * PI;
+  diff -= PI;
+
+  char rotText[64];
+  snprintf(rotText, sizeof(rotText),
+           "legs yaw: %f \ntorso yaw: %f \ndiff: %f\n", legYaw, torsoYaw, diff);
+
+  int rotTextWidth = MeasureText(rotText, 20);
+  DrawText(rotText, GetScreenWidth() - rotTextWidth - 10, 30, 20, RAYWHITE);
+
+  float length = 50.0f;
+  Vector2 arrowStart =
+      (Vector2){GetScreenWidth() * 0.8, GetScreenHeight() * 0.8};
+
+  diff += PI / 2.0f;
+
+  float endX = arrowStart.x + cosf(-diff) * length;
+  float endY = arrowStart.y + sinf(-diff) * length;
+
+  float endXTorso = arrowStart.x;
+  float endYTorso = arrowStart.y - length;
+
+  // torso arrow
+  DrawLineEx(arrowStart, (Vector2){endXTorso, endYTorso}, 3.0f, RED);
+  // leg arrow
+  DrawLineEx(arrowStart, (Vector2){endX, endY}, 3.0f, GREEN);
+
+  // Draw other UI shapes
+  DrawCircleV(arrowStart, 10, DARKBLUE);
 
   EndDrawing();
 }

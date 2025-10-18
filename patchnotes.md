@@ -1,4 +1,2 @@
 
-ADDED: terrain with y height clamping for entities
-
-ADDED: OBB box collision, doesnt work well yet
+ADDED: UI representation of torso and leg angle difference
