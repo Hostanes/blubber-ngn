@@ -8,6 +8,7 @@
 #include "rlgl.h"
 #include <float.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -139,7 +140,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
       curr -= 1.0f; // wrap cycle
 
     if (prev > curr) { // wrapped around -> stomp
-      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.5f, 1.0f);
+      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.1f, 1.0f);
     }
 
     gs->entities.stepCycle[pid] = curr;
@@ -209,40 +210,54 @@ void ApplyTerrainCollision(GameState_t *gs, int entityId) {
   vel->y = 0;
 }
 
+//----------------------------------------
+// Helpers
+//----------------------------------------
+
+// Project OBB corners onto an axis
+typedef struct {
+  float min, max;
+} Projection;
+
+static Projection ProjectOBB(const Vector3 *corners, int numCorners,
+                             Vector3 axis, Vector3 center) {
+  Projection p = {FLT_MAX, -FLT_MAX};
+  for (int i = 0; i < numCorners; i++) {
+    Vector3 world = Vector3Add(corners[i], center);
+    float dot = Vector3DotProduct(world, axis);
+    if (dot < p.min)
+      p.min = dot;
+    if (dot > p.max)
+      p.max = dot;
+  }
+  return p;
+}
+
+// Compute overlap along axis
+static float GetOverlap(Projection a, Projection b) {
+  return fminf(a.max, b.max) - fmaxf(a.min, b.min);
+}
+
+// Get local axis from rotation matrix
 static Vector3 OBBGetAxis(const Matrix *rot, int index) {
-  // returns the X/Y/Z axis of the rotation matrix
   switch (index) {
   case 0:
-    return (Vector3){rot->m0, rot->m1, rot->m2}; // X axis
+    return (Vector3){rot->m0, rot->m1, rot->m2};
   case 1:
-    return (Vector3){rot->m4, rot->m5, rot->m6}; // Y axis
+    return (Vector3){rot->m4, rot->m5, rot->m6};
   case 2:
-    return (Vector3){rot->m8, rot->m9, rot->m10}; // Z axis
+    return (Vector3){rot->m8, rot->m9, rot->m10};
   default:
     return (Vector3){0, 0, 0};
   }
 }
 
-// TODO OBB collision doesnt work
+//----------------------------------------
+// OBB Collision + Resolution
+//----------------------------------------
 
-// Project vector onto axis
-static float ProjectOBB(const Vector3 *cornerOffsets, int numCorners,
-                        Vector3 axis, Vector3 center) {
-  float min = FLT_MAX, max = -FLT_MAX;
-  for (int i = 0; i < numCorners; i++) {
-    Vector3 p = Vector3Add(cornerOffsets[i], center);
-    float proj = Vector3DotProduct(p, axis);
-    if (proj < min)
-      min = proj;
-    if (proj > max)
-      max = proj;
-  }
-  return max - min; // length along axis
-}
-
-// Separating Axis Test for two OBBs
-static bool CheckOBBCollision(Vector3 aPos, ModelCollection_t *aCC,
-                              Vector3 bPos, ModelCollection_t *bCC) {
+bool CheckAndResolveOBBCollision(Vector3 *aPos, ModelCollection_t *aCC,
+                                 Vector3 *bPos, ModelCollection_t *bCC) {
   if (aCC->countModels == 0 || bCC->countModels == 0)
     return false;
 
@@ -254,24 +269,20 @@ static bool CheckOBBCollision(Vector3 aPos, ModelCollection_t *aCC,
   BoundingBox aBBox = GetMeshBoundingBox(aCube.meshes[0]);
   BoundingBox bBBox = GetMeshBoundingBox(bCube.meshes[0]);
 
-  Vector3 aHalf = {(aBBox.max.x - aBBox.min.x) * 0.5f,
-                   (aBBox.max.y - aBBox.min.y) * 0.5f,
-                   (aBBox.max.z - aBBox.min.z) * 0.5f};
-  Vector3 bHalf = {(bBBox.max.x - bBBox.min.x) * 0.5f,
-                   (bBBox.max.y - bBBox.min.y) * 0.5f,
-                   (bBBox.max.z - bBBox.min.z) * 0.5f};
+  Vector3 aHalf = Vector3Scale(Vector3Subtract(aBBox.max, aBBox.min), 0.5f);
+  Vector3 bHalf = Vector3Scale(Vector3Subtract(bBBox.max, bBBox.min), 0.5f);
 
-  Vector3 aCenter = Vector3Add(aPos, aOffset);
-  Vector3 bCenter = Vector3Add(bPos, bOffset);
+  Vector3 aCenter = Vector3Add(*aPos, aOffset);
+  Vector3 bCenter = Vector3Add(*bPos, bOffset);
 
   Matrix aRot = MatrixRotateXYZ((Vector3){aCC->orientations[0].pitch,
-                                          aCC->orientations[0].yaw,
+                                          aCC->orientations[0].yaw * -1,
                                           aCC->orientations[0].roll});
   Matrix bRot = MatrixRotateXYZ((Vector3){bCC->orientations[0].pitch,
-                                          bCC->orientations[0].yaw,
+                                          bCC->orientations[0].yaw * -1,
                                           bCC->orientations[0].roll});
 
-  // Generate the 8 corners of each box in local space
+  // Generate corners
   Vector3 aCorners[8], bCorners[8];
   for (int i = 0; i < 8; i++) {
     aCorners[i] =
@@ -280,66 +291,91 @@ static bool CheckOBBCollision(Vector3 aPos, ModelCollection_t *aCC,
     bCorners[i] =
         (Vector3){(i & 1 ? bHalf.x : -bHalf.x), (i & 2 ? bHalf.y : -bHalf.y),
                   (i & 4 ? bHalf.z : -bHalf.z)};
+
     aCorners[i] = Vector3Transform(aCorners[i], aRot);
     bCorners[i] = Vector3Transform(bCorners[i], bRot);
   }
 
-  // Separating axes: 3 axes of each box
-  Vector3 axes[6];
-  for (int i = 0; i < 3; i++) {
-    axes[i] = OBBGetAxis(&aRot, i);
-    axes[i + 3] = OBBGetAxis(&bRot, i);
-  }
+  // 15 SAT axes
+  Vector3 axes[15];
+  int idx = 0;
+  for (int i = 0; i < 3; i++)
+    axes[idx++] = OBBGetAxis(&aRot, i);
+  for (int i = 0; i < 3; i++)
+    axes[idx++] = OBBGetAxis(&bRot, i);
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      axes[idx++] =
+          Vector3CrossProduct(OBBGetAxis(&aRot, i), OBBGetAxis(&bRot, j));
 
-  // Test all axes
-  for (int i = 0; i < 6; i++) {
-    float aProj = ProjectOBB(aCorners, 8, axes[i], aCenter);
-    float bProj = ProjectOBB(bCorners, 8, axes[i], bCenter);
+  float minOverlap = FLT_MAX;
+  Vector3 mtvAxis = {0, 0, 0};
 
-    Vector3 delta = Vector3Subtract(bCenter, aCenter);
-    float dist = fabsf(Vector3DotProduct(delta, axes[i]));
-    if (dist > (aProj + bProj) * 0.5f) {
-      // Separating axis found
-      return false;
+  for (int i = 0; i < 15; i++) {
+    Vector3 axis = axes[i];
+    if (Vector3Length(axis) < 1e-6f)
+      continue; // skip degenerate
+    axis = Vector3Normalize(axis);
+
+    Projection aProj = ProjectOBB(aCorners, 8, axis, aCenter);
+    Projection bProj = ProjectOBB(bCorners, 8, axis, bCenter);
+
+    float overlap = GetOverlap(aProj, bProj);
+    if (overlap <= 0.0f)
+      return false; // separating axis found
+
+    if (overlap < minOverlap) {
+      minOverlap = overlap;
+      mtvAxis = axis;
+      Vector3 d = Vector3Subtract(bCenter, aCenter);
+      if (Vector3DotProduct(d, mtvAxis) < 0)
+        mtvAxis = Vector3Scale(mtvAxis, -1.0f);
     }
   }
 
-  return true; // no separating axis -> collision
+  // Move A out along MTV
+  *aPos = Vector3Subtract(*aPos, Vector3Scale(mtvAxis, minOverlap));
+  return true;
 }
+
+//----------------------------------------
+// Physics System
+//----------------------------------------
 
 void PhysicsSystem(GameState_t *gs, float dt) {
   Vector3 *pos = gs->entities.positions;
   Vector3 *vel = gs->entities.velocities;
   int playerId = gs->playerId;
 
-  // -------------- floor clamping ------------
+  // Floor clamping
   for (int i = 0; i < gs->entities.count; i++) {
-    gs->entities.positions[i].x += gs->entities.velocities[i].x * dt;
-    gs->entities.positions[i].y += gs->entities.velocities[i].y * dt;
-    gs->entities.positions[i].z += gs->entities.velocities[i].z * dt;
-
+    pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
     ApplyTerrainCollision(gs, i);
   }
 
-  // ---------------- Movement ----------------
+  // Damping
   for (int i = 0; i < gs->entities.count; i++) {
-    pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
     vel[i].x *= 0.65f;
     vel[i].z *= 0.65f;
   }
 
-  // ---------------- Collision ----------------
+  // Collision
   for (int i = 0; i < gs->entities.count; i++) {
     if (i == playerId)
       continue;
 
-    if (CheckOBBCollision(pos[playerId],
-                          &gs->entities.collisionCollections[playerId], pos[i],
-                          &gs->entities.collisionCollections[i])) {
-      // Simple push-out: move player opposite to velocity
-      Vector3 dir = Vector3Normalize(Vector3Subtract(pos[playerId], pos[i]));
-      pos[playerId] = Vector3Add(pos[playerId], Vector3Scale(dir, 0.1f));
-      vel[playerId].x = vel[playerId].z = 0;
+    bool collided = CheckAndResolveOBBCollision(
+        &pos[playerId], &gs->entities.collisionCollections[playerId], &pos[i],
+        &gs->entities.collisionCollections[i]);
+
+    if (collided) {
+      // slide along collision
+      Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[playerId], pos[i]));
+      float velDot = Vector3DotProduct(vel[playerId], mtvDir);
+      if (velDot > 0.0f) {
+        vel[playerId] =
+            Vector3Subtract(vel[playerId], Vector3Scale(mtvDir, velDot));
+      }
     }
   }
 }

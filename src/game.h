@@ -21,6 +21,7 @@ typedef enum {
   ENTITY_PLAYER,
   ENTITY_MECH,
   ENTITY_TANK,
+  ENTITY_WALL,
   ENTITY_TURRET
 } EntityType_t;
 

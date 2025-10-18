@@ -33,10 +33,6 @@ static ModelCollection_t InitModelCollection(int countModels) {
 //----------------------------------------
 // Terrain Initialization
 //----------------------------------------
-
-//----------------------------------------
-// Terrain Initialization
-//----------------------------------------
 void InitTerrain(GameState_t *gs, Texture2D sandTex) {
   Terrain_t *terrain = &gs->terrain;
 
@@ -195,7 +191,7 @@ GameState_t InitGame(void) {
 
   // Movement collision shape
   gs.entities.collisionCollections[playerId] = InitModelCollection(1);
-  Mesh moveBox = GenMeshCube(4, 4, 15);
+  Mesh moveBox = GenMeshCube(4, 8, 4);
   gs.entities.collisionCollections[playerId].offsets[0] = (Vector3){0, 5, 0};
   gs.entities.collisionCollections[playerId].models[0] =
       LoadModelFromMesh(moveBox);
@@ -211,7 +207,7 @@ GameState_t InitGame(void) {
   // MECH ENTITY
   //----------------------------------------
   int cubeId = 1;
-  gs.entities.types[cubeId] = ENTITY_MECH;
+  gs.entities.types[cubeId] = ENTITY_WALL;
   gs.entities.positions[cubeId] = (Vector3){0, 10, 40};
   gs.entities.velocities[cubeId] = (Vector3){0};
 
@@ -220,7 +216,8 @@ GameState_t InitGame(void) {
   Mesh cubeMesh = GenMeshCube(50, 20, 20);
   cmc->models[0] = LoadModelFromMesh(cubeMesh);
   cmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
-  cmc->offsets[0] = (Vector3){0, 0, 0};
+  cmc->offsets[0] = (Vector3){0, -6, 0};
+  cmc->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
 
   Mesh cubeTurret = GenMeshCube(10, 5, 10);
   cmc->models[1] = LoadModelFromMesh(cubeTurret);
@@ -231,7 +228,9 @@ GameState_t InitGame(void) {
   Mesh cubeMoveBox = GenMeshCube(50, 20, 20);
   gs.entities.collisionCollections[cubeId].models[0] =
       LoadModelFromMesh(cubeMoveBox);
-  gs.entities.collisionCollections[cubeId].offsets[0] = (Vector3){0, 0, 0};
+  gs.entities.collisionCollections[cubeId].offsets[0] = (Vector3){0, -6, 0};
+  gs.entities.collisionCollections[cubeId].orientations[0] =
+      (Orientation){PI / 4.0f, 0, 0};
 
   //----------------------------------------
   // TANK ENTITY
