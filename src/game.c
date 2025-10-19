@@ -118,7 +118,14 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
   terrain->model = LoadModelFromMesh(terrain->mesh);
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = WHITE;
-  terrain->model.materials[0].shader = LoadShader(NULL, NULL);
+  Shader shader = LoadShader("resources/shaders/glsl330/lighting.vs",
+                             "resources/shaders/glsl330/lighting.fs");
+
+  int locLightDir = GetShaderLocation(shader, "lightDir");
+  Vector3 lightDir = {1.0f, -1.0f, 0.0f};
+  SetShaderValue(shader, locLightDir, &lightDir, SHADER_UNIFORM_VEC3);
+
+  terrain->model.materials[0].shader = shader;
 
   MemFree(verts);
   MemFree(normals);

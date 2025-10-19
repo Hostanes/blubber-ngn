@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define MAX_ENTITIES 32 // can be increased later
-#define TERRAIN_SIZE 100
+#define TERRAIN_SIZE 200
 #define TERRAIN_SCALE 10.0f
 
 //----------------------------------------

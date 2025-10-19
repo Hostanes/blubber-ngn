@@ -21,7 +21,8 @@ void LoadAssets() {
 
 // ---------------- Player Control ----------------
 
-void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
+void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
+                         Camera3D *camera) {
   int pid = gs->playerId;
   Vector3 *pos = gs->components.positions;
   Vector3 *vel = gs->components.velocities;
@@ -30,15 +31,31 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   Orientation *leg = &gs->components.modelCollections[pid].orientations[0];
   Orientation *torso = &gs->components.modelCollections[pid].orientations[1];
 
+  bool isSprinting = IsKeyDown(KEY_LEFT_SHIFT);
+
+  float baseFOV = 60.0f;
+  float sprintFOV = 80.0f;
+  float fovSpeed = 12.0f; // how fast FOV interpolates
+
+  float targetFOV = isSprinting ? sprintFOV : baseFOV;
+  camera->fovy = camera->fovy + (targetFOV - camera->fovy) * dt * fovSpeed;
+
+  float totalSpeedMult = isSprinting ? 1.5f : 1.0f;
+  float forwardSpeedMult = 5.0f * totalSpeedMult;
+  float backwardSpeedMult = 5.0f * totalSpeedMult;
+  float strafeSpeedMult = 2.0f * totalSpeedMult;
+
+  float turnRate = isSprinting ? 0.2f : 1.0f;
+
   // Rotate legs with A/D
   if (IsKeyDown(KEY_A))
-    leg[pid].yaw -= 1.5f * dt;
+    leg[pid].yaw -= 1.5f * dt * turnRate;
   if (IsKeyDown(KEY_D))
-    leg[pid].yaw += 1.5f * dt;
+    leg[pid].yaw += 1.5f * dt * turnRate;
 
   // Torso yaw/pitch from mouse
   Vector2 mouse = GetMouseDelta();
-  float sensitivity = 0.0005f;
+  float sensitivity = 0.0007f;
   torso[pid].yaw += mouse.x * sensitivity;
   torso[pid].pitch += -mouse.y * sensitivity;
   // gs->entities.collisionCollections[pid].orientations[pid].yaw =
@@ -55,11 +72,6 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   float s = sinf(leg[pid].yaw);
   Vector3 forward = {c, 0, s};
   Vector3 right = {-s, 0, c};
-
-  float totalSpeedMult = 1.0f;
-  float forwardSpeedMult = 5.0f * totalSpeedMult;
-  float backwardSpeedMult = 5.0f * totalSpeedMult;
-  float strafeSpeedMult = 2.0f * totalSpeedMult;
 
   // Movement keys
   if (IsKeyDown(KEY_W)) {

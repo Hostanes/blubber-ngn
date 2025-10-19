@@ -48,7 +48,7 @@ int main(void) {
     float dt = GetFrameTime();
 
     // Systems
-    PlayerControlSystem(&gs, &soundSys, dt);
+    PlayerControlSystem(&gs, &soundSys, dt, &camera);
     PhysicsSystem(&gs, dt);
 
     // Camera setup based on torso orientation
