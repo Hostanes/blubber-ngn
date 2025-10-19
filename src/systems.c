@@ -15,66 +15,20 @@
 #define WORLD_SIZE_X 10
 #define WORLD_SIZE_Z 10
 
-typedef enum ChunkType {
-  CHUNK_FLAT,
-  CHUNK_RAMP_UP,
-  CHUNK_RAMP_DOWN,
-  // ... maybe CHUNK_RAMP_LEFT, CHUNK_RAMP_RIGHT later
-} ChunkType_t;
-
-typedef struct {
-  Vector2 gridPos;  // position in chunk grid
-  ChunkType_t type; // which mesh to use
-  Model model;      // model reference
-  Vector3 worldPos; // cached world position for drawing
-} Chunk;
-
-typedef struct {
-  Model levelChunks[3]; // stores the types of chunks
-} Level_t;
-
-Chunk world[WORLD_SIZE_X][WORLD_SIZE_Z];
-
-Level_t *level;
-
 void LoadAssets() {
-
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-
-  // Generate flat base meshes
-  Mesh flatMesh = GenMeshPlane(50.0f, 50.0f, 1, 1);
-  // Mesh rampUpMesh = GenMeshPlane(50.0f, 50.0f, 1, 1);
-  // Mesh rampDownMesh = GenMeshPlane(50.0f, 50.0f, 1, 1);
-
-  // Create models
-  Model flatModel = LoadModelFromMesh(flatMesh);
-
-  // Apply textures
-  flatModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
-
-  // Store them
-  level = malloc(sizeof(Level_t));
-  level->levelChunks[CHUNK_FLAT] = flatModel;
-
-  for (int z = 0; z < WORLD_SIZE_Z; z++) {
-    for (int x = 0; x < WORLD_SIZE_X; x++) {
-
-      world[x][z].gridPos = (Vector2){x, z};
-      world[x][z].worldPos = (Vector3){x * 50.0f - 250, 0, z * 50.0f - 250};
-
-      world[x][z].type = CHUNK_FLAT;
-    }
-  }
 }
 
 // ---------------- Player Control ----------------
 
 void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   int pid = gs->playerId;
-  Vector3 *pos = gs->entities.positions;
-  Vector3 *vel = gs->entities.velocities;
-  Orientation *leg = &gs->entities.modelCollections[pid].orientations[0];
-  Orientation *torso = &gs->entities.modelCollections[pid].orientations[1];
+  Vector3 *pos = gs->components.positions;
+  Vector3 *vel = gs->components.velocities;
+
+  // player leg and torso orientations
+  Orientation *leg = &gs->components.modelCollections[pid].orientations[0];
+  Orientation *torso = &gs->components.modelCollections[pid].orientations[1];
 
   // Rotate legs with A/D
   if (IsKeyDown(KEY_A))
@@ -131,10 +85,11 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
 
   if (speed > 1.0f) {
     gs->pHeadbobTimer += dt * 8.0f;
-    gs->entities.stepRate[pid] = speed * 0.07;
+    gs->components.stepRate[pid] = speed * 0.07;
 
-    float prev = gs->entities.prevStepCycle[pid];
-    float curr = gs->entities.stepCycle[pid] + gs->entities.stepRate[pid] * dt;
+    float prev = gs->components.prevStepCycle[pid];
+    float curr =
+        gs->components.stepCycle[pid] + gs->components.stepRate[pid] * dt;
 
     if (curr >= 1.0f)
       curr -= 1.0f; // wrap cycle
@@ -143,12 +98,12 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
       QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.1f, 1.0f);
     }
 
-    gs->entities.stepCycle[pid] = curr;
-    gs->entities.prevStepCycle[pid] = curr;
+    gs->components.stepCycle[pid] = curr;
+    gs->components.prevStepCycle[pid] = curr;
   } else {
     gs->pHeadbobTimer = 0;
-    gs->entities.stepCycle[pid] = 0.0f;
-    gs->entities.prevStepCycle[pid] = 0.0f;
+    gs->components.stepCycle[pid] = 0.0f;
+    gs->components.prevStepCycle[pid] = 0.0f;
   }
 }
 
@@ -201,8 +156,8 @@ static float GetTerrainHeightAtXZ(Terrain_t *terrain, float xWorld,
 }
 
 void ApplyTerrainCollision(GameState_t *gs, int entityId) {
-  Vector3 *pos = &gs->entities.positions[entityId];
-  Vector3 *vel = &gs->entities.velocities[entityId];
+  Vector3 *pos = &gs->components.positions[entityId];
+  Vector3 *vel = &gs->components.velocities[entityId];
 
   float terrainY = GetTerrainHeightAtXZ(&gs->terrain, pos->x, pos->z);
 
@@ -343,30 +298,30 @@ bool CheckAndResolveOBBCollision(Vector3 *aPos, ModelCollection_t *aCC,
 //----------------------------------------
 
 void PhysicsSystem(GameState_t *gs, float dt) {
-  Vector3 *pos = gs->entities.positions;
-  Vector3 *vel = gs->entities.velocities;
+  Vector3 *pos = gs->components.positions;
+  Vector3 *vel = gs->components.velocities;
   int playerId = gs->playerId;
 
   // Floor clamping
-  for (int i = 0; i < gs->entities.count; i++) {
+  for (int i = 0; i < gs->em.count; i++) {
     pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
     ApplyTerrainCollision(gs, i);
   }
 
   // Damping
-  for (int i = 0; i < gs->entities.count; i++) {
+  for (int i = 0; i < gs->em.count; i++) {
     vel[i].x *= 0.65f;
     vel[i].z *= 0.65f;
   }
 
   // Collision
-  for (int i = 0; i < gs->entities.count; i++) {
+  for (int i = 0; i < gs->em.count; i++) {
     if (i == playerId)
       continue;
 
     bool collided = CheckAndResolveOBBCollision(
-        &pos[playerId], &gs->entities.collisionCollections[playerId], &pos[i],
-        &gs->entities.collisionCollections[i]);
+        &pos[playerId], &gs->components.collisionCollections[playerId], &pos[i],
+        &gs->components.collisionCollections[i]);
 
     if (collided) {
       // slide along collision
@@ -471,19 +426,19 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   }
 
   // --- Draw all entities ---
-  for (int i = 0; i < gs->entities.count; i++) {
-    Vector3 entityPos = gs->entities.positions[i];
+  for (int i = 0; i < gs->em.count; i++) {
+    Vector3 entityPos = gs->components.positions[i];
 
     // Visual models (solid white)
-    DrawModelCollection(&gs->entities.modelCollections[i], entityPos, WHITE,
+    DrawModelCollection(&gs->components.modelCollections[i], entityPos, WHITE,
                         false);
 
     // Movement collision boxes (green wireframe)
-    DrawModelCollection(&gs->entities.collisionCollections[i], entityPos, GREEN,
-                        true);
+    DrawModelCollection(&gs->components.collisionCollections[i], entityPos,
+                        GREEN, true);
 
     // Hitboxes (red wireframe)
-    DrawModelCollection(&gs->entities.hitboxCollections[i], entityPos, RED,
+    DrawModelCollection(&gs->components.hitboxCollections[i], entityPos, RED,
                         true);
   }
 
@@ -494,7 +449,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   DrawFPS(10, 10);
 
   // Draw player position
-  Vector3 playerPos = gs->entities.positions[gs->playerId];
+  Vector3 playerPos = gs->components.positions[gs->playerId];
   char posText[64];
   snprintf(posText, sizeof(posText), "Player Pos: X: %.2f  Y: %.2f  Z: %.2f",
            playerPos.x, playerPos.y, playerPos.z);
@@ -505,10 +460,10 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   // draw torso leg orientation
 
   Orientation legs_orientation =
-      gs->entities.modelCollections[gs->playerId].orientations[0];
+      gs->components.modelCollections[gs->playerId].orientations[0];
 
   Orientation torso_orientation =
-      gs->entities.modelCollections[gs->playerId].orientations[1];
+      gs->components.modelCollections[gs->playerId].orientations[1];
 
   float legYaw = fmod(legs_orientation.yaw, 2 * PI);
   if (legYaw < 0)

@@ -53,14 +53,14 @@ int main(void) {
 
     // Camera setup based on torso orientation
     int pid = gs.playerId;
-    Vector3 playerPos = gs.entities.positions[pid];
-    Orientation torso = gs.entities.modelCollections[0].orientations[1];
+    Vector3 playerPos = gs.components.positions[pid];
+    Orientation torso = gs.components.modelCollections[0].orientations[1];
 
     Vector3 forward = {cosf(torso.pitch) * cosf(torso.yaw), sinf(torso.pitch),
                        cosf(torso.pitch) * sinf(torso.yaw)};
 
     // Headbob / eye offset computed from step cycle
-    float t = gs.entities.stepCycle[pid];
+    float t = gs.components.stepCycle[pid];
     float bobTri = (t < 0.5f) ? (t * 2.0f) : (2.0f - t * 2.0f); // 0 -> 1 -> 0
     bobTri = 1.0f - bobTri; // flip to make "drop"
     float bobY = bobTri * bobAmount;

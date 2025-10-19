@@ -1,3 +1,4 @@
+
 #include "game.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -39,10 +40,9 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
   const int width = TERRAIN_SIZE;
   const int depth = TERRAIN_SIZE;
 
-  // --- Generate height data ---
+  // --- Generate heightmap ---
   for (int z = 0; z < depth; z++) {
     for (int x = 0; x < width; x++) {
-      // You can make more complex patterns here (Perlin noise, etc.)
       terrain->heights[z * width + x] =
           sinf(x * 0.3f) * 3.0f + cosf(z * 0.2f) * 2.0f;
     }
@@ -58,7 +58,7 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
   Vector3 *normals = MemAlloc(sizeof(Vector3) * vertexCount);
   unsigned short *indices = MemAlloc(sizeof(unsigned short) * triCount * 3);
 
-  // --- Build vertex positions, normals, and texcoords ---
+  // --- Build vertices ---
   for (int z = 0; z < depth; z++) {
     for (int x = 0; x < width; x++) {
       int idx = z * width + x;
@@ -68,7 +68,7 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
       verts[idx] = (Vector3){worldX, height, worldZ};
 
       texcoords[idx] = (Vector2){(float)x / width, (float)z / depth};
-      normals[idx] = (Vector3){0, 1, 0}; // TODO crude normal
+      normals[idx] = (Vector3){0, 1, 0};
     }
   }
 
@@ -84,21 +84,20 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
       indices[i++] = topLeft;
       indices[i++] = bottomLeft;
       indices[i++] = topRight;
-
       indices[i++] = topRight;
       indices[i++] = bottomLeft;
       indices[i++] = bottomRight;
     }
   }
 
-  // --- Build Raylib mesh ---
+  // --- Build mesh ---
   memset(&terrain->mesh, 0, sizeof(Mesh));
   terrain->mesh.vertexCount = vertexCount;
   terrain->mesh.triangleCount = triCount;
 
-  terrain->mesh.vertices = (float *)MemAlloc(vertexCount * 3 * sizeof(float));
-  terrain->mesh.texcoords = (float *)MemAlloc(vertexCount * 2 * sizeof(float));
-  terrain->mesh.normals = (float *)MemAlloc(vertexCount * 3 * sizeof(float));
+  terrain->mesh.vertices = MemAlloc(sizeof(float) * vertexCount * 3);
+  terrain->mesh.texcoords = MemAlloc(sizeof(float) * vertexCount * 2);
+  terrain->mesh.normals = MemAlloc(sizeof(float) * vertexCount * 3);
   terrain->mesh.indices = indices;
 
   for (int v = 0; v < vertexCount; v++) {
@@ -116,59 +115,59 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
 
   UploadMesh(&terrain->mesh, true);
 
-  // --- Create model and apply texture ---
   terrain->model = LoadModelFromMesh(terrain->mesh);
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = WHITE;
-  terrain->model.materials[0].shader = LoadShader(NULL, NULL); // force unlit
+  terrain->model.materials[0].shader = LoadShader(NULL, NULL);
 
-  // Cleanup CPU-side memory
   MemFree(verts);
   MemFree(normals);
   MemFree(texcoords);
 }
 
 //----------------------------------------
-// Game initialization
+// Game Initialization (ECS-style)
 //----------------------------------------
 GameState_t InitGame(void) {
   GameState_t gs = {0};
-  gs.entities.count = MAX_ENTITIES;
+
+  //----------------------------------------
+  // Entity Manager setup
+  //----------------------------------------
+  gs.em.count = 0;
+  memset(gs.em.alive, 0, sizeof(gs.em.alive));
+  memset(gs.em.masks, 0, sizeof(gs.em.masks));
+
+  //----------------------------------------
+  // Player ID
+  //----------------------------------------
   gs.playerId = 0;
+  gs.state = STATE_INLEVEL;
   gs.pHeadbobTimer = 0.0f;
 
-  // Allocate all entity arrays
-  gs.entities.types = MemAlloc(sizeof(EntityType_t) * MAX_ENTITIES);
-  gs.entities.positions = MemAlloc(sizeof(Vector3) * MAX_ENTITIES);
-  gs.entities.velocities = MemAlloc(sizeof(Vector3) * MAX_ENTITIES);
-  gs.entities.stepCycle = MemAlloc(sizeof(float) * MAX_ENTITIES);
-  gs.entities.prevStepCycle = MemAlloc(sizeof(float) * MAX_ENTITIES);
-  gs.entities.stepRate = MemAlloc(sizeof(float) * MAX_ENTITIES);
-  gs.entities.modelCollections =
-      MemAlloc(sizeof(ModelCollection_t) * MAX_ENTITIES);
-  gs.entities.collisionCollections =
-      MemAlloc(sizeof(ModelCollection_t) * MAX_ENTITIES);
-  gs.entities.hitboxCollections =
-      MemAlloc(sizeof(ModelCollection_t) * MAX_ENTITIES);
-
-  // Initialize terrain properly
-
+  //----------------------------------------
+  // Load terrain texture & generate terrain
+  //----------------------------------------
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-
   InitTerrain(&gs, sandTex);
 
   //----------------------------------------
-  // PLAYER ENTITY
+  // Add PLAYER ENTITY
   //----------------------------------------
-  int playerId = 0;
-  gs.entities.types[playerId] = ENTITY_PLAYER;
-  gs.entities.positions[playerId] = (Vector3){0, 10, 0};
-  gs.entities.velocities[playerId] = (Vector3){0};
-  gs.entities.stepCycle[playerId] = 0;
-  gs.entities.prevStepCycle[playerId] = 0;
-  gs.entities.stepRate[playerId] = 2.0f;
+  entity_t player = gs.em.count++;
+  gs.em.alive[player] = 1;
+  gs.em.masks[player] =
+      C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION | C_HITBOX | C_PLAYER_TAG;
 
-  ModelCollection_t *pmc = &gs.entities.modelCollections[playerId];
+  gs.components.positions[player] = (Vector3){0, 10, 0};
+  gs.components.velocities[player] = (Vector3){0};
+  gs.components.stepCycle[player] = 0;
+  gs.components.prevStepCycle[player] = 0;
+  gs.components.stepRate[player] = 2.0f;
+  gs.components.types[player] = ENTITY_PLAYER;
+
+  // Model collection
+  ModelCollection_t *pmc = &gs.components.modelCollections[player];
   *pmc = InitModelCollection(3);
 
   pmc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
@@ -189,62 +188,67 @@ GameState_t InitGame(void) {
   pmc->rotLocks[2][1] = false;
   pmc->rotLocks[2][2] = true;
 
-  // Movement collision shape
-  gs.entities.collisionCollections[playerId] = InitModelCollection(1);
+  // Collision
+  ModelCollection_t *col = &gs.components.collisionCollections[player];
+  *col = InitModelCollection(1);
   Mesh moveBox = GenMeshCube(4, 8, 4);
-  gs.entities.collisionCollections[playerId].offsets[0] = (Vector3){0, 5, 0};
-  gs.entities.collisionCollections[playerId].models[0] =
-      LoadModelFromMesh(moveBox);
+  col->models[0] = LoadModelFromMesh(moveBox);
+  col->offsets[0] = (Vector3){0, 5, 0};
 
   // Hitbox
-  gs.entities.hitboxCollections[playerId] = InitModelCollection(1);
+  ModelCollection_t *hit = &gs.components.hitboxCollections[player];
+  *hit = InitModelCollection(1);
   Mesh hitbox1 = GenMeshCube(4, 4, 7);
-  gs.entities.hitboxCollections[playerId].models[0] =
-      LoadModelFromMesh(hitbox1);
-  gs.entities.hitboxCollections[playerId].offsets[0] = (Vector3){0, 2, 0};
+  hit->models[0] = LoadModelFromMesh(hitbox1);
+  hit->offsets[0] = (Vector3){0, 2, 0};
 
   //----------------------------------------
-  // MECH ENTITY
+  // Add WALL / MECH ENTITY
   //----------------------------------------
-  int cubeId = 1;
-  gs.entities.types[cubeId] = ENTITY_WALL;
-  gs.entities.positions[cubeId] = (Vector3){0, 10, 40};
-  gs.entities.velocities[cubeId] = (Vector3){0};
+  entity_t wall = gs.em.count++;
+  gs.em.alive[wall] = 1;
+  gs.em.masks[wall] = C_POSITION | C_MODEL | C_COLLISION;
 
-  ModelCollection_t *cmc = &gs.entities.modelCollections[cubeId];
-  *cmc = InitModelCollection(2);
+  gs.components.positions[wall] = (Vector3){0, 10, 40};
+  gs.components.types[wall] = ENTITY_WALL;
+
+  ModelCollection_t *wmc = &gs.components.modelCollections[wall];
+  *wmc = InitModelCollection(2);
   Mesh cubeMesh = GenMeshCube(50, 20, 20);
-  cmc->models[0] = LoadModelFromMesh(cubeMesh);
-  cmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
-  cmc->offsets[0] = (Vector3){0, -6, 0};
-  cmc->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
+  wmc->models[0] = LoadModelFromMesh(cubeMesh);
+  wmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
+  wmc->offsets[0] = (Vector3){0, -6, 0};
+  wmc->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
 
   Mesh cubeTurret = GenMeshCube(10, 5, 10);
-  cmc->models[1] = LoadModelFromMesh(cubeTurret);
-  cmc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
-  cmc->offsets[1] = (Vector3){0, 15, 0};
+  wmc->models[1] = LoadModelFromMesh(cubeTurret);
+  wmc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
+  wmc->offsets[1] = (Vector3){0, 15, 0};
 
-  gs.entities.collisionCollections[cubeId] = InitModelCollection(1);
+  wmc->parentIds[1] = 0;
+
+  ModelCollection_t *wCol = &gs.components.collisionCollections[wall];
+  *wCol = InitModelCollection(1);
   Mesh cubeMoveBox = GenMeshCube(50, 20, 20);
-  gs.entities.collisionCollections[cubeId].models[0] =
-      LoadModelFromMesh(cubeMoveBox);
-  gs.entities.collisionCollections[cubeId].offsets[0] = (Vector3){0, -6, 0};
-  gs.entities.collisionCollections[cubeId].orientations[0] =
-      (Orientation){PI / 4.0f, 0, 0};
+  wCol->models[0] = LoadModelFromMesh(cubeMoveBox);
+  wCol->offsets[0] = (Vector3){0, -6, 0};
+  wCol->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
 
   //----------------------------------------
-  // TANK ENTITY
+  // Add TANK ENTITY
   //----------------------------------------
-  int tankId = 2;
-  gs.entities.types[tankId] = ENTITY_TANK;
-  gs.entities.positions[tankId] = (Vector3){0, 10, -30};
-  gs.entities.velocities[tankId] = (Vector3){0};
+  entity_t tank = gs.em.count++;
+  gs.em.alive[tank] = 1;
+  gs.em.masks[tank] = C_POSITION | C_MODEL;
 
-  ModelCollection_t *smc = &gs.entities.modelCollections[tankId];
-  *smc = InitModelCollection(1);
+  gs.components.positions[tank] = (Vector3){0, 10, -30};
+  gs.components.types[tank] = ENTITY_TANK;
+
+  ModelCollection_t *tmc = &gs.components.modelCollections[tank];
+  *tmc = InitModelCollection(1);
   Mesh sphereMesh = GenMeshSphere(8.0f, 16, 16);
-  smc->models[0] = LoadModelFromMesh(sphereMesh);
-  smc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
+  tmc->models[0] = LoadModelFromMesh(sphereMesh);
+  tmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
 
   return gs;
 }
