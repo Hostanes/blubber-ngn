@@ -6,12 +6,14 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
+#include "sound.h"
 #include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#define BOB_AMOUNT 0.5f
 #define WORLD_SIZE_X 10
 #define WORLD_SIZE_Z 10
 
@@ -20,6 +22,39 @@ void LoadAssets() {
 }
 
 // ---------------- Player Control ----------------
+
+void UpdateRayCast(Raycast_t *raycast, Vector3 position,
+                   Orientation orientation) {
+  raycast->ray.position = position;
+  raycast->ray.direction = ConvertOrientationToVector3(orientation);
+}
+
+void UpdateRayCastToModel(GameState_t *gs, Raycast_t *raycast, int entityId,
+                          int modelId) {
+  ModelCollection_t *collection = &gs->components.modelCollections[entityId];
+
+  float yawInvert = 1.0f;
+  float pitchInvert = 1.0f;
+  float rollInvert = 1.0f;
+
+  // --- Apply per-axis inversion ---
+  if (collection->rotInverts[modelId][0])
+    yawInvert *= -1.0f;
+  if (collection->rotInverts[modelId][1])
+    pitchInvert *= -1.0f;
+  if (collection->rotInverts[modelId][2])
+    rollInvert *= -1.0f;
+
+  Vector3 position = collection->globalPositions[modelId];
+  Orientation orientation = collection->globalOrientations[modelId];
+
+  orientation.yaw *= yawInvert;
+  orientation.pitch *= pitchInvert;
+  orientation.roll *= rollInvert;
+
+
+  UpdateRayCast(raycast, position, orientation);
+}
 
 void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
                          Camera3D *camera) {
@@ -349,12 +384,10 @@ void PhysicsSystem(GameState_t *gs, float dt) {
 
 // ---------------- Rendering ----------------
 
-// --- Helper to draw a ModelCollection (solid or wireframe) ---
-static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
-                                Color tint, bool wireframe) {
-  int numModels = mc->countModels;
-
-  for (int m = 0; m < numModels; m++) {
+// --- Update world-space transforms for a ModelCollection ---
+static void UpdateModelCollectionWorldTransforms(ModelCollection_t *mc,
+                                                 Vector3 entityPos) {
+  for (int m = 0; m < mc->countModels; m++) {
     Vector3 localOffset = mc->offsets[m];
     Orientation localRot = mc->orientations[m];
     int parentId = mc->parentIds[m];
@@ -364,10 +397,9 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
     float pitch = localRot.pitch;
     float roll = localRot.roll;
 
-    // --- Parent transform inheritance ---
     if (parentId != -1 && parentId < m) {
-      Orientation parentRot = mc->orientations[parentId];
-      float parentYaw = parentRot.yaw * -1.0f;
+      Orientation parentRot = mc->globalOrientations[parentId];
+      float parentYaw = parentRot.yaw * 1.0f;
       float parentPitch = parentRot.pitch * 1.0f;
       float parentRoll = parentRot.roll * 1.0f;
 
@@ -379,31 +411,100 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
       pitch = parentPitch * pitchLock + localRot.pitch * (1.0f - pitchLock);
       roll = parentPitch * rollLock + localRot.roll * (1.0f - rollLock);
 
-      parentWorldPos = Vector3Add(entityPos, mc->offsets[parentId]);
+      parentWorldPos = mc->globalPositions[parentId];
       localOffset = Vector3Transform(localOffset, MatrixRotateY(parentYaw));
     } else {
       parentWorldPos = entityPos;
       yaw *= -1.0f;
     }
 
-    // --- Final world position ---
-    Vector3 drawPos = Vector3Add(parentWorldPos, localOffset);
+    // --- Apply local rotation offset ---
+    yaw += mc->localRotationOffset[m].yaw;
+    pitch += mc->localRotationOffset[m].pitch;
+    roll += mc->localRotationOffset[m].roll;
 
-    // --- Build rotation matrix ---
+    // --- Apply per-axis inversion ---
+    if (mc->rotInverts[m][0])
+      yaw *= -1.0f;
+    if (mc->rotInverts[m][1])
+      pitch *= -1.0f;
+    if (mc->rotInverts[m][2])
+      roll *= -1.0f;
+
+    mc->globalPositions[m] = Vector3Add(parentWorldPos, localOffset);
+    mc->globalOrientations[m] = (Orientation){yaw, pitch, roll};
+  }
+}
+
+// --- Helper to draw a ModelCollection (solid or wireframe) ---
+// Uses precomputed globalPositions/globalOrientations if available.
+// Otherwise, computes the same local->world transform as before.
+static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
+                                Color tint, bool wireframe) {
+  int numModels = mc->countModels;
+  for (int m = 0; m < numModels; m++) {
+    Vector3 drawPos;
+    float yaw, pitch, roll;
+
+    // If the caller has provided precomputed global transforms, use them.
+    if (mc->globalPositions != NULL && mc->globalOrientations != NULL) {
+      drawPos = mc->globalPositions[m];
+      Orientation g = mc->globalOrientations[m];
+      yaw = g.yaw;
+      pitch = g.pitch;
+      roll = g.roll;
+    } else {
+      // Fallback: compute world transform exactly like previous code.
+      Vector3 localOffset = mc->offsets[m];
+      Orientation localRot = mc->orientations[m];
+      int parentId = mc->parentIds[m];
+
+      Vector3 parentWorldPos;
+      yaw = localRot.yaw;
+      pitch = localRot.pitch;
+      roll = localRot.roll;
+
+      // --- Parent transform inheritance (same rules as before) ---
+      if (parentId != -1 && parentId < m) {
+        Orientation parentRot = mc->orientations[parentId];
+        float parentYaw = parentRot.yaw * -1.0f;
+        float parentPitch = parentRot.pitch * 1.0f;
+        float parentRoll = parentRot.roll * 1.0f;
+
+        float yawLock = mc->rotLocks[m][0] ? 1.0f : 0.0f;
+        float pitchLock = mc->rotLocks[m][1] ? 1.0f : 0.0f;
+        float rollLock = mc->rotLocks[m][2] ? 1.0f : 0.0f;
+
+        yaw = parentYaw * yawLock + localRot.yaw * (1.0f - yawLock);
+        pitch = parentPitch * pitchLock + localRot.pitch * (1.0f - pitchLock);
+        roll = parentPitch * rollLock + localRot.roll * (1.0f - rollLock);
+
+        parentWorldPos = Vector3Add(entityPos, mc->offsets[parentId]);
+        localOffset = Vector3Transform(localOffset, MatrixRotateY(parentYaw));
+      } else {
+        parentWorldPos = entityPos;
+        yaw *= -1.0f;
+      }
+
+      // --- Final world position ---
+      drawPos = Vector3Add(parentWorldPos, localOffset);
+    }
+
+    // --- Build rotation matrix (same order as before) ---
     Matrix rotMat = MatrixRotateY(yaw);
     rotMat = MatrixMultiply(MatrixRotateX(pitch), rotMat);
     rotMat = MatrixMultiply(MatrixRotateZ(roll), rotMat);
 
-    // --- Draw model ---
+    // --- Draw model using world transform ---
     rlPushMatrix();
     rlTranslatef(drawPos.x, drawPos.y, drawPos.z);
     rlMultMatrixf(MatrixToFloat(rotMat));
 
     if (wireframe) {
       rlPushMatrix();
-      rlSetLineWidth(3.0f); // <- make lines 3px thick
+      rlSetLineWidth(3.0f); // make lines 3px thick
       DrawModelWires(mc->models[m], (Vector3){0, 0, 0}, 1.0f, tint);
-      rlSetLineWidth(1.0f); // <- reset after drawing
+      rlSetLineWidth(1.0f); // reset after drawing
       rlPopMatrix();
     } else {
       DrawModel(mc->models[m], (Vector3){0, 0, 0}, 1.0f, tint);
@@ -412,8 +513,34 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
   }
 }
 
+void DrawRaycast(GameState_t *gs) {
+  Raycast_t *raycast = &gs->components.raycasts[gs->playerId];
+  DrawRay(raycast->ray, RED);
+}
+
 // --- Main Render Function ---
 void RenderSystem(GameState_t *gs, Camera3D camera) {
+
+  const float bobAmount = BOB_AMOUNT; // height in meters, visual only
+
+  // Camera setup based on torso orientation
+  int pid = gs->playerId;
+  Vector3 playerPos = gs->components.positions[pid];
+  Orientation torso = gs->components.modelCollections[0].orientations[1];
+
+  Vector3 forward = {cosf(torso.pitch) * cosf(torso.yaw), sinf(torso.pitch),
+                     cosf(torso.pitch) * sinf(torso.yaw)};
+
+  // Headbob / eye offset computed from step cycle
+  float t = gs->components.stepCycle[pid];
+  float bobTri = (t < 0.5f) ? (t * 2.0f) : (2.0f - t * 2.0f); // 0 -> 1 -> 0
+  bobTri = 1.0f - bobTri; // flip to make "drop"
+  float bobY = bobTri * bobAmount;
+
+  Vector3 eye = (Vector3){playerPos.x, playerPos.y + 10.0f + bobY, playerPos.z};
+  camera.position = eye;
+  camera.target = Vector3Add(eye, forward);
+
   BeginDrawing();
   ClearBackground((Color){20, 20, 30, 255});
 
@@ -441,6 +568,16 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   for (int i = 0; i < gs->em.count; i++) {
     Vector3 entityPos = gs->components.positions[i];
 
+    // Update world transforms
+    UpdateModelCollectionWorldTransforms(&gs->components.modelCollections[i],
+                                         entityPos);
+    UpdateModelCollectionWorldTransforms(
+        &gs->components.collisionCollections[i], entityPos);
+    UpdateModelCollectionWorldTransforms(&gs->components.hitboxCollections[i],
+                                         entityPos);
+
+    DrawRaycast(gs);
+
     // Visual models (solid white)
     DrawModelCollection(&gs->components.modelCollections[i], entityPos, WHITE,
                         false);
@@ -461,7 +598,6 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   DrawFPS(10, 10);
 
   // Draw player position
-  Vector3 playerPos = gs->components.positions[gs->playerId];
   char posText[64];
   snprintf(posText, sizeof(posText), "Player Pos: X: %.2f  Y: %.2f  Z: %.2f",
            playerPos.x, playerPos.y, playerPos.z);
@@ -519,4 +655,22 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   DrawCircleV(arrowStart, 10, DARKBLUE);
 
   EndDrawing();
+}
+
+void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
+                float dt) {
+
+  PlayerControlSystem(gs, soundSys, dt, camera);
+
+  PhysicsSystem(gs, dt);
+
+  UpdateRayCastToModel(gs, &gs->components.raycasts[gs->playerId], gs->playerId,
+                       2);
+
+  RenderSystem(gs, *camera);
+
+  int pid = gs->playerId;
+  Vector3 playerPos = gs->components.positions[pid];
+
+  ProcessSoundSystem(soundSys, playerPos);
 }

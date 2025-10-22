@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define MAX_ENTITIES 32 // can be increased later
+#define MAX_ENTITIES 256 // can be increased later
 #define TERRAIN_SIZE 200
 #define TERRAIN_SCALE 10.0f
 
@@ -51,7 +51,19 @@ typedef struct {
   Orientation *orientations;
   int *parentIds;
   bool **rotLocks;
+
+  Orientation *localRotationOffset;
+  bool **rotInverts;
+
+  // World-space transform (computed each frame)
+  Vector3 *globalPositions;
+  Orientation *globalOrientations;
 } ModelCollection_t;
+
+typedef struct {
+  Ray ray; // holds startpoint and orientation data
+  float distance;
+} Raycast_t;
 
 //----------------------------------------
 // ECS: Component Flags
@@ -65,7 +77,8 @@ typedef enum {
   C_MODEL = 1u << 2,
   C_COLLISION = 1u << 3,
   C_HITBOX = 1u << 4,
-  C_PLAYER_TAG = 1u << 5,
+  C_RAYCAST = 1u << 5,
+  C_PLAYER_TAG = 1u << 6,
 } ComponentFlag_t;
 
 //----------------------------------------
@@ -94,6 +107,8 @@ typedef struct {
   ModelCollection_t collisionCollections[MAX_ENTITIES];
   ModelCollection_t hitboxCollections[MAX_ENTITIES];
 
+  Raycast_t raycasts[MAX_ENTITIES];
+
   EntityType_t types[MAX_ENTITIES];
 } Components_t;
 
@@ -115,3 +130,4 @@ typedef struct {
 // Game Initialization
 //----------------------------------------
 GameState_t InitGame(void);
+Vector3 ConvertOrientationToVector3(Orientation o);

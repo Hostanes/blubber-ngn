@@ -17,11 +17,21 @@ static ModelCollection_t InitModelCollection(int countModels) {
   mc.orientations = MemAlloc(sizeof(Orientation) * countModels);
   mc.parentIds = MemAlloc(sizeof(int) * countModels);
   mc.rotLocks = MemAlloc(sizeof(bool *) * countModels);
+  mc.rotInverts = MemAlloc(sizeof(bool *) * countModels);
+
+  mc.localRotationOffset = MemAlloc(sizeof(Orientation) * countModels);
+
+  mc.globalOrientations = MemAlloc(sizeof(Orientation) * countModels);
+  mc.globalPositions = MemAlloc(sizeof(Vector3) * countModels);
 
   for (int i = 0; i < countModels; i++) {
-    mc.rotLocks[i] = MemAlloc(sizeof(bool) * 3); // yaw, pitch, roll
-    for (int j = 0; j < 3; j++)
+    mc.rotLocks[i] = MemAlloc(sizeof(bool) * 3);   // yaw, pitch, roll
+    mc.rotInverts[i] = MemAlloc(sizeof(bool) * 3); // yaw, pitch, roll
+    for (int j = 0; j < 3; j++) {
       mc.rotLocks[i][j] = true;
+      mc.rotInverts[i][j] = false;
+    }
+    mc.localRotationOffset[i] = (Orientation){0, 0, 0};
 
     mc.parentIds[i] = -1;
     mc.offsets[i] = (Vector3){0};
@@ -29,6 +39,15 @@ static ModelCollection_t InitModelCollection(int countModels) {
   }
 
   return mc;
+}
+
+Vector3 ConvertOrientationToVector3(Orientation o) {
+  // Assuming yaw = rotation around Y axis, pitch = rotation around X axis
+  Vector3 dir;
+  dir.x = cosf(o.pitch) * sinf(o.yaw);
+  dir.y = sinf(o.pitch);
+  dir.z = cosf(o.pitch) * cosf(o.yaw);
+  return dir;
 }
 
 //----------------------------------------
@@ -163,8 +182,8 @@ GameState_t InitGame(void) {
   //----------------------------------------
   entity_t player = gs.em.count++;
   gs.em.alive[player] = 1;
-  gs.em.masks[player] =
-      C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION | C_HITBOX | C_PLAYER_TAG;
+  gs.em.masks[player] = C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION |
+                        C_HITBOX | C_RAYCAST | C_PLAYER_TAG;
 
   gs.components.positions[player] = (Vector3){0, 10, 0};
   gs.components.velocities[player] = (Vector3){0};
@@ -182,18 +201,28 @@ GameState_t InitGame(void) {
   pmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
   pmc->offsets[0] = (Vector3){0, 0, 0};
 
-  Mesh legChild = GenMeshCube(10.0f, 2.0f, 2.0f);
+  pmc->offsets[1] = (Vector3){0, 10.2, 0};
+
+  Mesh legChild = GenMeshCube(2.0f, 2.0f, 10.0f);
   pmc->models[2] = LoadModelFromMesh(legChild);
   pmc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = PURPLE;
-  pmc->offsets[2] = (Vector3){2, 8, -4};
+  pmc->offsets[2] = (Vector3){4, -2, -4};
+
+  pmc->localRotationOffset[2].yaw = PI / 2.0f;
+  pmc->rotInverts[2][1] = true; // invert yaw
 
   pmc->parentIds[0] = -1;
   pmc->parentIds[1] = -1;
   pmc->parentIds[2] = 1;
 
-  pmc->rotLocks[2][0] = true;
-  pmc->rotLocks[2][1] = false;
-  pmc->rotLocks[2][2] = true;
+  pmc->rotLocks[2][0] = true;  // yaw
+  pmc->rotLocks[2][1] = true;  // pitch
+  pmc->rotLocks[2][2] = false; // roll
+
+  gs.components.raycasts[player].ray.position =
+      Vector3Add(pmc->offsets[1], gs.components.positions[player]);
+  gs.components.raycasts[player].ray.direction = ConvertOrientationToVector3(pmc->orientations[1]);
+  gs.components.raycasts[player].distance = 500;
 
   // Collision
   ModelCollection_t *col = &gs.components.collisionCollections[player];
@@ -240,6 +269,51 @@ GameState_t InitGame(void) {
   wCol->models[0] = LoadModelFromMesh(cubeMoveBox);
   wCol->offsets[0] = (Vector3){0, -6, 0};
   wCol->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
+
+  //----------------------------------------
+  // Add RANDOM HOUSES / WALLS
+  //----------------------------------------
+  int numHouses = 200;
+  for (int h = 0; h < numHouses; h++) {
+    if (gs.em.count >= MAX_ENTITIES)
+      break;
+
+    entity_t house = gs.em.count++;
+    gs.em.alive[house] = 1;
+    gs.em.masks[house] = C_POSITION | C_MODEL | C_COLLISION;
+    gs.components.types[house] = ENTITY_WALL;
+
+    float width = 10.0f + GetRandomValue(0, 30);
+    float height = 10.0f + GetRandomValue(0, 40);
+    float depth = 10.0f + GetRandomValue(0, 30);
+
+    float x =
+        GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
+    float z =
+        GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
+    float y = height / 2.0f;
+
+    gs.components.positions[house] = (Vector3){x, y, z};
+
+    // Model collection (visual)
+    ModelCollection_t *hmc = &gs.components.modelCollections[house];
+    *hmc = InitModelCollection(1);
+    Mesh cubeMesh = GenMeshCube(width, height, depth);
+    hmc->models[0] = LoadModelFromMesh(cubeMesh);
+
+    Color randomColor =
+        (Color){GetRandomValue(100, 255), GetRandomValue(100, 255),
+                GetRandomValue(100, 255), 255};
+    hmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = randomColor;
+    hmc->offsets[0] = (Vector3){0, 0, 0};
+
+    // Collision model
+    ModelCollection_t *hCol = &gs.components.collisionCollections[house];
+    *hCol = InitModelCollection(1);
+    Mesh cubeCol = GenMeshCube(width, height, depth);
+    hCol->models[0] = LoadModelFromMesh(cubeCol);
+    hCol->offsets[0] = (Vector3){0, 0, 0};
+  }
 
   //----------------------------------------
   // Add TANK ENTITY
