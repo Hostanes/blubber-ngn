@@ -2,7 +2,6 @@
 #include "game.h"
 #include "raylib.h"
 #include "raymath.h"
-#include <stdlib.h>
 #include <string.h>
 
 //----------------------------------------
@@ -183,7 +182,7 @@ GameState_t InitGame(void) {
   entity_t player = gs.em.count++;
   gs.em.alive[player] = 1;
   gs.em.masks[player] = C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION |
-                        C_HITBOX | C_RAYCAST | C_PLAYER_TAG;
+                        C_HITBOX | C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG;
 
   gs.components.positions[player] = (Vector3){0, 10, 0};
   gs.components.velocities[player] = (Vector3){0};
@@ -221,7 +220,8 @@ GameState_t InitGame(void) {
 
   gs.components.raycasts[player].ray.position =
       Vector3Add(pmc->offsets[1], gs.components.positions[player]);
-  gs.components.raycasts[player].ray.direction = ConvertOrientationToVector3(pmc->orientations[1]);
+  gs.components.raycasts[player].ray.direction =
+      ConvertOrientationToVector3(pmc->orientations[1]);
   gs.components.raycasts[player].distance = 500;
 
   // Collision
@@ -237,6 +237,11 @@ GameState_t InitGame(void) {
   Mesh hitbox1 = GenMeshCube(4, 4, 7);
   hit->models[0] = LoadModelFromMesh(hitbox1);
   hit->offsets[0] = (Vector3){0, 2, 0};
+
+  // cool downs
+
+  gs.components.cooldowns[gs.playerId] = MemAlloc(sizeof(float) * 1);
+  gs.components.cooldowns[gs.playerId][0] = 0.8;
 
   //----------------------------------------
   // Add WALL / MECH ENTITY
@@ -280,11 +285,11 @@ GameState_t InitGame(void) {
 
     entity_t house = gs.em.count++;
     gs.em.alive[house] = 1;
-    gs.em.masks[house] = C_POSITION | C_MODEL | C_COLLISION;
+    gs.em.masks[house] = C_POSITION | C_MODEL | C_COLLISION | C_HITBOX;
     gs.components.types[house] = ENTITY_WALL;
 
     float width = 10.0f + GetRandomValue(0, 30);
-    float height = 10.0f + GetRandomValue(0, 40);
+    float height = 5.0f + GetRandomValue(0, 40);
     float depth = 10.0f + GetRandomValue(0, 30);
 
     float x =
@@ -313,6 +318,15 @@ GameState_t InitGame(void) {
     Mesh cubeCol = GenMeshCube(width, height, depth);
     hCol->models[0] = LoadModelFromMesh(cubeCol);
     hCol->offsets[0] = (Vector3){0, 0, 0};
+
+    // Hitbox model (same size as visual and collision)
+    ModelCollection_t *hHit = &gs.components.hitboxCollections[house];
+    *hHit = InitModelCollection(1);
+    Mesh cubeHit = GenMeshCube(width, height, depth);
+    hHit->models[0] = LoadModelFromMesh(cubeHit);
+    hHit->offsets[0] = (Vector3){0, 0, 0};
+    hHit->parentIds[0] = -1; // no parent
+    hHit->orientations[0] = (Orientation){0, 0, 0};
   }
 
   //----------------------------------------

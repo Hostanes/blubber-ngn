@@ -79,6 +79,7 @@ typedef enum {
   C_HITBOX = 1u << 4,
   C_RAYCAST = 1u << 5,
   C_PLAYER_TAG = 1u << 6,
+  C_COOLDOWN_TAG = 1u << 7,
 } ComponentFlag_t;
 
 //----------------------------------------
@@ -108,6 +109,7 @@ typedef struct {
   ModelCollection_t hitboxCollections[MAX_ENTITIES];
 
   Raycast_t raycasts[MAX_ENTITIES];
+  float *cooldowns[MAX_ENTITIES];
 
   EntityType_t types[MAX_ENTITIES];
 } Components_t;

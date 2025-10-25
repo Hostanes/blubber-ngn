@@ -52,8 +52,65 @@ void UpdateRayCastToModel(GameState_t *gs, Raycast_t *raycast, int entityId,
   orientation.pitch *= pitchInvert;
   orientation.roll *= rollInvert;
 
+  // orientation.yaw += PI/2.0f;
 
   UpdateRayCast(raycast, position, orientation);
+}
+
+// check raycast collision
+// currently just returns true or false for any collision
+// with an entity with C_HITBOX flag
+// should later return the entity ID/index or its type
+
+bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast) {
+  bool hit = false;
+  RayCollision collision;
+
+  // Track the closest hit (optional)
+  float closestDist = FLT_MAX;
+  int hitEntity = -1;
+
+  for (int i = 0; i < gs->em.count; i++) {
+    if (!gs->em.alive[i])
+      continue;
+
+    // Only check entities that have a hitbox collection
+    if (!(gs->em.masks[i] & C_HITBOX))
+      continue;
+
+    ModelCollection_t *hitboxes = &gs->components.hitboxCollections[i];
+
+    // Iterate over each model in the entity's hitbox collection
+    for (int m = 0; m < hitboxes->countModels; m++) {
+      Model model = hitboxes->models[m];
+      Vector3 modelPos = hitboxes->globalPositions[m];
+      Orientation modelOrient = hitboxes->globalOrientations[m];
+
+      // Build model's world transform matrix
+      Matrix transform = MatrixIdentity();
+      transform = MatrixMultiply(transform, MatrixRotateX(modelOrient.pitch));
+      transform = MatrixMultiply(transform, MatrixRotateY(modelOrient.yaw));
+      transform = MatrixMultiply(transform, MatrixRotateZ(modelOrient.roll));
+      transform = MatrixMultiply(
+          transform, MatrixTranslate(modelPos.x, modelPos.y, modelPos.z));
+
+      // Perform the ray–mesh collision test
+      collision = GetRayCollisionMesh(raycast->ray, model.meshes[0], transform);
+
+      // TODO currently relying just on this, need to use a quad tree instead
+      if (collision.hit && collision.distance < closestDist) {
+        closestDist = collision.distance;
+        hitEntity = i;
+        hit = true;
+      }
+    }
+  }
+
+  if (hit) {
+    printf("Ray hit entity %d at distance %.2f\n", hitEntity, closestDist);
+  }
+
+  return hit;
 }
 
 void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
@@ -126,6 +183,18 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
     vel[pid].z += right.z * 100.0f * dt * strafeSpeedMult;
   }
 
+  if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) &&
+      gs->components.cooldowns[pid][0] <= 0) {
+    printf("firing\n");
+    gs->components.cooldowns[pid][0] = 0.8;
+    UpdateRayCastToModel(gs, &gs->components.raycasts[gs->playerId],
+                         gs->playerId, 2);
+    bool hit =
+        CheckRaycastCollision(gs, &gs->components.raycasts[gs->playerId]);
+    if (hit)
+      printf("hit\n");
+  }
+
   // Step cycle update
   Vector3 velocity = vel[pid];
   float speed = sqrtf(velocity.x * velocity.x + velocity.z * velocity.z);
@@ -151,6 +220,25 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
     gs->pHeadbobTimer = 0;
     gs->components.stepCycle[pid] = 0.0f;
     gs->components.prevStepCycle[pid] = 0.0f;
+  }
+}
+
+// ------------- Weapon Cooldowns -------------
+
+void DecrementCooldowns(GameState_t *gs, float dt) {
+  for (int i = 0; i < gs->em.count; i++) {
+    // Skip dead entities
+    if (!gs->em.alive[i])
+      continue;
+
+    // Only process entities that have the cooldown component
+    if (gs->em.masks[i] & C_COOLDOWN_TAG) {
+      gs->components.cooldowns[i][0] -= dt;
+
+      // Clamp to zero
+      if (gs->components.cooldowns[i][0] < 0.0f)
+        gs->components.cooldowns[i][0] = 0.0f;
+    }
   }
 }
 
@@ -662,10 +750,9 @@ void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
 
   PlayerControlSystem(gs, soundSys, dt, camera);
 
-  PhysicsSystem(gs, dt);
+  DecrementCooldowns(gs, dt);
 
-  UpdateRayCastToModel(gs, &gs->components.raycasts[gs->playerId], gs->playerId,
-                       2);
+  PhysicsSystem(gs, dt);
 
   RenderSystem(gs, *camera);
 
