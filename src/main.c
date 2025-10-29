@@ -24,7 +24,8 @@ int main(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
   InitWindow(screenWidth, screenHeight, "MechArenaDemo");
 
-  DisableCursor(); // lock mouse for torso look
+  EnableCursor();
+
   SetTargetFPS(60);
 
   LoadAssets();
@@ -40,6 +41,8 @@ int main(void) {
 
   GameState_t gs = InitGame();
   SoundSystem_t soundSys = InitSoundSystem();
+
+  gs.state = STATE_MAINMENU;
 
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();

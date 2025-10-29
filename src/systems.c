@@ -96,7 +96,6 @@ bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast) {
 
       // Perform the ray–mesh collision test
       collision = GetRayCollisionMesh(raycast->ray, model.meshes[0], transform);
-
       // TODO currently relying just on this, need to use a quad tree instead
       if (collision.hit && collision.distance < closestDist) {
         closestDist = collision.distance;
@@ -742,22 +741,55 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   // Draw other UI shapes
   DrawCircleV(arrowStart, 10, DARKBLUE);
 
+  DrawCircleLines(GetScreenWidth() /2, GetScreenHeight()/2, 10, RED);
+
+  EndDrawing();
+}
+
+void MainMenuSystem(GameState_t *gs) {
+  BeginDrawing();
+  ClearBackground(BLACK);
+
+  // Simple button rectangle
+  Rectangle startButton = {GetScreenWidth() / 2.0f - 100,
+                           GetScreenHeight() / 2.0f - 25, 200, 50};
+
+  // Check if mouse is over the button
+  Vector2 mousePos = GetMousePosition();
+  bool hovering = CheckCollisionPointRec(mousePos, startButton);
+
+  // Draw the button
+  DrawRectangleRec(startButton, hovering ? DARKGRAY : GRAY);
+  DrawText("START", startButton.x + 50, startButton.y + 12, 24, WHITE);
+
+  // Check for click
+  if (hovering && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    gs->state = STATE_INLEVEL;
+
+    DisableCursor();
+  }
+
   EndDrawing();
 }
 
 void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
                 float dt) {
 
-  PlayerControlSystem(gs, soundSys, dt, camera);
+  if (gs->state == STATE_INLEVEL) {
 
-  DecrementCooldowns(gs, dt);
+    PlayerControlSystem(gs, soundSys, dt, camera);
 
-  PhysicsSystem(gs, dt);
+    DecrementCooldowns(gs, dt);
 
-  RenderSystem(gs, *camera);
+    PhysicsSystem(gs, dt);
 
-  int pid = gs->playerId;
-  Vector3 playerPos = gs->components.positions[pid];
+    RenderSystem(gs, *camera);
 
-  ProcessSoundSystem(soundSys, playerPos);
+    int pid = gs->playerId;
+    Vector3 playerPos = gs->components.positions[pid];
+
+    ProcessSoundSystem(soundSys, playerPos);
+  } else if (gs->state == STATE_MAINMENU) {
+    MainMenuSystem(gs);
+  }
 }
