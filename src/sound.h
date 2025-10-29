@@ -8,6 +8,7 @@
 #define MAX_SOUNDS 128
 #define MAX_SOUND_EVENTS 256
 #define MAX_SIMULTANEOUS_SOUNDS 16
+#define SOUND_ALIASES 8
 
 typedef enum {
   SOUND_FOOTSTEP,
@@ -19,6 +20,8 @@ typedef enum {
 
 typedef struct {
   Sound sound;
+  Sound alias[SOUND_ALIASES];
+  int nextAlias;
 } SoundAsset_t;
 
 typedef struct {

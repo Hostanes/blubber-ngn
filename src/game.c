@@ -207,7 +207,7 @@ GameState_t InitGame(void) {
   pmc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = PURPLE;
   pmc->offsets[2] = (Vector3){4, -2, -4};
 
-  pmc->localRotationOffset[2].yaw = PI / 2.0f;
+  pmc->localRotationOffset[2].yaw = PI / 2.02f;
   pmc->rotInverts[2][1] = true; // invert yaw
 
   pmc->parentIds[0] = -1;
@@ -234,46 +234,47 @@ GameState_t InitGame(void) {
   // Hitbox
   ModelCollection_t *hit = &gs.components.hitboxCollections[player];
   *hit = InitModelCollection(1);
-  Mesh hitbox1 = GenMeshCube(4, 4, 7);
+  Mesh hitbox1 = GenMeshCube(4, 10, 4);
   hit->models[0] = LoadModelFromMesh(hitbox1);
   hit->offsets[0] = (Vector3){0, 2, 0};
 
   // cool downs
-
   gs.components.cooldowns[gs.playerId] = MemAlloc(sizeof(float) * 1);
   gs.components.cooldowns[gs.playerId][0] = 0.8;
+  gs.components.firerate[gs.playerId] = MemAlloc(sizeof(float) * 1);
+  gs.components.firerate[gs.playerId][0] = 0.8;
 
   //----------------------------------------
   // Add WALL / MECH ENTITY
   //----------------------------------------
-  entity_t wall = gs.em.count++;
-  gs.em.alive[wall] = 1;
-  gs.em.masks[wall] = C_POSITION | C_MODEL | C_COLLISION;
+  // entity_t wall = gs.em.count++;
+  // gs.em.alive[wall] = 1;
+  // gs.em.masks[wall] = C_POSITION | C_MODEL | C_COLLISION;
 
-  gs.components.positions[wall] = (Vector3){0, 10, 40};
-  gs.components.types[wall] = ENTITY_WALL;
+  // gs.components.positions[wall] = (Vector3){0, 10, 40};
+  // gs.components.types[wall] = ENTITY_WALL;
 
-  ModelCollection_t *wmc = &gs.components.modelCollections[wall];
-  *wmc = InitModelCollection(2);
-  Mesh cubeMesh = GenMeshCube(50, 20, 20);
-  wmc->models[0] = LoadModelFromMesh(cubeMesh);
-  wmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
-  wmc->offsets[0] = (Vector3){0, -6, 0};
-  wmc->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
+  // ModelCollection_t *wmc = &gs.components.modelCollections[wall];
+  // *wmc = InitModelCollection(2);
+  // Mesh cubeMesh = GenMeshCube(50, 20, 20);
+  // wmc->models[0] = LoadModelFromMesh(cubeMesh);
+  // wmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
+  // wmc->offsets[0] = (Vector3){0, -6, 0};
+  // wmc->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
 
-  Mesh cubeTurret = GenMeshCube(10, 5, 10);
-  wmc->models[1] = LoadModelFromMesh(cubeTurret);
-  wmc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
-  wmc->offsets[1] = (Vector3){0, 15, 0};
+  // Mesh cubeTurret = GenMeshCube(10, 5, 10);
+  // wmc->models[1] = LoadModelFromMesh(cubeTurret);
+  // wmc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
+  // wmc->offsets[1] = (Vector3){0, 15, 0};
 
-  wmc->parentIds[1] = 0;
+  // wmc->parentIds[1] = 0;
 
-  ModelCollection_t *wCol = &gs.components.collisionCollections[wall];
-  *wCol = InitModelCollection(1);
-  Mesh cubeMoveBox = GenMeshCube(50, 20, 20);
-  wCol->models[0] = LoadModelFromMesh(cubeMoveBox);
-  wCol->offsets[0] = (Vector3){0, -6, 0};
-  wCol->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
+  // ModelCollection_t *wCol = &gs.components.collisionCollections[wall];
+  // *wCol = InitModelCollection(1);
+  // Mesh cubeMoveBox = GenMeshCube(50, 20, 20);
+  // wCol->models[0] = LoadModelFromMesh(cubeMoveBox);
+  // wCol->offsets[0] = (Vector3){0, -6, 0};
+  // wCol->orientations[0] = (Orientation){PI / 4.0f, 0, 0};
 
   //----------------------------------------
   // Add RANDOM HOUSES / WALLS
@@ -330,20 +331,57 @@ GameState_t InitGame(void) {
   }
 
   //----------------------------------------
-  // Add TANK ENTITY
+  // Add PLACEHOLDER TURRET ENTITY
   //----------------------------------------
-  entity_t tank = gs.em.count++;
-  gs.em.alive[tank] = 1;
-  gs.em.masks[tank] = C_POSITION | C_MODEL;
+  entity_t turret = gs.em.count++;
+  gs.em.alive[turret] = 1;
+  gs.em.masks[turret] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
+                        C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST;
+  gs.components.types[turret] = ENTITY_TURRET;
 
-  gs.components.positions[tank] = (Vector3){0, 10, -30};
-  gs.components.types[tank] = ENTITY_TANK;
+  gs.components.hitPoints[turret] = 100.0f;
 
-  ModelCollection_t *tmc = &gs.components.modelCollections[tank];
-  *tmc = InitModelCollection(1);
-  Mesh sphereMesh = GenMeshSphere(8.0f, 16, 16);
-  tmc->models[0] = LoadModelFromMesh(sphereMesh);
-  tmc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
+  gs.components.cooldowns[turret] = MemAlloc(sizeof(float) * 1);
+  gs.components.cooldowns[turret][0] = 0.8;
+  gs.components.firerate[turret] = MemAlloc(sizeof(float) * 1);
+  gs.components.firerate[turret][0] = 0.2;
+
+  // Position the turret somewhere on the terrain
+  gs.components.positions[turret] = (Vector3){50, 8, 30};
+
+  // --- Visual Model Collection ---
+  ModelCollection_t *tmc2 = &gs.components.modelCollections[turret];
+  *tmc2 = InitModelCollection(2);
+
+  // Base model (bottom part)
+  Mesh turretBaseMesh = GenMeshCylinder(2.0f, 5.0f, 5.0f);
+  tmc2->models[0] = LoadModelFromMesh(turretBaseMesh);
+  tmc2->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
+  tmc2->offsets[0] = (Vector3){0, 0, 0};
+
+  // Barrel model (top part)
+  Mesh turretBarrelMesh = GenMeshCube(1.0f, 1.0f, 6.0f);
+  tmc2->models[1] = LoadModelFromMesh(turretBarrelMesh);
+  tmc2->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = DARKBLUE;
+  tmc2->offsets[1] = (Vector3){0, 5.0f, 3.0f};
+  tmc2->parentIds[1] = 0; // barrel attached to base
+
+  // --- Hitbox Model Collection ---
+  ModelCollection_t *tHit = &gs.components.hitboxCollections[turret];
+  *tHit = InitModelCollection(1);
+
+  // Hitbox 1 (base)
+  Mesh hitBaseMesh = GenMeshCube(5.0f, 10.0f, 5.0f);
+  tHit->models[0] = LoadModelFromMesh(hitBaseMesh);
+  tHit->offsets[0] = (Vector3){0, 0, 0};
+  tHit->parentIds[0] = -1;
+
+  // --- Turret Raycast ---
+  gs.components.raycasts[turret].ray.position = Vector3Add(
+      tmc2->offsets[1], gs.components.positions[turret]); // barrel tip
+  gs.components.raycasts[turret].ray.direction =
+      ConvertOrientationToVector3((Orientation){0, 0, 0}); // initial forward
+  gs.components.raycasts[turret].distance = 500.0f;
 
   return gs;
 }

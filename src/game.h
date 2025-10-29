@@ -80,6 +80,8 @@ typedef enum {
   C_RAYCAST = 1u << 5,
   C_PLAYER_TAG = 1u << 6,
   C_COOLDOWN_TAG = 1u << 7,
+  C_HITPOINT_TAG = 1u << 8,
+  C_TURRET_BEHAVIOUR_1 = 1u << 9,
 } ComponentFlag_t;
 
 //----------------------------------------
@@ -109,7 +111,10 @@ typedef struct {
   ModelCollection_t hitboxCollections[MAX_ENTITIES];
 
   Raycast_t raycasts[MAX_ENTITIES];
-  float *cooldowns[MAX_ENTITIES];
+  float *cooldowns[MAX_ENTITIES]; // current cool down, can fire at 0
+  float *firerate[MAX_ENTITIES];  // seconds between each shot
+
+  float hitPoints[MAX_ENTITIES];
 
   EntityType_t types[MAX_ENTITIES];
 } Components_t;

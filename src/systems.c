@@ -17,6 +17,8 @@
 #define WORLD_SIZE_X 10
 #define WORLD_SIZE_Z 10
 
+Vector3 recoilOffset = {0};
+
 void LoadAssets() {
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
 }
@@ -62,7 +64,7 @@ void UpdateRayCastToModel(GameState_t *gs, Raycast_t *raycast, int entityId,
 // with an entity with C_HITBOX flag
 // should later return the entity ID/index or its type
 
-bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast) {
+bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast, entity_t self) {
   bool hit = false;
   RayCollision collision;
 
@@ -77,6 +79,10 @@ bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast) {
     // Only check entities that have a hitbox collection
     if (!(gs->em.masks[i] & C_HITBOX))
       continue;
+
+    if (i == self) {
+      continue;
+    }
 
     ModelCollection_t *hitboxes = &gs->components.hitboxCollections[i];
 
@@ -107,9 +113,47 @@ bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast) {
 
   if (hit) {
     printf("Ray hit entity %d at distance %.2f\n", hitEntity, closestDist);
+    if (gs->em.masks[hitEntity] & C_HITPOINT_TAG) {
+      gs->components.hitPoints[hitEntity] -= 50.0f;
+      if (gs->components.hitPoints[hitEntity] <= 0) {
+        gs->em.alive[hitEntity] = 0;
+        printf("Entity killed \n");
+      }
+    }
   }
 
   return hit;
+}
+
+void ApplyTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float intensity,
+                      Vector3 direction) {
+  if (Vector3Length(direction) > 0.0001f)
+    direction = Vector3Normalize(direction);
+
+  Orientation *torso = &mc->orientations[torsoIndex];
+
+  // Add randomness
+  float randYaw = ((float)rand() / RAND_MAX * 2.0f - 1.0f);
+  float randPitch = ((float)rand() / RAND_MAX * 2.0f - 1.0f);
+
+  float recoilYaw = (direction.x + randYaw * 0.3f) * intensity;
+  float recoilPitch = (direction.y + randPitch * 0.3f) * intensity;
+
+  torso->yaw += recoilYaw;
+  torso->pitch += recoilPitch;
+
+  // Optional clamp (prevent over-rotation)
+  if (torso->pitch > PI / 3.0f)
+    torso->pitch = PI / 3.0f;
+  if (torso->pitch < -PI / 3.0f)
+    torso->pitch = -PI / 3.0f;
+}
+
+void UpdateTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float dt) {
+  Orientation *torso = &mc->orientations[torsoIndex];
+
+  float stiffness = 8.0f;
+  float damping = 6.0f;
 }
 
 void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
@@ -185,11 +229,16 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
   if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) &&
       gs->components.cooldowns[pid][0] <= 0) {
     printf("firing\n");
-    gs->components.cooldowns[pid][0] = 0.8;
+    gs->components.cooldowns[pid][0] = gs->components.firerate[pid][0];
     UpdateRayCastToModel(gs, &gs->components.raycasts[gs->playerId],
                          gs->playerId, 2);
-    bool hit =
-        CheckRaycastCollision(gs, &gs->components.raycasts[gs->playerId]);
+    QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.4f, 1.0f);
+
+    ApplyTorsoRecoil(&gs->components.modelCollections[gs->playerId], 1, 0.05f,
+                     (Vector3){-0.2f, 1.0f, 0});
+
+    bool hit = CheckRaycastCollision(gs, &gs->components.raycasts[gs->playerId],
+                                     gs->playerId);
     if (hit)
       printf("hit\n");
   }
@@ -210,7 +259,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
       curr -= 1.0f; // wrap cycle
 
     if (prev > curr) { // wrapped around -> stomp
-      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.1f, 1.0f);
+      QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.2f, 1.0f);
     }
 
     gs->components.stepCycle[pid] = curr;
@@ -469,11 +518,104 @@ void PhysicsSystem(GameState_t *gs, float dt) {
   }
 }
 
+// ---------------- TURRET AI SYSTEM ----------------
+
+void TurretAISystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
+  int playerId = gs->playerId;
+  Vector3 playerPos = gs->components.positions[playerId];
+
+  const float engageRange = 50.0f; // turrets become idle beyond this range
+  const float minAccuracy = 0.2f;  // worst accuracy
+  const float maxAccuracy = 1.0f;  // best accuracy at close range
+
+  for (int i = 0; i < gs->em.count; i++) {
+    if (!gs->em.alive[i])
+      continue;
+    if (!(gs->em.masks[i] & C_TURRET_BEHAVIOUR_1))
+      continue;
+
+    Vector3 turretPos = gs->components.positions[i];
+    ModelCollection_t *turretModels = &gs->components.modelCollections[i];
+
+    Orientation *base = &turretModels->orientations[0];
+    Orientation *barrel = &turretModels->orientations[1];
+
+    // --- Distance and accuracy falloff ---
+    Vector3 toPlayer = Vector3Subtract(playerPos, turretPos);
+    float distanceToPlayer = Vector3Length(toPlayer);
+
+    // If far away, idle (look straight up)
+    if (distanceToPlayer > engageRange) {
+      base->yaw =
+          Lerp(base->yaw, 0.0f, dt * 1.0f); // slowly return to neutral yaw
+      barrel->pitch =
+          Lerp(barrel->pitch, -PI / 2.0f, dt * 1.0f); // look straight up
+      continue;
+    }
+
+    // Scale accuracy with distance
+    float distRatio = distanceToPlayer / engageRange; // 0 near, 1 at max
+    float accuracy = maxAccuracy - (maxAccuracy - minAccuracy) * distRatio;
+    if (accuracy < minAccuracy)
+      accuracy = minAccuracy;
+
+    // --- Aim at player ---
+    float maxOffsetAngle =
+        (1.0f - accuracy) * (PI / 4.0f); // less accurate = larger offset
+    float yawOffset = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
+    float pitchOffset =
+        ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
+
+    float targetYaw = atan2f(toPlayer.z, toPlayer.x) - PI / 2.0f + yawOffset;
+    float targetPitch =
+        atan2f(toPlayer.y,
+               Vector3Length((Vector3){toPlayer.x, 0, toPlayer.z})) +
+        pitchOffset;
+
+    // --- Smooth rotate ---
+    float yawDiff = targetYaw - base->yaw;
+    if (yawDiff > PI)
+      yawDiff -= 2 * PI;
+    if (yawDiff < -PI)
+      yawDiff += 2 * PI;
+    base->yaw += yawDiff * dt * 4.0f;
+
+    barrel->pitch = Lerp(barrel->pitch, targetPitch, dt * 2.0f);
+
+    // --- Check if aimed ---
+    float maxAllowedError = (1.0f - accuracy) * (PI / 12.0f);
+    bool yawAligned = fabsf(yawDiff) < maxAllowedError;
+    bool pitchAligned = fabsf(barrel->pitch - targetPitch) < maxAllowedError;
+
+    // --- Optional random misses ---
+    if (accuracy < 1.0f) {
+      float missChance = 1.0f - accuracy;
+      if (((float)rand() / RAND_MAX) < missChance) {
+        yawAligned = false;
+        pitchAligned = false;
+      }
+    }
+
+    // --- Fire if aligned ---
+    if (yawAligned && pitchAligned && gs->components.cooldowns[i][0] <= 0.0f) {
+      gs->components.cooldowns[i][0] = gs->components.firerate[i][0];
+      UpdateRayCastToModel(gs, &gs->components.raycasts[i], i, 1);
+      QueueSound(soundSys, SOUND_WEAPON_FIRE, turretPos, 0.3f, 1.0f);
+
+      bool hit = CheckRaycastCollision(gs, &gs->components.raycasts[i], i);
+      if (hit)
+        printf("Turret %d hit something!\n", i);
+    }
+  }
+}
+
 // ---------------- Rendering ----------------
 
 // --- Update world-space transforms for a ModelCollection ---
 static void UpdateModelCollectionWorldTransforms(ModelCollection_t *mc,
-                                                 Vector3 entityPos) {
+                                                 Vector3 entityPos,
+                                                 Vector3 cameraTarget,
+                                                 int entityType) {
   for (int m = 0; m < mc->countModels; m++) {
     Vector3 localOffset = mc->offsets[m];
     Orientation localRot = mc->orientations[m];
@@ -504,8 +646,7 @@ static void UpdateModelCollectionWorldTransforms(ModelCollection_t *mc,
       parentWorldPos = entityPos;
       yaw *= -1.0f;
     }
-
-    // --- Apply local rotation offset ---
+    // --- Apply local rotation offset normally ---
     yaw += mc->localRotationOffset[m].yaw;
     pitch += mc->localRotationOffset[m].pitch;
     roll += mc->localRotationOffset[m].roll;
@@ -600,9 +741,20 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
   }
 }
 
-void DrawRaycast(GameState_t *gs) {
-  Raycast_t *raycast = &gs->components.raycasts[gs->playerId];
-  DrawRay(raycast->ray, RED);
+void DrawRaycasts(GameState_t *gs) {
+  for (int i = 0; i < gs->em.count; i++) {
+    if (!gs->em.alive[i])
+      continue; // skip dead entities
+    if (!(gs->em.masks[i] & C_RAYCAST))
+      continue; // skip entities without raycast
+
+    Raycast_t *raycast = &gs->components.raycasts[i];
+
+    // Color for debug: player = RED, others = BLUE
+    Color c = (i == gs->playerId) ? RED : BLUE;
+
+    DrawRay(raycast->ray, c);
+  }
 }
 
 // --- Main Render Function ---
@@ -615,8 +767,11 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   Vector3 playerPos = gs->components.positions[pid];
   Orientation torso = gs->components.modelCollections[0].orientations[1];
 
-  Vector3 forward = {cosf(torso.pitch) * cosf(torso.yaw), sinf(torso.pitch),
-                     cosf(torso.pitch) * sinf(torso.yaw)};
+  float yaw = torso.yaw;
+  float pitch = torso.pitch;
+
+  Vector3 forward = {cosf(pitch) * cosf(yaw), sinf(pitch),
+                     cosf(pitch) * sinf(yaw)};
 
   // Headbob / eye offset computed from step cycle
   float t = gs->components.stepCycle[pid];
@@ -657,13 +812,16 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
     // Update world transforms
     UpdateModelCollectionWorldTransforms(&gs->components.modelCollections[i],
-                                         entityPos);
+                                         entityPos, camera.target,
+                                         gs->components.types[i]);
     UpdateModelCollectionWorldTransforms(
-        &gs->components.collisionCollections[i], entityPos);
+        &gs->components.collisionCollections[i], entityPos, camera.target,
+        gs->components.types[i]);
     UpdateModelCollectionWorldTransforms(&gs->components.hitboxCollections[i],
-                                         entityPos);
+                                         entityPos, camera.target,
+                                         gs->components.types[i]);
 
-    DrawRaycast(gs);
+    DrawRaycasts(gs);
 
     // Visual models (solid white)
     DrawModelCollection(&gs->components.modelCollections[i], entityPos, WHITE,
@@ -673,9 +831,13 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
     DrawModelCollection(&gs->components.collisionCollections[i], entityPos,
                         GREEN, true);
 
+    Color hitboxColor = RED;
+    if (!gs->em.alive[i]) {
+      hitboxColor = BLACK;
+    }
     // Hitboxes (red wireframe)
-    DrawModelCollection(&gs->components.hitboxCollections[i], entityPos, RED,
-                        true);
+    DrawModelCollection(&gs->components.hitboxCollections[i], entityPos,
+                        hitboxColor, true);
   }
 
   EndMode3D();
@@ -741,7 +903,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   // Draw other UI shapes
   DrawCircleV(arrowStart, 10, DARKBLUE);
 
-  DrawCircleLines(GetScreenWidth() /2, GetScreenHeight()/2, 10, RED);
+  DrawCircleLines(GetScreenWidth() / 2, GetScreenHeight() / 2, 10, RED);
 
   EndDrawing();
 }
@@ -779,7 +941,11 @@ void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
 
     PlayerControlSystem(gs, soundSys, dt, camera);
 
+    TurretAISystem(gs, soundSys, dt);
+
     DecrementCooldowns(gs, dt);
+
+    UpdateTorsoRecoil(&gs->components.modelCollections[gs->playerId], 1, dt);
 
     PhysicsSystem(gs, dt);
 
