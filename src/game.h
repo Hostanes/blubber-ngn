@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define MAX_RAYS_PER_ENTITY 8
 #define MAX_ENTITIES 256 // can be increased later
 #define TERRAIN_SIZE 200
 #define TERRAIN_SCALE 10.0f
@@ -61,6 +62,12 @@ typedef struct {
 } ModelCollection_t;
 
 typedef struct {
+  bool active;
+
+  int parentModelIndex;  // which visual model to attach to
+  Vector3 localOffset;   // offset from model origin
+  Orientation oriOffset; // direction local to model
+
   Ray ray; // holds startpoint and orientation data
   float distance;
 } Raycast_t;
@@ -110,7 +117,9 @@ typedef struct {
   ModelCollection_t collisionCollections[MAX_ENTITIES];
   ModelCollection_t hitboxCollections[MAX_ENTITIES];
 
-  Raycast_t raycasts[MAX_ENTITIES];
+  Raycast_t raycasts[MAX_ENTITIES][MAX_RAYS_PER_ENTITY];
+  int rayCounts[MAX_ENTITIES];
+
   float *cooldowns[MAX_ENTITIES]; // current cool down, can fire at 0
   float *firerate[MAX_ENTITIES];  // seconds between each shot
 
