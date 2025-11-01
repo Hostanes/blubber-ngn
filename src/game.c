@@ -247,30 +247,31 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
 
   // Model collection: 3 parts (legs, torso/head, gun)
   ModelCollection_t *mc = &gs->components.modelCollections[e];
-  *mc = InitModelCollection(3);
+  *mc = InitModelCollection(4);
+
+  mc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
+  Texture2D mechTex = LoadTexture("assets/textures/legs.png");
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
+  mc->offsets[0] = (Vector3){0, 0, 0};
+  mc->orientations[0] = (Orientation){0, 0, 0};
 
   // torso/head as a simple cube model for visualization
-  Mesh torsoMesh = GenMeshCube(2.0f, 4.0f, 1.0f); // width=2, height=4, depth=1
+  Mesh torsoMesh = GenMeshCube(10.0f, 1.0f, 10.0f);
   mc->models[1] = LoadModelFromMesh(torsoMesh);
   mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
-  mc->offsets[1] = (Vector3){0, 0, 10};
+  mc->offsets[1] = (Vector3){0, 13.2f, 0};
   mc->parentIds[1] = -1;
-
-  // torso/head as simple offset (if you have a model, load it)
-  mc->models[1] = (Model){0}; // leave empty (or load a model)
-  mc->offsets[1] = (Vector3){0, 10.2f, 0};
-  mc->parentIds[1] = -1;
+  mc->localRotationOffset[1].yaw = 0;
+  mc->rotLocks[1][0] = true;
+  mc->rotLocks[1][1] = true;
+  mc->rotLocks[1][2] = false;
 
   // gun as primitive model
   Mesh gunMesh = GenMeshCube(2.0f, 2.0f, 10.0f);
   mc->models[2] = LoadModelFromMesh(gunMesh);
   mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = PURPLE;
-  mc->offsets[2] = (Vector3){4.0f, -2.0f, -4.0f};
+  mc->offsets[2] = (Vector3){8.0f, -5, 6};
   mc->parentIds[2] = 1;
-
-  // local rotation offset example
-  mc->localRotationOffset[2].yaw = PI / 2.0f;
-  mc->rotInverts[2][1] = true;
 
   mc->rotLocks[2][0] = true;
   mc->rotLocks[2][1] = true;
@@ -280,13 +281,12 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   gs->components.rayCounts[e] = 0;
   // Main aim ray - parent to torso (model index 1)
   AddRayToEntity(gs, e, 1,
-                 (Vector3){0, 0, 0}, // offset near head/center of torso
-                 (Orientation){PI / 2, 0, 0}, // forward
-                 500.0f);                    // long aim distance
+                 (Vector3){0, 0, 0},     // offset near head/center of torso
+                 (Orientation){0, 0, 0}, // forward
+                 500.0f);                // long aim distance
 
   // Gun muzzle ray - still parent to gun (model index 2)
-  AddRayToEntity(gs, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0},
-                 500.0f);
+  AddRayToEntity(gs, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate allocations
   gs->components.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
@@ -377,8 +377,7 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
 
   // ray: attach to barrel (model 1) muzzle
   gs->components.rayCounts[e] = 0;
-  AddRayToEntity(gs, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0},
-                 500.0f);
+  AddRayToEntity(gs, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
   gs->components.cooldowns[e] = (float *)malloc(sizeof(float) * 1);

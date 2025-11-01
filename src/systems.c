@@ -762,7 +762,7 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
       drawPos = mc->globalPositions[m];
       Orientation g = mc->globalOrientations[m];
       yaw = g.yaw;
-      pitch = g.pitch;
+      pitch = -g.pitch;
       roll = g.roll;
     } else {
       // Fallback: compute world transform exactly like previous code.
@@ -794,7 +794,7 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
         localOffset = Vector3Transform(localOffset, MatrixRotateY(parentYaw));
       } else {
         parentWorldPos = entityPos;
-        yaw *= -1.0f;
+        // yaw *= -1.0f;
       }
 
       // --- Final world position ---
@@ -870,7 +870,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   Orientation torsoOri = mc->globalOrientations[1]; // torso model index
 
   // Rotate yaw 90° left relative to torso
-  float camYaw = torsoOri.yaw + PI / 2.0f;
+  float camYaw = torsoOri.yaw;
   float camPitch = torsoOri.pitch;
 
   // Convert yaw/pitch to forward vector correctly
@@ -960,8 +960,9 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   char debugOri[128];
   snprintf(debugOri, sizeof(debugOri),
            "Torso Yaw: %.2f  Pitch: %.2f  Roll: %.2f\n"
-           "Camera Yaw: %.2f  Pitch: %.2f",
-           torsoOri.yaw, torsoOri.pitch, torsoOri.roll, camYaw, camPitch);
+           "Camera Yaw: %.2f  Pitch: %.2f\n Convergence distance %f",
+           torsoOri.yaw, torsoOri.pitch, torsoOri.roll, camYaw, camPitch,
+           gs->components.raycasts[pid][0].distance);
 
   // Draw text at top-left
   DrawText(debugOri, 10, 40, 20, RAYWHITE);
@@ -975,7 +976,6 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   DrawText(posText, GetScreenWidth() - textWidth - 10, 10, 20, RAYWHITE);
 
   // draw torso leg orientation
-
   Orientation legs_orientation =
       gs->components.modelCollections[gs->playerId].orientations[0];
 
@@ -994,7 +994,6 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   float diff = fmod(torsoYaw - legYaw + PI, 2 * PI);
   if (diff < 0)
     diff += 2 * PI;
-  diff -= PI;
 
   char rotText[64];
   snprintf(rotText, sizeof(rotText),
@@ -1007,7 +1006,6 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   Vector2 arrowStart =
       (Vector2){GetScreenWidth() * 0.8, GetScreenHeight() * 0.8};
 
-  diff += PI / 2.0f;
 
   float endX = arrowStart.x + cosf(-diff) * length;
   float endY = arrowStart.y + sinf(-diff) * length;
