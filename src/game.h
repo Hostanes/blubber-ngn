@@ -15,7 +15,6 @@
 // Terrain
 //----------------------------------------
 typedef struct {
-  float heights[TERRAIN_SIZE * TERRAIN_SIZE];
   Mesh mesh;
   Model model;
 } Terrain_t;
@@ -89,6 +88,7 @@ typedef enum {
   C_COOLDOWN_TAG = 1u << 7,
   C_HITPOINT_TAG = 1u << 8,
   C_TURRET_BEHAVIOUR_1 = 1u << 9,
+  C_GRAVITY = 1u << 10,
 } ComponentFlag_t;
 
 //----------------------------------------

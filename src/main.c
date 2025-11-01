@@ -3,15 +3,12 @@
 // Entry point for the refactored Mech Arena demo.
 // Depends on: game.h, sound.h, systems.h, raylib, raymath
 
-#include <math.h>
-#include <stdio.h>
-
-#include "raylib.h"
-#include "raymath.h"
-
 #include "game.h"
+#include "raylib.h"
 #include "sound.h"
 #include "systems.h"
+#include <raymath.h>
+#include <stdio.h>
 
 int main(void) {
   printf("raylib version: %s\n", RAYLIB_VERSION);

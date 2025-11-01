@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -135,98 +136,14 @@ void AddRayToEntity(GameState_t *gs, entity_t e, int parentModelIndex,
 }
 
 // -----------------------------------------------
-// Terrain initialization (same as earlier but self-contained)
+// Terrain initialization
 // -----------------------------------------------
 void InitTerrain(GameState_t *gs, Texture2D sandTex) {
   Terrain_t *terrain = &gs->terrain;
 
-  const int width = TERRAIN_SIZE;
-  const int depth = TERRAIN_SIZE;
-
-  // --- Generate heightmap (simple procedural)
-  for (int z = 0; z < depth; z++) {
-    for (int x = 0; x < width; x++) {
-      terrain->heights[z * width + x] =
-          sinf(x * 0.3f) * 3.0f + cosf(z * 0.2f) * 2.0f;
-    }
-  }
-
-  // --- Build vertex arrays
-  int vertexCount = width * depth;
-  int quadCount = (width - 1) * (depth - 1);
-  int triCount = quadCount * 2;
-
-  Vector3 *verts = (Vector3 *)malloc(sizeof(Vector3) * vertexCount);
-  Vector2 *texcoords = (Vector2 *)malloc(sizeof(Vector2) * vertexCount);
-  Vector3 *normals = (Vector3 *)malloc(sizeof(Vector3) * vertexCount);
-  unsigned short *indices =
-      (unsigned short *)malloc(sizeof(unsigned short) * triCount * 3);
-
-  for (int z = 0; z < depth; z++) {
-    for (int x = 0; x < width; x++) {
-      int idx = z * width + x;
-      float worldX = (x - width / 2.0f) * TERRAIN_SCALE;
-      float worldZ = (z - depth / 2.0f) * TERRAIN_SCALE;
-      float height = terrain->heights[idx];
-      verts[idx] = (Vector3){worldX, height, worldZ};
-      texcoords[idx] = (Vector2){(float)x / width, (float)z / depth};
-      normals[idx] = (Vector3){0, 1, 0};
-    }
-  }
-
-  int i = 0;
-  for (int z = 0; z < depth - 1; z++) {
-    for (int x = 0; x < width - 1; x++) {
-      int topLeft = z * width + x;
-      int topRight = topLeft + 1;
-      int bottomLeft = topLeft + width;
-      int bottomRight = bottomLeft + 1;
-
-      indices[i++] = topLeft;
-      indices[i++] = bottomLeft;
-      indices[i++] = topRight;
-
-      indices[i++] = topRight;
-      indices[i++] = bottomLeft;
-      indices[i++] = bottomRight;
-    }
-  }
-
-  // Build Mesh
-  memset(&terrain->mesh, 0, sizeof(Mesh));
-  terrain->mesh.vertexCount = vertexCount;
-  terrain->mesh.triangleCount = triCount;
-
-  // allocate float arrays for mesh
-  terrain->mesh.vertices = (float *)malloc(sizeof(float) * vertexCount * 3);
-  terrain->mesh.texcoords = (float *)malloc(sizeof(float) * vertexCount * 2);
-  terrain->mesh.normals = (float *)malloc(sizeof(float) * vertexCount * 3);
-  terrain->mesh.indices = indices;
-
-  for (int v = 0; v < vertexCount; v++) {
-    terrain->mesh.vertices[v * 3 + 0] = verts[v].x;
-    terrain->mesh.vertices[v * 3 + 1] = verts[v].y;
-    terrain->mesh.vertices[v * 3 + 2] = verts[v].z;
-
-    terrain->mesh.texcoords[v * 2 + 0] = texcoords[v].x;
-    terrain->mesh.texcoords[v * 2 + 1] = texcoords[v].y;
-
-    terrain->mesh.normals[v * 3 + 0] = normals[v].x;
-    terrain->mesh.normals[v * 3 + 1] = normals[v].y;
-    terrain->mesh.normals[v * 3 + 2] = normals[v].z;
-  }
-
-  UploadMesh(&terrain->mesh, true);
-  terrain->model = LoadModelFromMesh(terrain->mesh);
+  terrain->model = LoadModel("assets/models/terrain.glb");
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
-  terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = WHITE;
-
-  // optional shader setup omitted (copy from your project if desired)
-
-  free(verts);
-  free(normals);
-  free(texcoords);
-  // indices is stored in mesh.indices and shouldn't be freed here
+  terrain->mesh = terrain->model.meshes[0]; // assuming single mesh
 }
 
 // -----------------------------------------------
@@ -236,7 +153,7 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   entity_t e = gs->em.count++;
   gs->em.alive[e] = 1;
   gs->em.masks[e] = C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION | C_HITBOX |
-                    C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG;
+                    C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG | C_GRAVITY;
 
   gs->components.positions[e] = pos;
   gs->components.velocities[e] = (Vector3){0, 0, 0};
@@ -247,7 +164,7 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
 
   // Model collection: 3 parts (legs, torso/head, gun)
   ModelCollection_t *mc = &gs->components.modelCollections[e];
-  *mc = InitModelCollection(4);
+  *mc = InitModelCollection(5);
 
   mc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
   Texture2D mechTex = LoadTexture("assets/textures/legs.png");
@@ -256,10 +173,10 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   mc->orientations[0] = (Orientation){0, 0, 0};
 
   // torso/head as a simple cube model for visualization
-  Mesh torsoMesh = GenMeshCube(10.0f, 1.0f, 10.0f);
+  Mesh torsoMesh = GenMeshCube(10.0f, 2.0f, 10.0f);
   mc->models[1] = LoadModelFromMesh(torsoMesh);
   mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
-  mc->offsets[1] = (Vector3){0, 13.2f, 0};
+  mc->offsets[1] = (Vector3){0, 10.2f, 0};
   mc->parentIds[1] = -1;
   mc->localRotationOffset[1].yaw = 0;
   mc->rotLocks[1][0] = true;
@@ -270,12 +187,32 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   Mesh gunMesh = GenMeshCube(2.0f, 2.0f, 10.0f);
   mc->models[2] = LoadModelFromMesh(gunMesh);
   mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = PURPLE;
-  mc->offsets[2] = (Vector3){8.0f, -5, 6};
+  mc->offsets[2] = (Vector3){8.0f, -2, 6};
   mc->parentIds[2] = 1;
 
   mc->rotLocks[2][0] = true;
   mc->rotLocks[2][1] = true;
   mc->rotLocks[2][2] = false;
+
+  Mesh cockpitRoof = GenMeshCube(10.0f, 2.0f, 10.0f);
+  mc->models[3] = LoadModelFromMesh(cockpitRoof);
+  mc->models[3].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
+  mc->offsets[3] = (Vector3){0, 4, 0};
+  mc->parentIds[3] = 1;
+
+  mc->rotLocks[3][0] = true;
+  mc->rotLocks[3][1] = true;
+  mc->rotLocks[3][2] = false;
+
+  Mesh cockpitFloor = GenMeshCube(10.0f, 2.0f, 10.0f);
+  mc->models[4] = LoadModelFromMesh(cockpitFloor);
+  mc->models[4].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
+  mc->offsets[4] = (Vector3){0, -3.5, 0};
+  mc->parentIds[4] = 1;
+
+  mc->rotLocks[4][0] = true;
+  mc->rotLocks[4][1] = true;
+  mc->rotLocks[4][2] = false;
 
   // initialize rayCount and add a muzzle ray for the gun (model index 2)
   gs->components.rayCounts[e] = 0;
@@ -410,10 +347,10 @@ GameState_t InitGame(void) {
   gs.playerId = CreatePlayer(&gs, (Vector3){0, 10.0f, 0});
 
   // create a bunch of simple houses/walls
-  int numHouses = 200;
+  int numHouses = 80;
   for (int h = 0; h < numHouses && gs.em.count < MAX_ENTITIES; h++) {
     float width = 10.0f + (float)GetRandomValue(0, 30);
-    float height = 5.0f + (float)GetRandomValue(0, 40);
+    float height = 15.0f + (float)GetRandomValue(0, 40);
     float depth = 10.0f + (float)GetRandomValue(0, 30);
 
     float x = (float)GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) *

@@ -17,6 +17,9 @@
 #define WORLD_SIZE_X 10
 #define WORLD_SIZE_Z 10
 
+#define GRAVITY 20.0f // units per second²
+#define TERMINAL_VELOCITY 50.0f
+
 Vector3 recoilOffset = {0};
 
 void LoadAssets() {
@@ -196,7 +199,7 @@ void ApplyTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float intensity,
   float randPitch = ((float)rand() / RAND_MAX * 2.0f - 1.0f);
 
   float recoilYaw = (direction.x + randYaw * 0.3f) * intensity;
-  float recoilPitch = (direction.y + randPitch * 0.3f) * intensity;
+  float recoilPitch = (direction.y + randPitch * 0.3f) * intensity / 1.5;
 
   torso->yaw += recoilYaw;
   torso->pitch += recoilPitch;
@@ -379,56 +382,47 @@ void DecrementCooldowns(GameState_t *gs, float dt) {
 // Terrain Collision: Keep entity on ground
 //----------------------------------------
 
-static float GetTerrainHeightAtXZ(Terrain_t *terrain, float xWorld,
-                                  float zWorld) {
-  float halfWidth = (TERRAIN_SIZE - 1) * TERRAIN_SCALE * 0.5f;
+#define ENTITY_FEET_OFFSET 10.0f // how high the entity "stands" above terrain
 
-  // Convert world X,Z to grid coordinates
-  float localX = (xWorld + halfWidth) / TERRAIN_SCALE;
-  float localZ = (zWorld + halfWidth) / TERRAIN_SCALE;
+static float GetTerrainHeightAtEntity(GameState_t *gs, entity_t entity) {
+  Vector3 pos = gs->components.positions[entity];
 
-  // Clamp to range
-  if (localX < 0)
-    localX = 0;
-  if (localX > TERRAIN_SIZE - 1)
-    localX = TERRAIN_SIZE - 1;
-  if (localZ < 0)
-    localZ = 0;
-  if (localZ > TERRAIN_SIZE - 1)
-    localZ = TERRAIN_SIZE - 1;
+  // Cast ray from high above the entity down
+  Vector3 rayStart = (Vector3){pos.x, pos.y + 1000.0f, pos.z};
+  Ray ray = {rayStart, (Vector3){0, -1, 0}};
 
-  int x0 = (int)localX;
-  int z0 = (int)localZ;
-  int x1 = (x0 + 1 < TERRAIN_SIZE) ? x0 + 1 : x0;
-  int z1 = (z0 + 1 < TERRAIN_SIZE) ? z0 + 1 : z0;
+  RayCollision col =
+      GetRayCollisionMesh(ray, gs->terrain.mesh, MatrixIdentity());
+  if (col.hit) {
+    // collision point = ray origin + direction * distance
+    return rayStart.y + ray.direction.y * col.distance;
+  }
 
-  float tx = localX - x0;
-  float tz = localZ - z0;
-
-// Access 2D heights array (row-major)
-#define H(x, z) terrain->heights[(z) * TERRAIN_SIZE + (x)]
-
-  // Bilinear interpolation between the four corners
-  float h00 = H(x0, z0);
-  float h10 = H(x1, z0);
-  float h01 = H(x0, z1);
-  float h11 = H(x1, z1);
-
-  float h0 = h00 * (1.0f - tx) + h10 * tx;
-  float h1 = h01 * (1.0f - tx) + h11 * tx;
-  float h = h0 * (1.0f - tz) + h1 * tz;
-
-  return h;
+  // fallback if no terrain below
+  return 0.0f;
 }
 
-void ApplyTerrainCollision(GameState_t *gs, int entityId) {
+void ApplyTerrainCollision(GameState_t *gs, int entityId, float dt) {
   Vector3 *pos = &gs->components.positions[entityId];
   Vector3 *vel = &gs->components.velocities[entityId];
 
-  float terrainY = GetTerrainHeightAtXZ(&gs->terrain, pos->x, pos->z);
+  // Apply gravity
+  vel->y -= GRAVITY * dt;
+  if (vel->y < -TERMINAL_VELOCITY)
+    vel->y = -TERMINAL_VELOCITY;
 
-  pos->y = terrainY;
-  vel->y = 0;
+  // Move entity
+  pos->y += vel->y * dt;
+
+  // Compute terrain height
+  float terrainY = GetTerrainHeightAtEntity(gs, entityId);
+
+  // Clamp above terrain + offset
+  float desiredY = terrainY + ENTITY_FEET_OFFSET;
+  if (pos->y < desiredY) {
+    pos->y = desiredY;
+    vel->y = 0; // stop falling
+  }
 }
 
 //----------------------------------------
@@ -570,8 +564,10 @@ void PhysicsSystem(GameState_t *gs, float dt) {
 
   // Floor clamping
   for (int i = 0; i < gs->em.count; i++) {
-    pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
-    ApplyTerrainCollision(gs, i);
+    if (gs->em.masks[i] & C_GRAVITY) {
+      pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
+      ApplyTerrainCollision(gs, i, dt);
+    }
   }
 
   // Damping
@@ -898,6 +894,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   BeginMode3D(camera);
 
+
   DrawModel(gs->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
 
   // --- Draw world terrain/chunks ---
@@ -1005,7 +1002,6 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   float length = 50.0f;
   Vector2 arrowStart =
       (Vector2){GetScreenWidth() * 0.8, GetScreenHeight() * 0.8};
-
 
   float endX = arrowStart.x + cosf(-diff) * length;
   float endY = arrowStart.y + sinf(-diff) * length;
