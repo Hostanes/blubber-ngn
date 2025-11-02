@@ -225,11 +225,17 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   // Gun muzzle ray - still parent to gun (model index 2)
   AddRayToEntity(gs, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
+  // 2 guns
+  gs->components.muzzleVelocities[0] = MemAlloc(sizeof(float) * 2);
+  gs->components.muzzleVelocities[0][0] = 1000.0f;
+  gs->components.dropRates[0] = MemAlloc(sizeof(float) * 2);
+  gs->components.dropRates[0][0] = 70.0f;
+
   // cooldown & firerate allocations
   gs->components.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
   gs->components.cooldowns[e][0] = 0.8;
   gs->components.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  gs->components.firerate[e][0] = 0.8f;
+  gs->components.firerate[e][0] = 0.2f;
 
   // Collision
   ModelCollection_t *col = &gs->components.collisionCollections[e];
@@ -308,7 +314,7 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   // hitbox
   ModelCollection_t *hb = &gs->components.hitboxCollections[e];
   *hb = InitModelCollection(1);
-  hb->models[0] = LoadModelFromMesh(GenMeshCube(5, 10, 5));
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(10, 10, 10));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
 
@@ -373,6 +379,17 @@ GameState_t InitGame(void) {
   for (int i = 0; i < gs.em.count; i++) {
     if (gs.components.rayCounts[i] == 0)
       gs.components.rayCounts[i] = 0;
+  }
+
+  // Initialize projectile pool
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    gs.projectiles.active[i] = false;
+    gs.projectiles.positions[i] = Vector3Zero();
+    gs.projectiles.velocities[i] = Vector3Zero();
+    gs.projectiles.lifetimes[i] = 0.0f;
+    gs.projectiles.radii[i] = 1.0f; // default bullet size
+    gs.projectiles.owners[i] = -1;
+    gs.projectiles.types[i] = -1;
   }
 
   return gs;

@@ -11,6 +11,8 @@
 #define TERRAIN_SIZE 200
 #define TERRAIN_SCALE 10.0f
 
+#define MAX_PROJECTILES 1024
+
 //----------------------------------------
 // Terrain
 //----------------------------------------
@@ -120,13 +122,32 @@ typedef struct {
   Raycast_t raycasts[MAX_ENTITIES][MAX_RAYS_PER_ENTITY];
   int rayCounts[MAX_ENTITIES];
 
-  float *cooldowns[MAX_ENTITIES]; // current cool down, can fire at 0
-  float *firerate[MAX_ENTITIES];  // seconds between each shot
+  // ===== weapons =====
+  float *firerate[MAX_ENTITIES];         // seconds between each shot
+  float *cooldowns[MAX_ENTITIES];        // current cool down, can fire at 0
+  float *dropRates[MAX_ENTITIES];        // vertical drop rate for projectiles
+  float *muzzleVelocities[MAX_ENTITIES]; // speed of proj upon exiting barrel
 
   float hitPoints[MAX_ENTITIES];
 
   EntityType_t types[MAX_ENTITIES];
 } Components_t;
+
+typedef struct {
+  bool active[MAX_PROJECTILES];
+
+  Vector3 positions[MAX_PROJECTILES];
+  Vector3 velocities[MAX_PROJECTILES];
+  float dropRates[MAX_PROJECTILES]; // vertical drop rate for projectiles
+
+  float lifetimes[MAX_PROJECTILES]; // count down to 0
+  float radii[MAX_PROJECTILES];     // for circular hitbox
+
+  entity_t owners[MAX_PROJECTILES]; // which entity shot it
+
+  int types[MAX_PROJECTILES];
+
+} ProjectilePool_t;
 
 //----------------------------------------
 // Game State
@@ -134,6 +155,8 @@ typedef struct {
 typedef struct {
   EntityManager_t em;      // entity manager
   Components_t components; // all components
+
+  ProjectilePool_t projectiles;
 
   int playerId;
   AllState_t state;

@@ -20,6 +20,8 @@
 #define GRAVITY 20.0f // units per second²
 #define TERMINAL_VELOCITY 50.0f
 
+#define ENTITY_FEET_OFFSET 10.0f // how high the entity "stands" above terrain
+
 Vector3 recoilOffset = {0};
 
 void LoadAssets() {
@@ -140,13 +142,6 @@ bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast, entity_t self) {
 
   if (hit) {
     printf("Ray hit entity %d at distance %.2f\n", hitEntity, closestDist);
-    if (gs->em.masks[hitEntity] & C_HITPOINT_TAG) {
-      gs->components.hitPoints[hitEntity] -= 50.0f;
-      if (gs->components.hitPoints[hitEntity] <= 0) {
-        gs->em.alive[hitEntity] = 0;
-        printf("Entity killed \n");
-      }
-    }
   }
 
   return hit;
@@ -187,6 +182,8 @@ void UpdateEntityRaycasts(GameState_t *gs, entity_t e) {
   }
 }
 
+// ========== GUN ==========
+
 void ApplyTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float intensity,
                       Vector3 direction) {
   if (Vector3Length(direction) > 0.0001f)
@@ -218,7 +215,57 @@ void UpdateTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float dt) {
   float damping = 6.0f;
 }
 
-// Somewhere in your player update function
+void spawnProjectile(GameState_t *gs, Vector3 pos, Vector3 velocity,
+                     float lifetime, float radius, float dropRate, int owner,
+                     int type) {
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    if (gs->projectiles.active[i])
+      continue;
+
+    gs->projectiles.active[i] = true;
+    gs->projectiles.positions[i] = pos;
+    gs->projectiles.velocities[i] = velocity;
+    gs->projectiles.lifetimes[i] = lifetime;
+    gs->projectiles.radii[i] = radius;
+    gs->projectiles.owners[i] = owner;
+    gs->projectiles.types[i] = type;
+    gs->projectiles.dropRates[i] = dropRate;
+    break;
+  }
+}
+
+void FireProjectile(GameState_t *gs, entity_t shooter, int rayIndex) {
+  if (!gs->components.raycasts[shooter][rayIndex].active)
+    return;
+
+  int gunId = 0;
+
+  Ray *ray = &gs->components.raycasts[shooter][rayIndex].ray;
+
+  Vector3 origin = ray->position;
+  Vector3 dir = Vector3Normalize(ray->direction);
+
+  // Load weapon stats from components
+  float muzzleVel = gs->components.muzzleVelocities[shooter][gunId]
+                        ? gs->components.muzzleVelocities[shooter][gunId]
+                        : 10.0f; // default fallback
+
+  float drop = gs->components.dropRates[shooter][gunId]
+                   ? gs->components.dropRates[shooter][gunId]
+                   : 1.0f;
+
+  Vector3 vel = Vector3Scale(dir, muzzleVel);
+  printf("spawning projectile\n");
+  spawnProjectile(gs, origin, vel,
+                  10.0f,   // lifetime sec
+                  0.5f,    // radius
+                  drop,    // drop rate
+                  shooter, // owner
+                  1);      // type
+}
+
+// ========== END GUN ==========
+
 void UpdateRayDistance(GameState_t *gs, entity_t e, float dt) {
   if (e < 0 || e >= gs->em.count)
     return;
@@ -296,7 +343,19 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
   Vector3 forward = {c, 0, s};
   Vector3 right = {-s, 0, c};
 
+  // TODO fix later ZOOM basic
+  if(IsKeyDown(KEY_B)){
+    camera->fovy = 10;
+  }else{
+    camera->fovy = 60;
+  }
+
+
   // Movement keys
+  if (IsKeyDown(KEY_SPACE)) {
+    vel[pid].y += forward.z * 100.0f * dt;
+  }
+
   if (IsKeyDown(KEY_W)) {
     vel[pid].x += forward.x * 100.0f * dt * forwardSpeedMult;
     vel[pid].z += forward.z * 100.0f * dt * forwardSpeedMult;
@@ -323,10 +382,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
     ApplyTorsoRecoil(&gs->components.modelCollections[gs->playerId], 1, 0.05f,
                      (Vector3){-0.2f, 1.0f, 0});
 
-    bool hit = CheckRaycastCollision(
-        gs, &gs->components.raycasts[gs->playerId][1], gs->playerId);
-    if (hit)
-      printf("hit\n");
+    FireProjectile(gs, gs->playerId, 1);
   }
 
   // Step cycle update
@@ -382,24 +438,27 @@ void DecrementCooldowns(GameState_t *gs, float dt) {
 // Terrain Collision: Keep entity on ground
 //----------------------------------------
 
-#define ENTITY_FEET_OFFSET 10.0f // how high the entity "stands" above terrain
-
-static float GetTerrainHeightAtEntity(GameState_t *gs, entity_t entity) {
-  Vector3 pos = gs->components.positions[entity];
-
-  // Cast ray from high above the entity down
-  Vector3 rayStart = (Vector3){pos.x, pos.y + 1000.0f, pos.z};
+float GetTerrainHeightAtPoint(GameState_t *gs, Vector3 point) {
+  // Cast a ray downward from above the point
+  Vector3 rayStart = (Vector3){point.x, point.y + 1000.0f, point.z};
   Ray ray = {rayStart, (Vector3){0, -1, 0}};
 
   RayCollision col =
       GetRayCollisionMesh(ray, gs->terrain.mesh, MatrixIdentity());
+
   if (col.hit) {
-    // collision point = ray origin + direction * distance
+    // terrain collision point: start + direction * distance
     return rayStart.y + ray.direction.y * col.distance;
   }
 
-  // fallback if no terrain below
+  // fallback if nothing below
   return 0.0f;
+}
+
+static float GetTerrainHeightAtEntity(GameState_t *gs, entity_t entity) {
+
+  Vector3 pos = gs->components.positions[entity];
+  return GetTerrainHeightAtPoint(gs, pos);
 }
 
 void ApplyTerrainCollision(GameState_t *gs, int entityId, float dt) {
@@ -557,6 +616,103 @@ bool CheckAndResolveOBBCollision(Vector3 *aPos, ModelCollection_t *aCC,
 // Physics System
 //----------------------------------------
 
+// Sphere-OBB collision test
+bool SphereIntersectsOBB(Vector3 sphereCenter, float radius, Vector3 boxCenter,
+                         Vector3 boxHalfExtents, Matrix boxRotation) {
+  // Transform sphere center to OBB local space
+  Matrix invRot = MatrixTranspose(boxRotation); // inverse rotation
+  Vector3 local = Vector3Subtract(sphereCenter, boxCenter);
+  local = Vector3Transform(local, invRot);
+
+  // Clamp to box extents
+  Vector3 closest = {
+      fmaxf(-boxHalfExtents.x, fminf(local.x, boxHalfExtents.x)),
+      fmaxf(-boxHalfExtents.y, fminf(local.y, boxHalfExtents.y)),
+      fmaxf(-boxHalfExtents.z, fminf(local.z, boxHalfExtents.z))};
+
+  // Distance from sphere center to closest point
+  Vector3 delta = Vector3Subtract(local, closest);
+  return Vector3LengthSqr(delta) <= radius * radius;
+}
+
+// Check if projectile intersects entity's collision OBB
+bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex, int eid) {
+  ModelCollection_t *col = &gs->components.hitboxCollections[eid];
+  if (col->countModels <= 0)
+    return false;
+
+  Vector3 sphere = gs->projectiles.positions[projIndex];
+  float radius = gs->projectiles.radii[projIndex];
+
+  for (int m = 0; m < col->countModels; m++) {
+    Model model = col->models[m];
+    BoundingBox bbox = GetMeshBoundingBox(model.meshes[0]);
+
+    Vector3 halfExtents =
+        Vector3Scale(Vector3Subtract(bbox.max, bbox.min), 0.5f);
+    Vector3 center = col->globalPositions[m];
+
+    Matrix rot = MatrixRotateXYZ((Vector3){col->globalOrientations[m].pitch,
+                                           col->globalOrientations[m].yaw,
+                                           col->globalOrientations[m].roll});
+
+    if (SphereIntersectsOBB(sphere, radius, center, halfExtents, rot))
+      return true;
+  }
+
+  return false;
+}
+
+void UpdateProjectiles(GameState_t *gs, float dt) {
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    if (!gs->projectiles.active[i])
+      continue;
+
+    // Decrease lifetime
+    gs->projectiles.lifetimes[i] -= dt;
+    if (gs->projectiles.lifetimes[i] <= 0.0f) {
+      gs->projectiles.active[i] = false;
+      continue;
+    }
+
+    // Apply drop/gravity
+    gs->projectiles.velocities[i].y -= gs->projectiles.dropRates[i] * dt;
+
+    // Update position
+    gs->projectiles.positions[i] =
+        Vector3Add(gs->projectiles.positions[i],
+                   Vector3Scale(gs->projectiles.velocities[i], dt));
+
+    if (GetTerrainHeightAtPoint(gs, gs->projectiles.positions[i]) >=
+        gs->projectiles.positions[i].y) {
+      printf("PROJECTILE: terrain collision\n");
+      gs->projectiles.active[i] = false;
+    }
+
+    // -------- ENTITY COLLISION --------
+    for (int e = 0; e < MAX_ENTITIES; e++) { // TODO use quad tree
+
+      if (!(gs->em.masks[e] & C_HITBOX))
+        continue;
+      if (e == gs->projectiles.owners[i])
+        continue;
+
+      if (ProjectileIntersectsEntityOBB(gs, i, e)) {
+        gs->projectiles.active[i] = false;
+        printf("PROJECTILE: entity collision detected\n Entity_t %d\n", e);
+        if (gs->em.masks[e] & C_HITPOINT_TAG) {
+          gs->components.hitPoints[e] -= 50.0f;
+          if (gs->components.hitPoints[e] <= 0) {
+            gs->em.alive[e] = 0;
+            printf("Entity killed \n");
+          }
+        }
+        break;
+      }
+    }
+  }
+}
+
 void PhysicsSystem(GameState_t *gs, float dt) {
   Vector3 *pos = gs->components.positions;
   Vector3 *vel = gs->components.velocities;
@@ -575,6 +731,8 @@ void PhysicsSystem(GameState_t *gs, float dt) {
     vel[i].x *= 0.65f;
     vel[i].z *= 0.65f;
   }
+
+  UpdateProjectiles(gs, dt);
 
   // Collision
   for (int i = 0; i < gs->em.count; i++) {
@@ -820,6 +978,15 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
   }
 }
 
+void DrawProjectiles(GameState_t *gs) {
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    if (!gs->projectiles.active[i])
+      continue;
+
+    DrawSphere(gs->projectiles.positions[i], gs->projectiles.radii[i], YELLOW);
+  }
+}
+
 void DrawRaycasts(GameState_t *gs) {
   for (int i = 0; i < gs->em.count; i++) {
     if (!gs->em.alive[i])
@@ -894,7 +1061,6 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   BeginMode3D(camera);
 
-
   DrawModel(gs->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
 
   // --- Draw world terrain/chunks ---
@@ -905,15 +1071,9 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   //   }
   // }
 
-  // --- Boundary walls ---
-  for (int i = -25; i <= 25; i += 10) {
-    DrawCube((Vector3){i, 1, -25}, 2, 2, 2, GRAY);
-    DrawCube((Vector3){i, 1, 25}, 2, 2, 2, GRAY);
-    DrawCube((Vector3){-25, 1, i}, 2, 2, 2, GRAY);
-    DrawCube((Vector3){25, 1, i}, 2, 2, 2, GRAY);
-  }
-
   // --- Draw all entities ---
+  DrawProjectiles(gs);
+
   for (int i = 0; i < gs->em.count; i++) {
     Vector3 entityPos = gs->components.positions[i];
 
