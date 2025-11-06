@@ -51,7 +51,7 @@ typedef struct {
   Model *models;
   Vector3 *offsets;
   Orientation *orientations;
-  int *parentIds;
+  int *parentIds; //  TODO parents should be specific for each axis
   bool **rotLocks;
 
   Orientation *localRotationOffset;

@@ -294,7 +294,7 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   entity_t e = gs->em.count++;
   gs->em.alive[e] = 1;
   gs->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
-                    C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST;
+                    C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST | C_GRAVITY;
   gs->components.positions[e] = pos;
   gs->components.types[e] = ENTITY_TURRET;
   gs->components.hitPoints[e] = 100.0f;
@@ -314,7 +314,7 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   // hitbox
   ModelCollection_t *hb = &gs->components.hitboxCollections[e];
   *hb = InitModelCollection(1);
-  hb->models[0] = LoadModelFromMesh(GenMeshCube(10, 10, 10));
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(20, 20, 20));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
 
@@ -353,7 +353,7 @@ GameState_t InitGame(void) {
   gs.playerId = CreatePlayer(&gs, (Vector3){0, 10.0f, 0});
 
   // create a bunch of simple houses/walls
-  int numHouses = 80;
+  int numHouses = 0;
   for (int h = 0; h < numHouses && gs.em.count < MAX_ENTITIES; h++) {
     float width = 10.0f + (float)GetRandomValue(0, 30);
     float height = 15.0f + (float)GetRandomValue(0, 40);

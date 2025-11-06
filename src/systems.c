@@ -301,8 +301,11 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
 
   bool isSprinting = IsKeyDown(KEY_LEFT_SHIFT);
 
+  float sensitivity = 0.0007f;
+
   float baseFOV = 60.0f;
   float sprintFOV = 80.0f;
+  float zoomFOV = 10.0f;
   float fovSpeed = 12.0f; // how fast FOV interpolates
 
   float targetFOV = isSprinting ? sprintFOV : baseFOV;
@@ -312,6 +315,15 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
   float forwardSpeedMult = 5.0f * totalSpeedMult;
   float backwardSpeedMult = 5.0f * totalSpeedMult;
   float strafeSpeedMult = 2.0f * totalSpeedMult;
+
+  // TODO fix later ZOOM basic
+  if (IsKeyDown(KEY_B)) {
+    sensitivity = 0.0002f;
+    camera->fovy = 10;
+  } else {
+    camera->fovy = 60;
+    sensitivity = 0.0007f;
+  }
 
   float turnRate = isSprinting ? 0.2f : 1.0f;
 
@@ -323,7 +335,6 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
 
   // Torso yaw/pitch from mouse
   Vector2 mouse = GetMouseDelta();
-  float sensitivity = 0.0007f;
   torso[pid].yaw += mouse.x * sensitivity;
   torso[pid].pitch += -mouse.y * sensitivity;
   // gs->entities.collisionCollections[pid].orientations[pid].yaw =
@@ -342,14 +353,6 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
   float s = sinf(leg[pid].yaw);
   Vector3 forward = {c, 0, s};
   Vector3 right = {-s, 0, c};
-
-  // TODO fix later ZOOM basic
-  if(IsKeyDown(KEY_B)){
-    camera->fovy = 10;
-  }else{
-    camera->fovy = 60;
-  }
-
 
   // Movement keys
   if (IsKeyDown(KEY_SPACE)) {
@@ -700,7 +703,7 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
       if (ProjectileIntersectsEntityOBB(gs, i, e)) {
         gs->projectiles.active[i] = false;
         printf("PROJECTILE: entity collision detected\n Entity_t %d\n", e);
-        if (gs->em.masks[e] & C_HITPOINT_TAG) {
+        if (gs->em.masks[e] & C_HITPOINT_TAG && gs->em.alive[e]) {
           gs->components.hitPoints[e] -= 50.0f;
           if (gs->components.hitPoints[e] <= 0) {
             gs->em.alive[e] = 0;
@@ -1056,10 +1059,16 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   camera.position = eye;
   camera.target = Vector3Add(eye, forward);
 
+  Matrix proj = MatrixPerspective(
+      camera.fovy * DEG2RAD, (float)GetScreenWidth() / (float)GetScreenHeight(),
+      0.01f, 10000.0f);
+
   BeginDrawing();
   ClearBackground((Color){20, 20, 30, 255});
 
   BeginMode3D(camera);
+
+  rlSetMatrixProjection(proj);
 
   DrawModel(gs->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
 

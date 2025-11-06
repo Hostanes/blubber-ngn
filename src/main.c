@@ -34,6 +34,7 @@ int main(void) {
   camera.fovy = 60.0f;
   camera.projection = CAMERA_PERSPECTIVE;
 
+
   SetMasterVolume(1.0f);
 
   GameState_t gs = InitGame();
