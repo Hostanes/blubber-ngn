@@ -253,48 +253,50 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   return e;
 }
 
-static entity_t CreateWall(GameState_t *gs, Vector3 pos, Vector3 size,
-                           Color c) {
-  entity_t e = gs->em.count++;
-  gs->em.alive[e] = 1;
-  gs->em.masks[e] = C_POSITION | C_MODEL | C_COLLISION | C_HITBOX;
-  gs->components.positions[e] = pos;
-  gs->components.types[e] = ENTITY_WALL;
+static int CreateStatic(GameState_t *gs, Vector3 pos, Vector3 size, Color c) {
+  // find open slot
+  int i = 0;
+  while (i < MAX_ENTITIES && gs->statics.modelCollections[i].countModels != 0)
+    i++;
 
-  ModelCollection_t *mc = &gs->components.modelCollections[e];
+  if (i >= MAX_ENTITIES)
+    return -1; // no room
+
+  gs->statics.positions[i] = pos;
+
+  ModelCollection_t *mc = &gs->statics.modelCollections[i];
   *mc = InitModelCollection(1);
 
   Mesh cube = GenMeshCube(size.x, size.y, size.z);
   mc->models[0] = LoadModelFromMesh(cube);
-  mc->offsets[0] = Vector3Zero();
-  mc->parentIds[0] = -1;
   mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = c;
 
-  // collision
-  ModelCollection_t *col = &gs->components.collisionCollections[e];
+  mc->offsets[0] = Vector3Zero();
+  mc->parentIds[0] = -1;
+
+  // collision too
+  ModelCollection_t *col = &gs->statics.collisionCollections[i];
   *col = InitModelCollection(1);
   col->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
   col->offsets[0] = Vector3Zero();
   col->parentIds[0] = -1;
 
-  // hitbox
-  ModelCollection_t *hb = &gs->components.hitboxCollections[e];
+  // hitbox too
+  ModelCollection_t *hb = &gs->statics.hitboxCollections[i];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
 
-  // initialize raycount to zero (not needed here but keep consistent)
-  gs->components.rayCounts[e] = 0;
-
-  return e;
+  return i;
 }
 
 static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   entity_t e = gs->em.count++;
   gs->em.alive[e] = 1;
   gs->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
-                    C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST | C_GRAVITY;
+                    C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
+                    C_GRAVITY;
   gs->components.positions[e] = pos;
   gs->components.types[e] = ENTITY_TURRET;
   gs->components.hitPoints[e] = 100.0f;
@@ -353,25 +355,24 @@ GameState_t InitGame(void) {
   gs.playerId = CreatePlayer(&gs, (Vector3){0, 10.0f, 0});
 
   // create a bunch of simple houses/walls
-  int numHouses = 0;
-  for (int h = 0; h < numHouses && gs.em.count < MAX_ENTITIES; h++) {
-    float width = 10.0f + (float)GetRandomValue(0, 30);
-    float height = 15.0f + (float)GetRandomValue(0, 40);
-    float depth = 10.0f + (float)GetRandomValue(0, 30);
+  int numStatics = 100;
+  for (int i = 0; i < numStatics; i++) {
+    float width = GetRandomValue(10, 40);
+    float height = GetRandomValue(15, 55);
+    float depth = GetRandomValue(10, 40);
 
-    float x = (float)GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) *
-              TERRAIN_SCALE;
-    float z = (float)GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) *
-              TERRAIN_SCALE;
+    float x =
+        GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
+    float z =
+        GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
     float y = height / 2.0f;
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255), 255};
 
-    CreateWall(&gs, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
+    CreateStatic(&gs, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
   }
-
   // create a sample turret
   CreateTurret(&gs, (Vector3){500.0f, 8.0f, 30.0f});
 

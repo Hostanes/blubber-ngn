@@ -671,57 +671,70 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
     if (!gs->projectiles.active[i])
       continue;
 
-    // Decrease lifetime
+    // Lifetime
     gs->projectiles.lifetimes[i] -= dt;
     if (gs->projectiles.lifetimes[i] <= 0.0f) {
       gs->projectiles.active[i] = false;
       continue;
     }
 
-    // Apply drop/gravity
+    // Gravity
     gs->projectiles.velocities[i].y -= gs->projectiles.dropRates[i] * dt;
 
-    // Update position
+    // Move
     gs->projectiles.positions[i] =
         Vector3Add(gs->projectiles.positions[i],
                    Vector3Scale(gs->projectiles.velocities[i], dt));
 
-    if (GetTerrainHeightAtPoint(gs, gs->projectiles.positions[i]) >=
-        gs->projectiles.positions[i].y) {
-      printf("PROJECTILE: terrain collision\n");
+    Vector3 projPos = gs->projectiles.positions[i];
+
+    // ===== TERRAIN COLLISION =====
+    if (GetTerrainHeightAtPoint(gs, projPos) >= projPos.y) {
       gs->projectiles.active[i] = false;
+      continue;
     }
 
-    // -------- ENTITY COLLISION --------
-    for (int e = 0; e < MAX_ENTITIES; e++) { // TODO use quad tree
-
+    // ===== ENTITY COLLISION =====
+    for (int e = 0; e < gs->em.count; e++) {
       if (!(gs->em.masks[e] & C_HITBOX))
+        continue;
+      if (!gs->em.alive[e])
         continue;
       if (e == gs->projectiles.owners[i])
         continue;
 
       if (ProjectileIntersectsEntityOBB(gs, i, e)) {
         gs->projectiles.active[i] = false;
-        printf("PROJECTILE: entity collision detected\n Entity_t %d\n", e);
-        if (gs->em.masks[e] & C_HITPOINT_TAG && gs->em.alive[e]) {
+
+        if (gs->em.masks[e] & C_HITPOINT_TAG) {
           gs->components.hitPoints[e] -= 50.0f;
           if (gs->components.hitPoints[e] <= 0) {
             gs->em.alive[e] = 0;
-            printf("Entity killed \n");
           }
         }
         break;
       }
     }
+
+    // ===== STATIC COLLISION =====
+    for (int s = 0; s < MAX_STATICS; s++) {
+      if (!gs->statics.modelCollections[s].countModels)
+        continue;
+
+      if (ProjectileIntersectsEntityOBB(gs, i, s)) {
+        gs->projectiles.active[i] = false;
+        break;
+      }
+    }
   }
 }
-
+// TODO currently just checks collisions of player 
 void PhysicsSystem(GameState_t *gs, float dt) {
   Vector3 *pos = gs->components.positions;
   Vector3 *vel = gs->components.velocities;
   int playerId = gs->playerId;
 
-  // Floor clamping
+  // Movement with gravity
   for (int i = 0; i < gs->em.count; i++) {
     if (gs->em.masks[i] & C_GRAVITY) {
       pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
@@ -735,25 +748,45 @@ void PhysicsSystem(GameState_t *gs, float dt) {
     vel[i].z *= 0.65f;
   }
 
+  // Update bullets first
   UpdateProjectiles(gs, dt);
 
-  // Collision
-  for (int i = 0; i < gs->em.count; i++) {
-    if (i == playerId)
+  // ===== Actor x Actor =====
+  for (int e = 0; e < gs->em.count; e++) {
+    if (e == playerId)
+      continue;
+    if (!(gs->em.masks[e] & C_COLLISION))
+      continue;
+    if (!gs->em.alive[e])
       continue;
 
-    bool collided = CheckAndResolveOBBCollision(
-        &pos[playerId], &gs->components.collisionCollections[playerId], &pos[i],
-        &gs->components.collisionCollections[i]);
+    if (CheckAndResolveOBBCollision(
+            &pos[playerId], &gs->components.collisionCollections[playerId],
+            &pos[e], &gs->components.collisionCollections[e])) {
 
-    if (collided) {
-      // slide along collision
-      Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[playerId], pos[i]));
+      Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[playerId], pos[e]));
       float velDot = Vector3DotProduct(vel[playerId], mtvDir);
-      if (velDot > 0.0f) {
+      if (velDot > 0.f)
         vel[playerId] =
             Vector3Subtract(vel[playerId], Vector3Scale(mtvDir, velDot));
-      }
+    }
+  }
+
+  // ===== Actor x Static =====
+  for (int s = 0; s < MAX_STATICS; s++) {
+    if (!gs->statics.modelCollections[s].countModels)
+      continue;
+
+    if (CheckAndResolveOBBCollision(
+            &pos[playerId], &gs->components.collisionCollections[playerId],
+            &gs->statics.positions[s], &gs->statics.collisionCollections[s])) {
+
+      Vector3 mtvDir = Vector3Normalize(
+          Vector3Subtract(pos[playerId], gs->statics.positions[s]));
+      float velDot = Vector3DotProduct(vel[playerId], mtvDir);
+      if (velDot > 0.f)
+        vel[playerId] =
+            Vector3Subtract(vel[playerId], Vector3Scale(mtvDir, velDot));
     }
   }
 }
@@ -1091,11 +1124,9 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
                                          entityPos, camera.target,
                                          gs->components.types[i]);
     UpdateModelCollectionWorldTransforms(
-        &gs->components.collisionCollections[i], entityPos, camera.target,
-        gs->components.types[i]);
+        &gs->components.collisionCollections[i], entityPos, camera.target, 0);
     UpdateModelCollectionWorldTransforms(&gs->components.hitboxCollections[i],
-                                         entityPos, camera.target,
-                                         gs->components.types[i]);
+                                         entityPos, camera.target, 0);
 
     DrawRaycasts(gs);
 
@@ -1113,6 +1144,35 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
     }
     // Hitboxes (red wireframe)
     DrawModelCollection(&gs->components.hitboxCollections[i], entityPos,
+                        hitboxColor, true);
+  }
+
+  for (int i = 0; i < MAX_STATICS; i++) {
+    if (gs->statics.modelCollections[i].countModels == 0)
+      continue; // ✅ skip unused static entries
+    Vector3 entityPos = gs->statics.positions[i];
+    // TODO replaced types with 0, currently types arent used for anything so
+    // keep in mind for later ig
+
+    // Update world transforms
+    UpdateModelCollectionWorldTransforms(&gs->statics.modelCollections[i],
+                                         entityPos, camera.target, 0);
+    UpdateModelCollectionWorldTransforms(&gs->statics.collisionCollections[i],
+                                         entityPos, camera.target, 0);
+    UpdateModelCollectionWorldTransforms(&gs->statics.hitboxCollections[i],
+                                         entityPos, camera.target, 0);
+
+    // Visual models (solid white)
+    DrawModelCollection(&gs->statics.modelCollections[i], entityPos, WHITE,
+                        false);
+
+    // Movement collision boxes (green wireframe)
+    DrawModelCollection(&gs->statics.collisionCollections[i], entityPos, GREEN,
+                        true);
+
+    Color hitboxColor = RED;
+    // Hitboxes (red wireframe)
+    DrawModelCollection(&gs->statics.hitboxCollections[i], entityPos,
                         hitboxColor, true);
   }
 

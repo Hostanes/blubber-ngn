@@ -7,10 +7,11 @@
 #include <stdint.h>
 
 #define MAX_RAYS_PER_ENTITY 8
-#define MAX_ENTITIES 256 // can be increased later
 #define TERRAIN_SIZE 200
 #define TERRAIN_SCALE 10.0f
 
+#define MAX_ENTITIES 256 // can be increased later
+#define MAX_STATICS 256
 #define MAX_PROJECTILES 1024
 
 //----------------------------------------
@@ -131,15 +132,15 @@ typedef struct {
   float hitPoints[MAX_ENTITIES];
 
   EntityType_t types[MAX_ENTITIES];
-} Components_t;
+} ActorComponents_t;
 
 typedef struct {
   bool active[MAX_PROJECTILES];
 
   Vector3 positions[MAX_PROJECTILES];
   Vector3 velocities[MAX_PROJECTILES];
-  float dropRates[MAX_PROJECTILES]; // vertical drop rate for projectiles
 
+  float dropRates[MAX_PROJECTILES]; // vertical drop rate for projectiles
   float lifetimes[MAX_PROJECTILES]; // count down to 0
   float radii[MAX_PROJECTILES];     // for circular hitbox
 
@@ -149,14 +150,25 @@ typedef struct {
 
 } ProjectilePool_t;
 
+typedef struct {
+  Vector3 positions[MAX_STATICS];
+
+  ModelCollection_t modelCollections[MAX_STATICS];
+  ModelCollection_t collisionCollections[MAX_STATICS];
+  ModelCollection_t hitboxCollections[MAX_STATICS];
+
+} StaticPool_t;
+
 //----------------------------------------
 // Game State
 //----------------------------------------
 typedef struct {
-  EntityManager_t em;      // entity manager
-  Components_t components; // all components
+  EntityManager_t em;           // entity manager
+  ActorComponents_t components; // all components
 
   ProjectilePool_t projectiles;
+
+  StaticPool_t statics;
 
   int playerId;
   AllState_t state;
