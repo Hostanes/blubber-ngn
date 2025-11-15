@@ -354,7 +354,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
 
   // Movement keys
   if (IsKeyDown(KEY_SPACE)) {
-    vel[pid].y += forward.z * 100.0f * dt;
+    vel[pid].y += 50.0f * dt;
   }
 
   if (IsKeyDown(KEY_W)) {
@@ -672,51 +672,68 @@ bool SphereIntersectsOBB(Vector3 sphereCenter, float radius, Vector3 boxCenter,
 }
 
 // Check if projectile intersects entity's collision OBB
-bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex, entity_t eid) {
-    EntityCategory_t cat = GetEntityCategory(eid);
-    int idx = GetEntityIndex(eid);
+bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex,
+                                   entity_t eid) {
+  EntityCategory_t cat = GetEntityCategory(eid);
+  int idx = GetEntityIndex(eid);
 
-    ModelCollection_t *col = NULL;
+  ModelCollection_t *col = NULL;
 
-    // figure out which hitboxes to read
-    switch (cat) {
-        case ET_ACTOR:
-            if (!gs->em.alive[idx]) return false;
-            col = &gs->components.hitboxCollections[idx];
-            break;
-        case ET_STATIC:
-            col = &gs->statics.hitboxCollections[idx];
-            break;
-        default:
-            return false; // projectiles or unknown
-    }
+  // figure out which hitboxes to read
+  switch (cat) {
+  case ET_ACTOR:
+    if (!gs->em.alive[idx])
+      return false;
+    col = &gs->components.hitboxCollections[idx];
+    break;
+  case ET_STATIC:
+    col = &gs->statics.hitboxCollections[idx];
+    break;
+  default:
+    return false; // projectiles or unknown
+  }
 
-    if (!col || col->countModels <= 0) return false;
-
-    Vector3 sphere = gs->projectiles.positions[projIndex];
-    float radius = gs->projectiles.radii[projIndex];
-
-    for (int m = 0; m < col->countModels; m++) {
-        Model model = col->models[m];
-        BoundingBox bbox = GetMeshBoundingBox(model.meshes[0]);
-
-        Vector3 halfExtents = Vector3Scale(Vector3Subtract(bbox.max, bbox.min), 0.5f);
-        Vector3 center = col->globalPositions[m];
-
-        Matrix rot = MatrixRotateXYZ((Vector3){
-            col->globalOrientations[m].pitch,
-            col->globalOrientations[m].yaw,
-            col->globalOrientations[m].roll
-        });
-
-        if (SphereIntersectsOBB(sphere, radius, center, halfExtents, rot))
-            return true;
-    }
-
+  if (!col || col->countModels <= 0)
     return false;
+
+  Vector3 sphere = gs->projectiles.positions[projIndex];
+  float radius = gs->projectiles.radii[projIndex];
+
+  for (int m = 0; m < col->countModels; m++) {
+    Model model = col->models[m];
+    BoundingBox bbox = GetMeshBoundingBox(model.meshes[0]);
+
+    Vector3 halfExtents =
+        Vector3Scale(Vector3Subtract(bbox.max, bbox.min), 0.5f);
+    Vector3 center = col->globalPositions[m];
+
+    Matrix rot = MatrixRotateXYZ((Vector3){col->globalOrientations[m].pitch,
+                                           col->globalOrientations[m].yaw,
+                                           col->globalOrientations[m].roll});
+
+    if (SphereIntersectsOBB(sphere, radius, center, halfExtents, rot))
+      return true;
+  }
+
+  return false;
 }
 
+void spawnParticle(GameState_t *gs, Vector3 pos, float lifetime, int type) {
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    if (gs->particles.active[i])
+      continue;
 
+    gs->particles.active[i] = true;
+
+    gs->particles.types[i] = type;
+    gs->particles.positions[i] = pos;
+    gs->particles.lifetimes[i] = lifetime;
+    gs->particles.startLifetimes[i] = lifetime;
+
+    printf("PARTICLE spawned particle at index %d\n", i);
+    break;
+  }
+}
 
 void UpdateProjectiles(GameState_t *gs, float dt) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
@@ -729,6 +746,8 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
       gs->projectiles.active[i] = false;
       continue;
     }
+
+    Vector3 prevPos = gs->projectiles.positions[i];
 
     // Gravity
     gs->projectiles.velocities[i].y -= gs->projectiles.dropRates[i] * dt;
@@ -743,6 +762,7 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
     // ===== TERRAIN COLLISION =====
     if (GetTerrainHeightAtXZ(&gs->terrain, projPos.x, projPos.z) >= projPos.y) {
       gs->projectiles.active[i] = false;
+      spawnParticle(gs, prevPos, 5, 2);
       continue;
     }
 
@@ -752,7 +772,8 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
         continue;
 
       if (ProjectileIntersectsEntityOBB(gs, i, MakeEntityID(ET_STATIC, s))) {
-        printf("PROJECTILE: hit static\n");
+        printf("PROJECTILE: hit Static ID %d\n", s);
+        spawnParticle(gs, prevPos, 1, 1);
         gs->projectiles.active[i] = false;
         break;
       }
@@ -768,9 +789,10 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
         continue;
 
       if (ProjectileIntersectsEntityOBB(gs, i, MakeEntityID(ET_ACTOR, e))) {
+        spawnParticle(gs, prevPos, 2, 1);
         gs->projectiles.active[i] = false;
 
-        printf("PROJECTILE: hit Actor\n");
+        printf("PROJECTILE: hit Actor ID %d\n", e);
 
         if (gs->em.masks[e] & C_HITPOINT_TAG) {
           gs->components.hitPoints[e] -= 50.0f;
@@ -780,6 +802,20 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
         }
         break;
       }
+    }
+  }
+}
+
+void UpdateParticles(GameState_t *gs, float dt) {
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    if (!gs->particles.active[i])
+      continue;
+
+    gs->particles.lifetimes[i] -= dt;
+
+    if (gs->particles.lifetimes[i] <= 0.0f) {
+      printf("PARTICLE died\n");
+      gs->particles.active[i] = false;
     }
   }
 }
@@ -1168,6 +1204,67 @@ void DrawProjectiles(GameState_t *gs) {
   }
 }
 
+float ParticleBaseSize(int type) {
+  switch (type) {
+  case 0:
+    return 5.0f; //
+  case 1:
+    return 1.0f; //
+  case 2:
+    return 2.5f; //
+  case 3:
+    return 2.0f; //
+  default:
+    return 1.0f;
+  }
+}
+
+void DrawParticles(ParticlePool_t *pp) {
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+
+    if (!pp->active[i])
+      continue;
+
+    int type = pp->types[i];
+    Vector3 pos = pp->positions[i];
+    float life = pp->lifetimes[i];
+    float startLife = pp->startLifetimes[i];
+
+    if (startLife <= 0.0f)
+      continue; // safety
+
+    // t = remaining life fraction (1 → 0)
+    float t = life / startLife;
+
+    // Size shrinks linearly
+    float baseSize = ParticleBaseSize(type);
+    float size = baseSize * t; // size goes from baseSize → 0
+
+    // Fade out linearly
+    float alpha = t; // 1 → 0
+
+    Color c = WHITE;
+    switch (type) {
+    case 0: // default
+      c = WHITE;
+      break;
+
+    case 1: // smoke
+      c = (Color){160*0.8, 160*0.8, 180*0.8, 255};
+      break;
+
+    case 2: // desert dust
+      c = (Color){194, 178, 128, 255};
+      break;
+    }
+
+    c.a = (unsigned char)(alpha * 255);
+
+    // Render
+    DrawSphereEx(pos, size, 8, 8, c);
+  }
+}
+
 void DrawRaycasts(GameState_t *gs) {
   for (int i = 0; i < gs->em.count; i++) {
     if (!gs->em.alive[i])
@@ -1260,6 +1357,8 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   // --- Draw all entities ---
   DrawProjectiles(gs);
+
+  DrawParticles(&gs->particles);
 
   for (int i = 0; i < gs->em.count; i++) {
     Vector3 entityPos = gs->components.positions[i];
@@ -1444,6 +1543,7 @@ void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
     UpdateTorsoRecoil(&gs->components.modelCollections[gs->playerId], 1, dt);
 
     PhysicsSystem(gs, dt);
+    UpdateParticles(gs, dt);
 
     RenderSystem(gs, *camera);
 

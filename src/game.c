@@ -305,25 +305,25 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   mc->rotLocks[2][1] = true;
   mc->rotLocks[2][2] = false;
 
-  Mesh cockpitRoof = GenMeshCube(10.0f, 2.0f, 10.0f);
-  mc->models[3] = LoadModelFromMesh(cockpitRoof);
-  mc->models[3].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
-  mc->offsets[3] = (Vector3){0, 4, 0};
-  mc->parentIds[3] = 1;
+  // Mesh cockpitRoof = GenMeshCube(10.0f, 2.0f, 10.0f);
+  // mc->models[3] = LoadModelFromMesh(cockpitRoof);
+  // mc->models[3].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
+  // mc->offsets[3] = (Vector3){0, 4, 0};
+  // mc->parentIds[3] = 1;
 
-  mc->rotLocks[3][0] = true;
-  mc->rotLocks[3][1] = true;
-  mc->rotLocks[3][2] = false;
+  // mc->rotLocks[3][0] = true;
+  // mc->rotLocks[3][1] = true;
+  // mc->rotLocks[3][2] = false;
 
-  Mesh cockpitFloor = GenMeshCube(10.0f, 2.0f, 10.0f);
-  mc->models[4] = LoadModelFromMesh(cockpitFloor);
-  mc->models[4].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
-  mc->offsets[4] = (Vector3){0, -3.5, 0};
-  mc->parentIds[4] = 1;
+  // Mesh cockpitFloor = GenMeshCube(10.0f, 2.0f, 10.0f);
+  // mc->models[4] = LoadModelFromMesh(cockpitFloor);
+  // mc->models[4].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
+  // mc->offsets[4] = (Vector3){0, -3.5, 0};
+  // mc->parentIds[4] = 1;
 
-  mc->rotLocks[4][0] = true;
-  mc->rotLocks[4][1] = true;
-  mc->rotLocks[4][2] = false;
+  // mc->rotLocks[4][0] = true;
+  // mc->rotLocks[4][1] = true;
+  // mc->rotLocks[4][2] = false;
 
   // initialize rayCount and add a muzzle ray for the gun (model index 2)
   gs->components.rayCounts[e] = 0;
@@ -413,7 +413,7 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
                     C_GRAVITY;
   gs->components.positions[e] = pos;
   gs->components.types[e] = ENTITY_TURRET;
-  gs->components.hitPoints[e] = 100.0f;
+  gs->components.hitPoints[e] = 200.0f;
 
   // visual models (base + barrel)
   ModelCollection_t *mc = &gs->components.modelCollections[e];
@@ -573,6 +573,13 @@ GameState_t InitGame(void) {
     gs.projectiles.radii[i] = 1.0f; // default bullet size
     gs.projectiles.owners[i] = -1;
     gs.projectiles.types[i] = -1;
+  }
+
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    gs.particles.active[i] = false;
+    gs.particles.lifetimes[i] = 0;
+    gs.particles.positions[i] = Vector3Zero();
+    gs.particles.types[i] = -1;
   }
 
   return gs;

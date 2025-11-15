@@ -16,6 +16,7 @@
 #define MAX_ENTITIES 256 // can be increased later
 #define MAX_STATICS 256
 #define MAX_PROJECTILES 1024
+#define MAX_PARTICLES 2048
 
 #define ENTITY_TYPE_SHIFT 30
 #define ENTITY_INDEX_MASK 0x3FFFFFFF
@@ -186,6 +187,17 @@ typedef struct {
 
 } StaticPool_t;
 
+typedef struct {
+
+  int types[MAX_PARTICLES];
+  bool active[MAX_PARTICLES];
+
+  Vector3 positions[MAX_PARTICLES];
+  float lifetimes[MAX_PARTICLES];
+  float startLifetimes[MAX_PARTICLES];
+
+} ParticlePool_t;
+
 //----------------------------------------
 // Game State
 //----------------------------------------
@@ -196,6 +208,8 @@ typedef struct {
   ProjectilePool_t projectiles;
 
   StaticPool_t statics;
+
+  ParticlePool_t particles;
 
   int playerId;
   AllState_t state;
