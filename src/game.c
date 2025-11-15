@@ -361,7 +361,9 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   Mesh hitbox1 = GenMeshCube(4, 10, 4);
   hit->models[0] = LoadModelFromMesh(hitbox1);
   hit->offsets[0] = (Vector3){0, 2, 0};
-  return e;
+
+  entity_t id = MakeEntityID(ET_STATIC, e);
+  return id;
 }
 
 static int CreateStatic(GameState_t *gs, Vector3 pos, Vector3 size, Color c) {
@@ -399,7 +401,8 @@ static int CreateStatic(GameState_t *gs, Vector3 pos, Vector3 size, Color c) {
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
 
-  return i;
+  entity_t id = MakeEntityID(ET_STATIC, i);
+  return id;
 }
 
 static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
@@ -441,7 +444,8 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   gs->components.firerate[e] = (float *)malloc(sizeof(float) * 1);
   gs->components.firerate[e][0] = 0.4f;
 
-  return e;
+  entity_t id = MakeEntityID(ET_STATIC, e);
+  return id;
 }
 
 static entity_t CreateMech(GameState_t *gs, Vector3 pos) {
@@ -483,7 +487,8 @@ static entity_t CreateMech(GameState_t *gs, Vector3 pos) {
   gs->components.firerate[e] = (float *)malloc(sizeof(float) * 1);
   gs->components.firerate[e][0] = 0.4f;
 
-  return e;
+  entity_t id = MakeEntityID(ET_STATIC, e);
+  return id;
 }
 
 float GetTerrainHeightAtPosition(Terrain_t *terrain, float wx, float wz) {
@@ -529,7 +534,7 @@ GameState_t InitGame(void) {
   BuildHeightmap(&gs.terrain);
 
   // create player at origin-ish
-  gs.playerId = CreatePlayer(&gs, (Vector3){0, 10.0f, 0});
+  gs.playerId = GetEntityIndex(CreatePlayer(&gs, (Vector3){0, 10.0f, 0}));
 
   // create a bunch of simple houses/walls
   int numStatics = 100;

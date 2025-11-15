@@ -6,8 +6,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define HEIGHTMAP_RES_X 1024
-#define HEIGHTMAP_RES_Z 1024
+#define HEIGHTMAP_RES_X 512
+#define HEIGHTMAP_RES_Z 512
 
 #define MAX_RAYS_PER_ENTITY 8
 #define TERRAIN_SIZE 200
@@ -16,6 +16,9 @@
 #define MAX_ENTITIES 256 // can be increased later
 #define MAX_STATICS 256
 #define MAX_PROJECTILES 1024
+
+#define ENTITY_TYPE_SHIFT 30
+#define ENTITY_INDEX_MASK 0x3FFFFFFF
 
 //----------------------------------------
 // Terrain
@@ -42,6 +45,13 @@ typedef struct {
 //----------------------------------------
 // Entity Types
 //----------------------------------------
+
+typedef enum {
+  ET_ACTOR = 0,
+  ET_STATIC = 1,
+  ET_PROJECTILE = 2,
+} EntityCategory_t;
+
 typedef enum {
   ENTITY_PLAYER,
   ENTITY_MECH,
@@ -199,3 +209,14 @@ typedef struct {
 //----------------------------------------
 GameState_t InitGame(void);
 Vector3 ConvertOrientationToVector3(Orientation o);
+
+// Inline category ID helpers
+static inline entity_t MakeEntityID(EntityCategory_t cat, int index) {
+  return ((uint32_t)cat << ENTITY_TYPE_SHIFT) | (index & ENTITY_INDEX_MASK);
+}
+
+static inline EntityCategory_t GetEntityCategory(entity_t id) {
+  return (EntityCategory_t)(id >> ENTITY_TYPE_SHIFT);
+}
+
+static inline int GetEntityIndex(entity_t id) { return id & ENTITY_INDEX_MASK; }

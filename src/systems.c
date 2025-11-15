@@ -672,32 +672,51 @@ bool SphereIntersectsOBB(Vector3 sphereCenter, float radius, Vector3 boxCenter,
 }
 
 // Check if projectile intersects entity's collision OBB
-bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex, int eid) {
-  ModelCollection_t *col = &gs->components.hitboxCollections[eid];
-  if (col->countModels <= 0)
+bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex, entity_t eid) {
+    EntityCategory_t cat = GetEntityCategory(eid);
+    int idx = GetEntityIndex(eid);
+
+    ModelCollection_t *col = NULL;
+
+    // figure out which hitboxes to read
+    switch (cat) {
+        case ET_ACTOR:
+            if (!gs->em.alive[idx]) return false;
+            col = &gs->components.hitboxCollections[idx];
+            break;
+        case ET_STATIC:
+            col = &gs->statics.hitboxCollections[idx];
+            break;
+        default:
+            return false; // projectiles or unknown
+    }
+
+    if (!col || col->countModels <= 0) return false;
+
+    Vector3 sphere = gs->projectiles.positions[projIndex];
+    float radius = gs->projectiles.radii[projIndex];
+
+    for (int m = 0; m < col->countModels; m++) {
+        Model model = col->models[m];
+        BoundingBox bbox = GetMeshBoundingBox(model.meshes[0]);
+
+        Vector3 halfExtents = Vector3Scale(Vector3Subtract(bbox.max, bbox.min), 0.5f);
+        Vector3 center = col->globalPositions[m];
+
+        Matrix rot = MatrixRotateXYZ((Vector3){
+            col->globalOrientations[m].pitch,
+            col->globalOrientations[m].yaw,
+            col->globalOrientations[m].roll
+        });
+
+        if (SphereIntersectsOBB(sphere, radius, center, halfExtents, rot))
+            return true;
+    }
+
     return false;
-
-  Vector3 sphere = gs->projectiles.positions[projIndex];
-  float radius = gs->projectiles.radii[projIndex];
-
-  for (int m = 0; m < col->countModels; m++) {
-    Model model = col->models[m];
-    BoundingBox bbox = GetMeshBoundingBox(model.meshes[0]);
-
-    Vector3 halfExtents =
-        Vector3Scale(Vector3Subtract(bbox.max, bbox.min), 0.5f);
-    Vector3 center = col->globalPositions[m];
-
-    Matrix rot = MatrixRotateXYZ((Vector3){col->globalOrientations[m].pitch,
-                                           col->globalOrientations[m].yaw,
-                                           col->globalOrientations[m].roll});
-
-    if (SphereIntersectsOBB(sphere, radius, center, halfExtents, rot))
-      return true;
-  }
-
-  return false;
 }
+
+
 
 void UpdateProjectiles(GameState_t *gs, float dt) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
@@ -727,6 +746,18 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
       continue;
     }
 
+    // ===== STATIC COLLISION =====
+    for (int s = 0; s < MAX_STATICS; s++) {
+      if (!gs->statics.modelCollections[s].countModels)
+        continue;
+
+      if (ProjectileIntersectsEntityOBB(gs, i, MakeEntityID(ET_STATIC, s))) {
+        printf("PROJECTILE: hit static\n");
+        gs->projectiles.active[i] = false;
+        break;
+      }
+    }
+
     // ===== ENTITY COLLISION =====
     for (int e = 0; e < gs->em.count; e++) {
       if (!(gs->em.masks[e] & C_HITBOX))
@@ -736,8 +767,10 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
       if (e == gs->projectiles.owners[i])
         continue;
 
-      if (ProjectileIntersectsEntityOBB(gs, i, e)) {
+      if (ProjectileIntersectsEntityOBB(gs, i, MakeEntityID(ET_ACTOR, e))) {
         gs->projectiles.active[i] = false;
+
+        printf("PROJECTILE: hit Actor\n");
 
         if (gs->em.masks[e] & C_HITPOINT_TAG) {
           gs->components.hitPoints[e] -= 50.0f;
@@ -748,19 +781,9 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
         break;
       }
     }
-
-    // ===== STATIC COLLISION =====
-    for (int s = 0; s < MAX_STATICS; s++) {
-      if (!gs->statics.modelCollections[s].countModels)
-        continue;
-
-      if (ProjectileIntersectsEntityOBB(gs, i, s)) {
-        gs->projectiles.active[i] = false;
-        break;
-      }
-    }
   }
 }
+
 // TODO currently just checks collisions of player
 void PhysicsSystem(GameState_t *gs, float dt) {
   Vector3 *pos = gs->components.positions;
