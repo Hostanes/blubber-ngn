@@ -143,7 +143,116 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
 
   terrain->model = LoadModel("assets/models/terrain.glb");
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
-  terrain->mesh = terrain->model.meshes[0]; // assuming single mesh
+  terrain->mesh = terrain->model.meshes[0];
+
+  BoundingBox bb = GetMeshBoundingBox(terrain->mesh);
+
+  terrain->minX = bb.min.x;
+  terrain->minZ = bb.min.z;
+
+  terrain->worldWidth = bb.max.x - bb.min.x;
+  terrain->worldLength = bb.max.z - bb.min.z;
+
+  terrain->hmWidth = HEIGHTMAP_RES_X;
+  terrain->hmHeight = HEIGHTMAP_RES_Z;
+
+  terrain->cellSizeX = terrain->worldWidth / (float)(terrain->hmWidth - 1);
+  terrain->cellSizeZ = terrain->worldLength / (float)(terrain->hmHeight - 1);
+
+  terrain->height =
+      malloc(sizeof(float) * terrain->hmWidth * terrain->hmHeight);
+  memset(terrain->height, 0,
+         sizeof(float) * terrain->hmWidth * terrain->hmHeight);
+}
+
+static void BuildHeightmap(Terrain_t *terrain) {
+  Mesh *m = &terrain->mesh;
+
+  const float minX = terrain->minX;
+  const float minZ = terrain->minZ;
+
+  const int w = terrain->hmWidth;
+  const int h = terrain->hmHeight;
+
+  const float dx = terrain->cellSizeX;
+  const float dz = terrain->cellSizeZ;
+
+  // Clear heightmap to a very low number
+  for (int i = 0; i < w * h; i++)
+    terrain->height[i] = -99999.0f;
+
+  Vector3 *verts = (Vector3 *)m->vertices;
+  unsigned short *indices = (unsigned short *)m->indices;
+
+  // Loop triangles
+  for (int t = 0; t < m->triangleCount; t++) {
+    int i0 = indices[t * 3 + 0];
+    int i1 = indices[t * 3 + 1];
+    int i2 = indices[t * 3 + 2];
+
+    Vector3 v0 = verts[i0];
+    Vector3 v1 = verts[i1];
+    Vector3 v2 = verts[i2];
+
+    // Compute triangle AABB in grid space
+    float minTx = fminf(v0.x, fminf(v1.x, v2.x));
+    float maxTx = fmaxf(v0.x, fmaxf(v1.x, v2.x));
+    float minTz = fminf(v0.z, fminf(v1.z, v2.z));
+    float maxTz = fmaxf(v0.z, fmaxf(v1.z, v2.z));
+
+    int ix0 = (int)((minTx - minX) / dx);
+    int ix1 = (int)((maxTx - minX) / dx);
+    int iz0 = (int)((minTz - minZ) / dz);
+    int iz1 = (int)((maxTz - minZ) / dz);
+
+    // Clamp range to heightmap
+    if (ix0 < 0)
+      ix0 = 0;
+    if (iz0 < 0)
+      iz0 = 0;
+    if (ix1 >= w)
+      ix1 = w - 1;
+    if (iz1 >= h)
+      iz1 = h - 1;
+
+// Barycentric helper fn
+#define BARY(u, v, w, a, b, c) (u * a + v * b + w * c)
+
+    // Iterate over heightmap cells overlapped by the triangle
+    for (int iz = iz0; iz <= iz1; iz++) {
+      for (int ix = ix0; ix <= ix1; ix++) {
+        float wx = minX + ix * dx;
+        float wz = minZ + iz * dz;
+
+        // Barycentric coordinates
+        Vector2 p = {wx, wz};
+        Vector2 a = {v0.x, v0.z};
+        Vector2 b = {v1.x, v1.z};
+        Vector2 c = {v2.x, v2.z};
+
+        float denom = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+        if (fabsf(denom) < 1e-6f)
+          continue; // Degenerate triangle
+
+        float u =
+            ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / denom;
+        float v =
+            ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / denom;
+        float wB = 1.0f - u - v;
+
+        // Outside triangle?
+        if (u < 0 || v < 0 || wB < 0)
+          continue;
+
+        // Interpolate height
+        float hy = BARY(u, v, wB, v0.y, v1.y, v2.y);
+
+        float *cell = &terrain->height[iz * w + ix];
+        if (hy > *cell)
+          *cell = hy;
+      }
+    }
+  }
 }
 
 // -----------------------------------------------
@@ -316,6 +425,48 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   // hitbox
   ModelCollection_t *hb = &gs->components.hitboxCollections[e];
   *hb = InitModelCollection(1);
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(10, 10, 10));
+  hb->offsets[0] = Vector3Zero();
+  hb->parentIds[0] = -1;
+
+  // ray: attach to barrel (model 1) muzzle
+  gs->components.rayCounts[e] = 0;
+  AddRayToEntity(gs, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+
+  // cooldown & firerate
+  gs->components.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+  gs->components.cooldowns[e][0] = 0.0f;
+  gs->components.firerate[e] = (float *)malloc(sizeof(float) * 1);
+  gs->components.firerate[e][0] = 0.4f;
+
+  return e;
+}
+
+static entity_t CreateMech(GameState_t *gs, Vector3 pos) {
+  entity_t e = gs->em.count++;
+  gs->em.alive[e] = 1;
+  gs->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
+                    C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
+                    C_GRAVITY;
+  gs->components.positions[e] = pos;
+  gs->components.types[e] = ENTITY_MECH;
+  gs->components.hitPoints[e] = 100.0f;
+
+  // visual models (base + barrel)
+  ModelCollection_t *mc = &gs->components.modelCollections[e];
+  *mc = InitModelCollection(2);
+
+  mc->models[0] = LoadModelFromMesh(GenMeshCylinder(2.0f, 5.0f, 5));
+  mc->offsets[0] = (Vector3){0, 0, 0};
+  mc->parentIds[0] = -1;
+
+  mc->models[1] = LoadModelFromMesh(GenMeshCube(1.0f, 1.0f, 6.0f));
+  mc->offsets[1] = (Vector3){0, 5.0f, 3.0f};
+  mc->parentIds[1] = 0;
+
+  // hitbox
+  ModelCollection_t *hb = &gs->components.hitboxCollections[e];
+  *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(20, 20, 20));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
@@ -331,6 +482,26 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   gs->components.firerate[e][0] = 0.4f;
 
   return e;
+}
+
+float GetTerrainHeightAtPosition(Terrain_t *terrain, float wx, float wz) {
+
+  float minX = terrain->minX;
+  float minZ = terrain->minZ;
+
+  int ix = (int)((wx - minX) / terrain->cellSizeX);
+  int iz = (int)((wz - minZ) / terrain->cellSizeZ);
+
+  if (ix < 0)
+    ix = 0;
+  if (iz < 0)
+    iz = 0;
+  if (ix >= terrain->hmWidth)
+    ix = terrain->hmWidth - 1;
+  if (iz >= terrain->hmHeight)
+    iz = terrain->hmHeight - 1;
+
+  return terrain->height[iz * terrain->hmWidth + ix];
 }
 
 // -----------------------------------------------
@@ -351,6 +522,8 @@ GameState_t InitGame(void) {
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
   InitTerrain(&gs, sandTex);
 
+  BuildHeightmap(&gs.terrain);
+
   // create player at origin-ish
   gs.playerId = CreatePlayer(&gs, (Vector3){0, 10.0f, 0});
 
@@ -365,7 +538,7 @@ GameState_t InitGame(void) {
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
     float z =
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
-    float y = height / 2.0f;
+    float y = GetTerrainHeightAtPosition(&gs.terrain, x, z) / 2.0f;
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255),

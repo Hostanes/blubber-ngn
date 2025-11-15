@@ -6,6 +6,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define HEIGHTMAP_RES_X 1024
+#define HEIGHTMAP_RES_Z 1024
+
 #define MAX_RAYS_PER_ENTITY 8
 #define TERRAIN_SIZE 200
 #define TERRAIN_SCALE 10.0f
@@ -20,6 +23,20 @@
 typedef struct {
   Mesh mesh;
   Model model;
+
+  float *height; // 2d array of height info stored as 1D
+
+  float minX;
+  float minZ;
+
+  int hmWidth;
+  int hmHeight;
+
+  float cellSizeX;
+  float cellSizeZ;
+
+  float worldWidth;
+  float worldLength;
 } Terrain_t;
 
 //----------------------------------------

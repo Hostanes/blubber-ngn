@@ -14,8 +14,6 @@
 #include <stdlib.h>
 
 #define BOB_AMOUNT 0.5f
-#define WORLD_SIZE_X 10
-#define WORLD_SIZE_Z 10
 
 #define GRAVITY 20.0f // units per second²
 #define TERMINAL_VELOCITY 50.0f
@@ -441,27 +439,31 @@ void DecrementCooldowns(GameState_t *gs, float dt) {
 // Terrain Collision: Keep entity on ground
 //----------------------------------------
 
-float GetTerrainHeightAtPoint(GameState_t *gs, Vector3 point) {
-  // Cast a ray downward from above the point
-  Vector3 rayStart = (Vector3){point.x, point.y + 1000.0f, point.z};
-  Ray ray = {rayStart, (Vector3){0, -1, 0}};
+float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz) {
 
-  RayCollision col =
-      GetRayCollisionMesh(ray, gs->terrain.mesh, MatrixIdentity());
+  float minX = terrain->minX;
+  float minZ = terrain->minZ;
 
-  if (col.hit) {
-    // terrain collision point: start + direction * distance
-    return rayStart.y + ray.direction.y * col.distance;
-  }
+  int ix = (int)((wx - minX) / terrain->cellSizeX);
+  int iz = (int)((wz - minZ) / terrain->cellSizeZ);
 
-  // fallback if nothing below
-  return 0.0f;
+  if (ix < 0)
+    ix = 0;
+  if (iz < 0)
+    iz = 0;
+  if (ix >= terrain->hmWidth)
+    ix = terrain->hmWidth - 1;
+  if (iz >= terrain->hmHeight)
+    iz = terrain->hmHeight - 1;
+
+  return terrain->height[iz * terrain->hmWidth + ix];
 }
 
 static float GetTerrainHeightAtEntity(GameState_t *gs, entity_t entity) {
 
   Vector3 pos = gs->components.positions[entity];
-  return GetTerrainHeightAtPoint(gs, pos);
+  return GetTerrainHeightAtXZ(&gs->terrain, gs->components.positions[entity].x,
+                              gs->components.positions[entity].z);
 }
 
 void ApplyTerrainCollision(GameState_t *gs, int entityId, float dt) {
@@ -689,7 +691,7 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
     Vector3 projPos = gs->projectiles.positions[i];
 
     // ===== TERRAIN COLLISION =====
-    if (GetTerrainHeightAtPoint(gs, projPos) >= projPos.y) {
+    if (GetTerrainHeightAtXZ(&gs->terrain, projPos.x, projPos.z) >= projPos.y) {
       gs->projectiles.active[i] = false;
       continue;
     }
@@ -728,7 +730,7 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
     }
   }
 }
-// TODO currently just checks collisions of player 
+// TODO currently just checks collisions of player
 void PhysicsSystem(GameState_t *gs, float dt) {
   Vector3 *pos = gs->components.positions;
   Vector3 *vel = gs->components.velocities;
@@ -794,6 +796,95 @@ void PhysicsSystem(GameState_t *gs, float dt) {
 // ---------------- TURRET AI SYSTEM ----------------
 
 void TurretAISystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
+  int playerId = gs->playerId;
+  Vector3 playerPos = gs->components.positions[playerId];
+
+  const float engageRange = 500.0f; // turrets become idle beyond this range
+  const float minAccuracy = 0.6f;   // worst accuracy
+  const float maxAccuracy = 1.0f;   // best accuracy at close range
+
+  for (int i = 0; i < gs->em.count; i++) {
+    if (!gs->em.alive[i])
+      continue;
+    if (!(gs->em.masks[i] & C_TURRET_BEHAVIOUR_1))
+      continue;
+
+    Vector3 turretPos = gs->components.positions[i];
+    ModelCollection_t *turretModels = &gs->components.modelCollections[i];
+
+    Orientation *base = &turretModels->orientations[0];
+    Orientation *barrel = &turretModels->orientations[1];
+
+    // --- Distance and accuracy falloff ---
+    Vector3 toPlayer = Vector3Subtract(playerPos, turretPos);
+    float distanceToPlayer = Vector3Length(toPlayer);
+
+    // If far away, idle (look straight up)
+    if (distanceToPlayer > engageRange) {
+      base->yaw =
+          Lerp(base->yaw, 0.0f, dt * 1.0f); // slowly return to neutral yaw
+      barrel->pitch =
+          Lerp(barrel->pitch, -PI / 2.0f, dt * 1.0f); // look straight up
+      continue;
+    }
+
+    // Scale accuracy with distance
+    float distRatio = distanceToPlayer / engageRange; // 0 near, 1 at max
+    float accuracy = maxAccuracy - (maxAccuracy - minAccuracy) * distRatio;
+    if (accuracy < minAccuracy)
+      accuracy = minAccuracy;
+
+    // --- Aim at player ---
+    float maxOffsetAngle =
+        (1.0f - accuracy) * (PI / 4.0f); // less accurate = larger offset
+    float yawOffset = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
+    float pitchOffset =
+        ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
+
+    float targetYaw = atan2f(toPlayer.z, toPlayer.x) - PI / 2.0f + yawOffset;
+    float targetPitch =
+        atan2f(toPlayer.y,
+               Vector3Length((Vector3){toPlayer.x, 0, toPlayer.z})) +
+        pitchOffset;
+
+    // --- Smooth rotate ---
+    float yawDiff = targetYaw - base->yaw;
+    if (yawDiff > PI)
+      yawDiff -= 2 * PI;
+    if (yawDiff < -PI)
+      yawDiff += 2 * PI;
+    base->yaw += yawDiff * dt * 4.0f;
+
+    barrel->pitch = Lerp(barrel->pitch, targetPitch, dt * 2.0f);
+
+    // --- Check if aimed ---
+    float maxAllowedError = (1.0f - accuracy) * (PI / 12.0f);
+    bool yawAligned = fabsf(yawDiff) < maxAllowedError;
+    bool pitchAligned = fabsf(barrel->pitch - targetPitch) < maxAllowedError;
+
+    // --- Optional random misses ---
+    if (accuracy < 1.0f) {
+      float missChance = 1.0f - accuracy;
+      if (((float)rand() / RAND_MAX) < missChance) {
+        yawAligned = false;
+        pitchAligned = false;
+      }
+    }
+
+    // --- Fire if aligned ---
+    if (yawAligned && pitchAligned && gs->components.cooldowns[i][0] <= 0.0f) {
+      gs->components.cooldowns[i][0] = gs->components.firerate[i][0];
+      UpdateRayCastToModel(gs, &gs->components.raycasts[i][0], i, 1);
+      QueueSound(soundSys, SOUND_WEAPON_FIRE, turretPos, 0.3f, 1.0f);
+
+      bool hit = CheckRaycastCollision(gs, &gs->components.raycasts[i][0], i);
+      if (hit)
+        printf("Turret %d hit something!\n", i);
+    }
+  }
+}
+
+void MechAISystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
   int playerId = gs->playerId;
   Vector3 playerPos = gs->components.positions[playerId];
 
