@@ -5,24 +5,24 @@
 ```
 
 # TODO list
-- [ ] Implement custom 3d models
+- [x] Implement custom 3d models
 - [x] Movement
 	- [x] Independent leg and torso
 	- [x] head bobbing 
 	- [ ] Dashing
 	- [x] Sound effects 
 	- [ ] Animations
-- [ ] Ground heightmap and collisions
-- [ ] Primitive shape collisions
-- [ ] Weapon shooting and shootable targets
-- [ ] Enemies
-	- [ ] Turrets
+- [x] Ground heightmap and collisions
+- [x] Primitive shape collisions
+- [x] Weapon shooting and shootable targets
+- [x] Enemies
+	- [x] Turrets
 	- [ ] Tanks
 	- [ ] Raptors
 	- [ ] Bosses
-- [ ] Textures
+- [x] Textures
 - [ ] Outlines using inverse hull method
-- [ ] Custom UI
+- [x] Custom UI
 - [ ] Music
 
 

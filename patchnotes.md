@@ -1,2 +1,4 @@
 
-ADDED: UI representation of torso and leg angle difference
+
+been forgetting to edit this
+will reuse this at a later date when it matters more
