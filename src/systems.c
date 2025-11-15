@@ -438,25 +438,56 @@ void DecrementCooldowns(GameState_t *gs, float dt) {
 //----------------------------------------
 // Terrain Collision: Keep entity on ground
 //----------------------------------------
-
+// Bilinear intrepolates between the 4 nearest cells of the heightmap
 float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz) {
-
+  // terrain origin in world space
   float minX = terrain->minX;
   float minZ = terrain->minZ;
 
-  int ix = (int)((wx - minX) / terrain->cellSizeX);
-  int iz = (int)((wz - minZ) / terrain->cellSizeZ);
+  // size of one cell in world units
+  float dx = terrain->cellSizeX;
+  float dz = terrain->cellSizeZ;
 
+  // map world coordinates to floating-point heightmap coordinates
+  // fx and fz indicate **exact position inside the grid**, not just integers
+  float fx = (wx - minX) / dx;
+  float fz = (wz - minZ) / dz;
+
+  // integer indices of the top-left corner of the cell containing (wx, wz)
+  int ix = (int)floorf(fx);
+  int iz = (int)floorf(fz);
+
+  // clamp indices to avoid reading outside the heightmap
+  // we subtract 1 because we'll access (ix+1, iz+1) later
   if (ix < 0)
     ix = 0;
   if (iz < 0)
     iz = 0;
-  if (ix >= terrain->hmWidth)
-    ix = terrain->hmWidth - 1;
-  if (iz >= terrain->hmHeight)
-    iz = terrain->hmHeight - 1;
+  if (ix >= terrain->hmWidth - 1)
+    ix = terrain->hmWidth - 2;
+  if (iz >= terrain->hmHeight - 1)
+    iz = terrain->hmHeight - 2;
 
-  return terrain->height[iz * terrain->hmWidth + ix];
+  // fractional distance inside the cell along X and Z axes
+  // ranges from 0 to 1
+  float tx = fx - ix;
+  float tz = fz - iz;
+
+  // sample the four corners of the cell
+  float h00 = terrain->height[iz * terrain->hmWidth + ix];       // top-left
+  float h10 = terrain->height[iz * terrain->hmWidth + (ix + 1)]; // top-right
+  float h01 = terrain->height[(iz + 1) * terrain->hmWidth + ix]; // bottom-left
+  float h11 =
+      terrain->height[(iz + 1) * terrain->hmWidth + (ix + 1)]; // bottom-right
+
+  // linear interpolation along X for top and bottom rows
+  float h0 = h00 * (1.0f - tx) + h10 * tx; // top row
+  float h1 = h01 * (1.0f - tx) + h11 * tx; // bottom row
+
+  // linear interpolation along Z between top and bottom
+  float h = h0 * (1.0f - tz) + h1 * tz;
+
+  return h; // interpolated height at (wx, wz)
 }
 
 static float GetTerrainHeightAtEntity(GameState_t *gs, entity_t entity) {

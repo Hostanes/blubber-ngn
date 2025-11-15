@@ -147,6 +147,8 @@ void InitTerrain(GameState_t *gs, Texture2D sandTex) {
 
   BoundingBox bb = GetMeshBoundingBox(terrain->mesh);
 
+  // min are the origin of the bb, in this case origin is a corner, not the
+  // volumetric center
   terrain->minX = bb.min.x;
   terrain->minZ = bb.min.z;
 
@@ -501,6 +503,8 @@ float GetTerrainHeightAtPosition(Terrain_t *terrain, float wx, float wz) {
   if (iz >= terrain->hmHeight)
     iz = terrain->hmHeight - 1;
 
+  printf("STATIC INIT height %f\n",
+         terrain->height[iz * terrain->hmWidth + ix]);
   return terrain->height[iz * terrain->hmWidth + ix];
 }
 
@@ -538,7 +542,7 @@ GameState_t InitGame(void) {
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
     float z =
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs.terrain, x, z) / 2.0f;
+    float y = GetTerrainHeightAtPosition(&gs.terrain, x, z);
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255),
