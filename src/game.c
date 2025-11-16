@@ -574,30 +574,31 @@ void PrintGrid(EntityGrid_t *grid) {
 // InitGame: orchestrates initialization
 // -----------------------------------------------
 GameState_t InitGame(void) {
-  GameState_t gs;
-  memset(&gs, 0, sizeof(gs));
 
-  gs.em.count = 0;
-  memset(gs.em.alive, 0, sizeof(gs.em.alive));
-  memset(gs.em.masks, 0, sizeof(gs.em.masks));
+  GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
+  memset(gs, 0, sizeof(GameState_t));
 
-  gs.state = STATE_INLEVEL;
-  gs.pHeadbobTimer = 0.0f;
+  gs->em.count = 0;
+  memset(gs->em.alive, 0, sizeof(gs->em.alive));
+  memset(gs->em.masks, 0, sizeof(gs->em.masks));
+
+  gs->state = STATE_INLEVEL;
+  gs->pHeadbobTimer = 0.0f;
 
   // terrain
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-  InitTerrain(&gs, sandTex);
+  InitTerrain(gs, sandTex);
 
-  BuildHeightmap(&gs.terrain);
+  BuildHeightmap(&gs->terrain);
 
   float cellSize = GRID_CELL_SIZE;
-  AllocGrid(&gs.grid, &gs.terrain, cellSize);
+  AllocGrid(&gs->grid, &gs->terrain, cellSize);
 
   // create player at origin-ish
-  gs.playerId = GetEntityIndex(CreatePlayer(&gs, (Vector3){0, 10.0f, 0}));
+  gs->playerId = GetEntityIndex(CreatePlayer(gs, (Vector3){0, 10.0f, 0}));
 
   // create a bunch of simple houses/walls
-  int numStatics = 100;
+  int numStatics = 200;
   for (int i = 0; i < numStatics; i++) {
     float width = GetRandomValue(10, 40);
     float height = GetRandomValue(15, 55);
@@ -607,44 +608,44 @@ GameState_t InitGame(void) {
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
     float z =
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs.terrain, x, z);
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255), 255};
 
-    CreateStatic(&gs, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
+    CreateStatic(gs, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
   }
   // create a sample turret
-  CreateTurret(&gs, (Vector3){500.0f, 8.0f, 30.0f});
+  CreateTurret(gs, (Vector3){500.0f, 8.0f, 30.0f});
 
   // ensure rayCounts initialized for any entities that weren't touched
-  for (int i = 0; i < gs.em.count; i++) {
-    if (gs.components.rayCounts[i] == 0)
-      gs.components.rayCounts[i] = 0;
+  for (int i = 0; i < gs->em.count; i++) {
+    if (gs->components.rayCounts[i] == 0)
+      gs->components.rayCounts[i] = 0;
   }
 
   // Initialize projectile pool
   for (int i = 0; i < MAX_PROJECTILES; i++) {
-    gs.projectiles.active[i] = false;
-    gs.projectiles.positions[i] = Vector3Zero();
-    gs.projectiles.velocities[i] = Vector3Zero();
-    gs.projectiles.lifetimes[i] = 0.0f;
-    gs.projectiles.radii[i] = 1.0f; // default bullet size
-    gs.projectiles.owners[i] = -1;
-    gs.projectiles.types[i] = -1;
+    gs->projectiles.active[i] = false;
+    gs->projectiles.positions[i] = Vector3Zero();
+    gs->projectiles.velocities[i] = Vector3Zero();
+    gs->projectiles.lifetimes[i] = 0.0f;
+    gs->projectiles.radii[i] = 1.0f; // default bullet size
+    gs->projectiles.owners[i] = -1;
+    gs->projectiles.types[i] = -1;
   }
 
   for (int i = 0; i < MAX_PARTICLES; i++) {
-    gs.particles.active[i] = false;
-    gs.particles.lifetimes[i] = 0;
-    gs.particles.positions[i] = Vector3Zero();
-    gs.particles.types[i] = -1;
+    gs->particles.active[i] = false;
+    gs->particles.lifetimes[i] = 0;
+    gs->particles.positions[i] = Vector3Zero();
+    gs->particles.types[i] = -1;
   }
 
-  PopulateGridWithEntities(&gs.grid, &gs);
+  PopulateGridWithEntities(&gs->grid, gs);
 
-  PrintGrid(&gs.grid);
+  PrintGrid(&gs->grid);
 
-  return gs;
+  return *gs;
 }

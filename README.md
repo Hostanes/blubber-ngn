@@ -27,3 +27,41 @@
 
 
 # Blubber ngn
+
+Currently the engine and demo game are intertwined during development, refactoring is on the todo list
+
+## Installation
+
+Prerequisites:
+
+- GCC
+- CMake 3.16+
+- Raylib 4.0+ installed on your system
+
+
+```Bash
+git clone https://github.com/Hostanes/blubber-ngn.git
+cd blubber-ngn
+
+mkdir build
+cd build
+```
+
+configure using Cmake
+
+```Bash
+cmake ..
+```
+
+if raylib isnt found automatically you can specify its path manually:
+
+```Bash
+cmake -DRAYLIB_INCLUDE_DIR=/path/to/raylib/include \
+      -DRAYLIB_LIBRARY=/path/to/libraylib.a ..
+```
+
+```Bash
+cmake --build .
+```
+
+the executable will be in the bin/ directory

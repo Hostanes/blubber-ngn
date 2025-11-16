@@ -16,7 +16,7 @@
 #define TERRAIN_SCALE 10.0f
 
 #define MAX_ENTITIES 256 // can be increased later
-#define MAX_STATICS 256
+#define MAX_STATICS 2048
 #define MAX_PROJECTILES 1024
 #define MAX_PARTICLES 2048
 
