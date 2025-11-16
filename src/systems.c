@@ -770,43 +770,78 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
       continue;
     }
 
-    // ===== STATIC COLLISION =====
-    for (int s = 0; s < MAX_STATICS; s++) {
-      if (!gs->statics.modelCollections[s].countModels)
-        continue;
+    // ===== GRID CELL COORDS =====
+    int cx = (int)((projPos.x - gs->grid.minX) / gs->grid.cellSize);
+    int cz = (int)((projPos.z - gs->grid.minZ) / gs->grid.cellSize);
 
-      if (ProjectileIntersectsEntityOBB(gs, i, MakeEntityID(ET_STATIC, s))) {
-        printf("PROJECTILE: hit Static ID %d\n", s);
-        spawnParticle(gs, prevPos, 1, 1);
-        gs->projectiles.active[i] = false;
-        break;
-      }
-    }
+    // ===== STATIC COLLISION IN NEIGHBORING CELLS =====
+    for (int dx = -1; dx <= 1; dx++) {
+      for (int dz = -1; dz <= 1; dz++) {
+        int nx = cx + dx;
+        int nz = cz + dz;
+        if (!IsCellValid(&gs->grid, nx, nz))
+          continue;
 
-    // ===== ENTITY COLLISION =====
-    for (int e = 0; e < gs->em.count; e++) {
-      if (!(gs->em.masks[e] & C_HITBOX))
-        continue;
-      if (!gs->em.alive[e])
-        continue;
-      if (e == gs->projectiles.owners[i])
-        continue;
+        GridNode_t *node = &gs->grid.nodes[nx][nz];
+        for (int n = 0; n < node->count; n++) {
+          entity_t e = node->entities[n];
+          if (GetEntityCategory(e) != ET_STATIC)
+            continue;
 
-      if (ProjectileIntersectsEntityOBB(gs, i, MakeEntityID(ET_ACTOR, e))) {
-        spawnParticle(gs, prevPos, 2, 1);
-        gs->projectiles.active[i] = false;
+          int s = GetEntityIndex(e);
+          if (!gs->statics.modelCollections[s].countModels)
+            continue;
 
-        printf("PROJECTILE: hit Actor ID %d\n", e);
-
-        if (gs->em.masks[e] & C_HITPOINT_TAG) {
-          gs->components.hitPoints[e] -= 50.0f;
-          if (gs->components.hitPoints[e] <= 0) {
-            gs->em.alive[e] = 0;
+          if (ProjectileIntersectsEntityOBB(gs, i, e)) {
+            printf("PROJECTILE: hit Static ID %d\n", s);
+            spawnParticle(gs, prevPos, 1, 1);
+            gs->projectiles.active[i] = false;
+            goto next_projectile;
           }
         }
-        break;
       }
     }
+
+    // ===== ACTOR COLLISION IN NEIGHBORING CELLS =====
+    for (int dx = -1; dx <= 1; dx++) {
+      for (int dz = -1; dz <= 1; dz++) {
+        int nx = cx + dx;
+        int nz = cz + dz;
+        if (!IsCellValid(&gs->grid, nx, nz))
+          continue;
+
+        GridNode_t *node = &gs->grid.nodes[nx][nz];
+        for (int n = 0; n < node->count; n++) {
+          entity_t e = node->entities[n];
+          if (GetEntityCategory(e) != ET_ACTOR)
+            continue;
+
+          int idx = GetEntityIndex(e);
+          if (!(gs->em.masks[idx] & C_HITBOX))
+            continue;
+          if (!gs->em.alive[idx])
+            continue;
+          if (idx == gs->projectiles.owners[i])
+            continue;
+
+          if (ProjectileIntersectsEntityOBB(gs, i, e)) {
+            spawnParticle(gs, prevPos, 2, 1);
+            gs->projectiles.active[i] = false;
+
+            printf("PROJECTILE: hit Actor ID %d\n", idx);
+
+            if (gs->em.masks[idx] & C_HITPOINT_TAG) {
+              gs->components.hitPoints[idx] -= 50.0f;
+              if (gs->components.hitPoints[idx] <= 0)
+                gs->em.alive[idx] = 0;
+            }
+            goto next_projectile;
+          }
+        }
+      }
+    }
+
+  next_projectile:;
   }
 }
 
@@ -847,7 +882,7 @@ static void UpdateActorPosition(GameState_t *gs, int i, float dt) {
 }
 
 //----------------------------------------
-// Actor vs Actor collisions
+// Actor vs Actor collisions using grid
 //----------------------------------------
 static void ResolveActorCollisions(GameState_t *gs) {
   int emCount = gs->em.count;
@@ -863,33 +898,52 @@ static void ResolveActorCollisions(GameState_t *gs) {
           typeI == ENTITY_TANK))
       continue;
 
-    for (int j = 0; j < emCount; j++) {
-      if (i == j || !gs->em.alive[j])
-        continue;
+    // grid cell coordinates
+    int cx = (int)((pos[i].x - gs->grid.minX) / gs->grid.cellSize);
+    int cz = (int)((pos[i].z - gs->grid.minZ) / gs->grid.cellSize);
 
-      if (!(gs->em.masks[j] & C_COLLISION))
-        continue;
+    for (int dx = -1; dx <= 1; dx++) {
+      for (int dz = -1; dz <= 1; dz++) {
+        int nx = cx + dx;
+        int nz = cz + dz;
+        if (!IsCellValid(&gs->grid, nx, nz))
+          continue;
 
-      EntityType_t typeJ = gs->components.types[j];
-      if (!(typeJ == ENTITY_PLAYER || typeJ == ENTITY_MECH ||
-            typeJ == ENTITY_TANK))
-        continue;
+        GridNode_t *node = &gs->grid.nodes[nx][nz];
+        for (int n = 0; n < node->count; n++) {
+          entity_t e = node->entities[n];
+          if (GetEntityCategory(e) != ET_ACTOR)
+            continue;
 
-      if (CheckAndResolveOBBCollision(
-              &pos[i], &gs->components.collisionCollections[i], &pos[j],
-              &gs->components.collisionCollections[j])) {
+          int j = GetEntityIndex(e);
+          if (i == j || !gs->em.alive[j])
+            continue;
+          if (!(gs->em.masks[j] & C_COLLISION))
+            continue;
 
-        Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[i], pos[j]));
-        float velDot = Vector3DotProduct(vel[i], mtvDir);
-        if (velDot > 0.f)
-          vel[i] = Vector3Subtract(vel[i], Vector3Scale(mtvDir, velDot));
+          EntityType_t typeJ = gs->components.types[j];
+          if (!(typeJ == ENTITY_PLAYER || typeJ == ENTITY_MECH ||
+                typeJ == ENTITY_TANK))
+            continue;
+
+          // Check and resolve collision
+          if (CheckAndResolveOBBCollision(
+                  &pos[i], &gs->components.collisionCollections[i], &pos[j],
+                  &gs->components.collisionCollections[j])) {
+
+            Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[i], pos[j]));
+            float velDot = Vector3DotProduct(vel[i], mtvDir);
+            if (velDot > 0.f)
+              vel[i] = Vector3Subtract(vel[i], Vector3Scale(mtvDir, velDot));
+          }
+        }
       }
     }
   }
 }
 
 //----------------------------------------
-// Actor vs Static collisions
+// Actor vs Static collisions using grid
 //----------------------------------------
 static void ResolveActorStaticCollisions(GameState_t *gs) {
   int emCount = gs->em.count;
@@ -904,20 +958,41 @@ static void ResolveActorStaticCollisions(GameState_t *gs) {
     if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
       continue;
 
-    for (int s = 0; s < MAX_STATICS; s++) {
-      if (!gs->statics.modelCollections[s].countModels)
-        continue;
+    // grid cell coordinates
+    int cx = (int)((pos[i].x - gs->grid.minX) / gs->grid.cellSize);
+    int cz = (int)((pos[i].z - gs->grid.minZ) / gs->grid.cellSize);
 
-      if (CheckAndResolveOBBCollision(&pos[i],
-                                      &gs->components.collisionCollections[i],
-                                      &gs->statics.positions[s],
-                                      &gs->statics.collisionCollections[s])) {
+    for (int dx = -1; dx <= 1; dx++) {
+      for (int dz = -1; dz <= 1; dz++) {
+        int nx = cx + dx;
+        int nz = cz + dz;
+        if (!IsCellValid(&gs->grid, nx, nz))
+          continue;
 
-        Vector3 mtvDir =
-            Vector3Normalize(Vector3Subtract(pos[i], gs->statics.positions[s]));
-        float velDot = Vector3DotProduct(vel[i], mtvDir);
-        if (velDot > 0.f)
-          vel[i] = Vector3Subtract(vel[i], Vector3Scale(mtvDir, velDot));
+        GridNode_t *node = &gs->grid.nodes[nx][nz];
+        for (int n = 0; n < node->count; n++) {
+          entity_t e = node->entities[n];
+          if (GetEntityCategory(e) != ET_STATIC)
+            continue;
+
+          int s = GetEntityIndex(e);
+
+          if (!gs->statics.modelCollections[s].countModels)
+            continue;
+
+          // Check and resolve collision
+          if (CheckAndResolveOBBCollision(
+                  &pos[i], &gs->components.collisionCollections[i],
+                  &gs->statics.positions[s],
+                  &gs->statics.collisionCollections[s])) {
+
+            Vector3 mtvDir = Vector3Normalize(
+                Vector3Subtract(pos[i], gs->statics.positions[s]));
+            float velDot = Vector3DotProduct(vel[i], mtvDir);
+            if (velDot > 0.f)
+              vel[i] = Vector3Subtract(vel[i], Vector3Scale(mtvDir, velDot));
+          }
+        }
       }
     }
   }
