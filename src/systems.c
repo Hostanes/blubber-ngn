@@ -759,6 +759,10 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
 
     Vector3 projPos = gs->projectiles.positions[i];
 
+    // Update grid
+    GridRemoveEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), prevPos);
+    GridAddEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), projPos);
+
     // ===== TERRAIN COLLISION =====
     if (GetTerrainHeightAtXZ(&gs->terrain, projPos.x, projPos.z) >= projPos.y) {
       gs->projectiles.active[i] = false;
@@ -820,67 +824,136 @@ void UpdateParticles(GameState_t *gs, float dt) {
   }
 }
 
-// TODO currently just checks collisions of player
-void PhysicsSystem(GameState_t *gs, float dt) {
+//----------------------------------------
+// Update actor position with gravity, damping
+//----------------------------------------
+static void UpdateActorPosition(GameState_t *gs, int i, float dt) {
   Vector3 *pos = gs->components.positions;
   Vector3 *vel = gs->components.velocities;
-  int playerId = gs->playerId;
+  Vector3 *prevPos = gs->components.prevPositions;
 
-  // Movement with gravity
-  for (int i = 0; i < gs->em.count; i++) {
-    if (gs->em.masks[i] & C_GRAVITY) {
-      pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
-      ApplyTerrainCollision(gs, i, dt);
+  // Store previous position
+  prevPos[i] = pos[i];
+
+  // Gravity
+  if (gs->em.masks[i] & C_GRAVITY) {
+    pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
+    ApplyTerrainCollision(gs, i, dt);
+  }
+
+  // Damping horizontal velocity
+  vel[i].x *= 0.65f;
+  vel[i].z *= 0.65f;
+}
+
+//----------------------------------------
+// Actor vs Actor collisions
+//----------------------------------------
+static void ResolveActorCollisions(GameState_t *gs) {
+  int emCount = gs->em.count;
+  Vector3 *pos = gs->components.positions;
+  Vector3 *vel = gs->components.velocities;
+
+  for (int i = 0; i < emCount; i++) {
+    if (!gs->em.alive[i])
+      continue;
+
+    EntityType_t typeI = gs->components.types[i];
+    if (!(typeI == ENTITY_PLAYER || typeI == ENTITY_MECH ||
+          typeI == ENTITY_TANK))
+      continue;
+
+    for (int j = 0; j < emCount; j++) {
+      if (i == j || !gs->em.alive[j])
+        continue;
+
+      if (!(gs->em.masks[j] & C_COLLISION))
+        continue;
+
+      EntityType_t typeJ = gs->components.types[j];
+      if (!(typeJ == ENTITY_PLAYER || typeJ == ENTITY_MECH ||
+            typeJ == ENTITY_TANK))
+        continue;
+
+      if (CheckAndResolveOBBCollision(
+              &pos[i], &gs->components.collisionCollections[i], &pos[j],
+              &gs->components.collisionCollections[j])) {
+
+        Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[i], pos[j]));
+        float velDot = Vector3DotProduct(vel[i], mtvDir);
+        if (velDot > 0.f)
+          vel[i] = Vector3Subtract(vel[i], Vector3Scale(mtvDir, velDot));
+      }
     }
   }
+}
 
-  // Damping
-  for (int i = 0; i < gs->em.count; i++) {
-    vel[i].x *= 0.65f;
-    vel[i].z *= 0.65f;
+//----------------------------------------
+// Actor vs Static collisions
+//----------------------------------------
+static void ResolveActorStaticCollisions(GameState_t *gs) {
+  int emCount = gs->em.count;
+  Vector3 *pos = gs->components.positions;
+  Vector3 *vel = gs->components.velocities;
+
+  for (int i = 0; i < emCount; i++) {
+    if (!gs->em.alive[i])
+      continue;
+
+    EntityType_t type = gs->components.types[i];
+    if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
+      continue;
+
+    for (int s = 0; s < MAX_STATICS; s++) {
+      if (!gs->statics.modelCollections[s].countModels)
+        continue;
+
+      if (CheckAndResolveOBBCollision(&pos[i],
+                                      &gs->components.collisionCollections[i],
+                                      &gs->statics.positions[s],
+                                      &gs->statics.collisionCollections[s])) {
+
+        Vector3 mtvDir =
+            Vector3Normalize(Vector3Subtract(pos[i], gs->statics.positions[s]));
+        float velDot = Vector3DotProduct(vel[i], mtvDir);
+        if (velDot > 0.f)
+          vel[i] = Vector3Subtract(vel[i], Vector3Scale(mtvDir, velDot));
+      }
+    }
   }
+}
 
-  // Update bullets first
+//----------------------------------------
+// Main physics system
+//----------------------------------------
+void PhysicsSystem(GameState_t *gs, float dt) {
+  int emCount = gs->em.count;
+
+  // ===== Update projectiles =====
   UpdateProjectiles(gs, dt);
 
-  // ===== Actor x Actor =====
-  for (int e = 0; e < gs->em.count; e++) {
-    if (e == playerId)
-      continue;
-    if (!(gs->em.masks[e] & C_COLLISION))
-      continue;
-    if (!gs->em.alive[e])
+  // ===== Update actors =====
+  for (int i = 0; i < emCount; i++) {
+    if (!gs->em.alive[i])
       continue;
 
-    if (CheckAndResolveOBBCollision(
-            &pos[playerId], &gs->components.collisionCollections[playerId],
-            &pos[e], &gs->components.collisionCollections[e])) {
+    EntityType_t type = gs->components.types[i];
+    if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
+      continue;
 
-      Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[playerId], pos[e]));
-      float velDot = Vector3DotProduct(vel[playerId], mtvDir);
-      if (velDot > 0.f)
-        vel[playerId] =
-            Vector3Subtract(vel[playerId], Vector3Scale(mtvDir, velDot));
+    UpdateActorPosition(gs, i, dt);
+
+    // Reinsert into grid if moved
+    if (!Vector3Equals(gs->components.prevPositions[i],
+                       gs->components.positions[i])) {
+      // printf("updating entity position\n");
+      UpdateEntityInGrid(gs, MakeEntityID(ET_ACTOR, i));
     }
   }
 
-  // ===== Actor x Static =====
-  for (int s = 0; s < MAX_STATICS; s++) {
-    if (!gs->statics.modelCollections[s].countModels)
-      continue;
-
-    if (CheckAndResolveOBBCollision(
-            &pos[playerId], &gs->components.collisionCollections[playerId],
-            &gs->statics.positions[s], &gs->statics.collisionCollections[s])) {
-
-      Vector3 mtvDir = Vector3Normalize(
-          Vector3Subtract(pos[playerId], gs->statics.positions[s]));
-      float velDot = Vector3DotProduct(vel[playerId], mtvDir);
-      if (velDot > 0.f)
-        vel[playerId] =
-            Vector3Subtract(vel[playerId], Vector3Scale(mtvDir, velDot));
-    }
-  }
+  // ===== Resolve collisions =====
+  ResolveActorCollisions(gs);
+  ResolveActorStaticCollisions(gs);
 }
 
 // ---------------- TURRET AI SYSTEM ----------------
@@ -1250,7 +1323,7 @@ void DrawParticles(ParticlePool_t *pp) {
       break;
 
     case 1: // smoke
-      c = (Color){160*0.8, 160*0.8, 180*0.8, 255};
+      c = (Color){160 * 0.8, 160 * 0.8, 180 * 0.8, 255};
       break;
 
     case 2: // desert dust

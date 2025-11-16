@@ -3,8 +3,10 @@
 
 #pragma once
 #include "raylib.h"
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #define HEIGHTMAP_RES_X 512
 #define HEIGHTMAP_RES_Z 512
@@ -138,6 +140,7 @@ typedef struct {
 //----------------------------------------
 typedef struct {
   Vector3 positions[MAX_ENTITIES];
+  Vector3 prevPositions[MAX_ENTITIES];
   Vector3 velocities[MAX_ENTITIES];
 
   float stepCycle[MAX_ENTITIES];
@@ -199,6 +202,26 @@ typedef struct {
 } ParticlePool_t;
 
 //----------------------------------------
+// Entity Grid
+//----------------------------------------
+
+#define GRID_CELL_SIZE 100.0f
+#define MAX_GRID_NODES 32
+#define GRID_EMPTY -1
+
+typedef struct {
+  int entities[MAX_GRID_NODES]; // entity IDs in this cell
+  int count;
+} GridNode_t;
+
+typedef struct {
+  GridNode_t **nodes; // dynamic 2D array, malloced at init
+  float cellSize;
+  float minX, minZ;  // origin of the grid (corner)
+  int width, length; // number of cells along X and Z
+} EntityGrid_t;
+
+//----------------------------------------
 // Game State
 //----------------------------------------
 typedef struct {
@@ -216,6 +239,8 @@ typedef struct {
   float pHeadbobTimer;
 
   Terrain_t terrain;
+
+  EntityGrid_t grid;
 } GameState_t;
 
 //----------------------------------------
@@ -234,3 +259,111 @@ static inline EntityCategory_t GetEntityCategory(entity_t id) {
 }
 
 static inline int GetEntityIndex(entity_t id) { return id & ENTITY_INDEX_MASK; }
+
+//----------------------------------------
+// Grid Initialization
+//----------------------------------------
+static inline void AllocGrid(EntityGrid_t *grid, Terrain_t *terrain,
+                             float cellSize) {
+  grid->cellSize = cellSize;
+  grid->minX = terrain->minX;
+  grid->minZ = terrain->minZ;
+
+  // Compute grid size from terrain dimensions
+  grid->width = (int)ceilf(terrain->worldWidth / cellSize);
+  grid->length = (int)ceilf(terrain->worldLength / cellSize);
+
+  // Allocate nodes dynamically
+  grid->nodes = (GridNode_t **)malloc(grid->width * sizeof(GridNode_t *));
+  for (int x = 0; x < grid->width; x++) {
+    grid->nodes[x] = (GridNode_t *)malloc(grid->length * sizeof(GridNode_t));
+    for (int z = 0; z < grid->length; z++) {
+      grid->nodes[x][z].count = 0;
+      for (int i = 0; i < MAX_GRID_NODES; i++)
+        grid->nodes[x][z].entities[i] = GRID_EMPTY;
+    }
+  }
+}
+
+static inline void DestroyGrid(EntityGrid_t *grid) {
+  if (!grid->nodes)
+    return;
+  for (int x = 0; x < grid->width; x++)
+    free(grid->nodes[x]);
+  free(grid->nodes);
+  grid->nodes = NULL;
+  grid->width = grid->length = 0;
+}
+
+//----------------------------------------
+// Grid Helpers
+//----------------------------------------
+static inline bool IsCellValid(EntityGrid_t *grid, int x, int z) {
+  return x >= 0 && x < grid->width && z >= 0 && z < grid->length;
+}
+
+static inline void GridAddEntity(EntityGrid_t *grid, entity_t e, Vector3 pos) {
+  int ix = (int)((pos.x - grid->minX) / grid->cellSize);
+  int iz = (int)((pos.z - grid->minZ) / grid->cellSize);
+
+  if (!IsCellValid(grid, ix, iz))
+    return;
+
+  GridNode_t *node = &grid->nodes[ix][iz];
+  if (node->count < MAX_GRID_NODES) {
+    node->entities[node->count++] = e;
+  }
+}
+
+static inline void GridRemoveEntity(EntityGrid_t *grid, entity_t e,
+                                    Vector3 pos) {
+  int ix = (int)((pos.x - grid->minX) / grid->cellSize);
+  int iz = (int)((pos.z - grid->minZ) / grid->cellSize);
+
+  if (!IsCellValid(grid, ix, iz))
+    return;
+
+  GridNode_t *node = &grid->nodes[ix][iz];
+  for (int i = 0; i < node->count; i++) {
+    if (node->entities[i] == e) {
+      node->entities[i] = node->entities[--node->count];
+      node->entities[node->count] = GRID_EMPTY;
+      return;
+    }
+  }
+}
+
+static inline GridNode_t *FindGridNodeFromPosition(EntityGrid_t *grid,
+                                                   Vector3 pos) {
+  int ix = (int)((pos.x - grid->minX) / grid->cellSize);
+  int iz = (int)((pos.z - grid->minZ) / grid->cellSize);
+
+  if (!IsCellValid(grid, ix, iz))
+    return NULL;
+  return &grid->nodes[ix][iz];
+}
+
+static inline void UpdateEntityInGrid(GameState_t *gs, entity_t e) {
+  int idx = GetEntityIndex(e);
+  EntityType_t type = gs->components.types[idx];
+
+  if (type != ENTITY_PLAYER && type != ENTITY_MECH && type != ENTITY_TANK)
+    return;
+
+  Vector3 prevPos = gs->components.prevPositions[idx];
+  Vector3 currPos = gs->components.positions[idx];
+
+  GridRemoveEntity(&gs->grid, e, prevPos);
+
+  GridAddEntity(&gs->grid, e, currPos);
+
+  gs->components.prevPositions[idx] = currPos;
+}
+
+//----------------------------------------
+// Iterate over entities in a cell
+//----------------------------------------
+#define FOR_EACH_ENTITY_IN_CELL(cell, entityVar)                               \
+  for (int _i = 0;                                                             \
+       _i < (cell)->count && (((entityVar) = (cell)->entities[_i]) || 1);      \
+       _i++)

@@ -513,6 +513,63 @@ float GetTerrainHeightAtPosition(Terrain_t *terrain, float wx, float wz) {
   return terrain->height[iz * terrain->hmWidth + ix];
 }
 
+// GRID funcs
+
+//----------------------------------------
+// Add all entities to the grid
+//----------------------------------------
+void PopulateGridWithEntities(EntityGrid_t *grid, GameState_t *gs) {
+  // --- Actors ---
+  for (int i = 0; i < gs->em.count; i++) {
+    if (!gs->em.alive[i])
+      continue;
+    Vector3 pos = gs->components.positions[i];
+    GridAddEntity(grid, MakeEntityID(ET_ACTOR, i), pos);
+  }
+
+  // --- Statics ---
+  for (int i = 0; i < MAX_STATICS; i++) {
+    if (gs->statics.modelCollections[i].countModels == 0)
+      continue;
+    Vector3 pos = gs->statics.positions[i];
+    GridAddEntity(grid, MakeEntityID(ET_STATIC, i), pos);
+  }
+
+  // --- Projectiles ---
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    if (!gs->projectiles.active[i])
+      continue;
+    Vector3 pos = gs->projectiles.positions[i];
+    GridAddEntity(grid, MakeEntityID(ET_PROJECTILE, i), pos);
+  }
+}
+
+//----------------------------------------
+// Print the grid as 2D array of entity IDs
+//----------------------------------------
+void PrintGrid(EntityGrid_t *grid) {
+  printf("Grid (%d x %d):\n", grid->width, grid->length);
+
+  for (int z = 0; z < grid->length; z++) {
+    for (int x = 0; x < grid->width; x++) {
+      GridNode_t *node = &grid->nodes[x][z];
+
+      if (node->count == 0) {
+        printf(" -1 ");
+      } else {
+        // Print first entity in cell for brevity (or all, comma-separated)
+        for (int i = 0; i < node->count; i++) {
+          printf("%d", GetEntityIndex(node->entities[i]));
+          if (i < node->count - 1)
+            printf(",");
+        }
+        printf(" ");
+      }
+    }
+    printf("\n"); // next row
+  }
+}
+
 // -----------------------------------------------
 // InitGame: orchestrates initialization
 // -----------------------------------------------
@@ -532,6 +589,9 @@ GameState_t InitGame(void) {
   InitTerrain(&gs, sandTex);
 
   BuildHeightmap(&gs.terrain);
+
+  float cellSize = GRID_CELL_SIZE;
+  AllocGrid(&gs.grid, &gs.terrain, cellSize);
 
   // create player at origin-ish
   gs.playerId = GetEntityIndex(CreatePlayer(&gs, (Vector3){0, 10.0f, 0}));
@@ -581,6 +641,10 @@ GameState_t InitGame(void) {
     gs.particles.positions[i] = Vector3Zero();
     gs.particles.types[i] = -1;
   }
+
+  PopulateGridWithEntities(&gs.grid, &gs);
+
+  PrintGrid(&gs.grid);
 
   return gs;
 }
