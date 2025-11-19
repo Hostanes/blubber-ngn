@@ -20,7 +20,7 @@ int main(void) {
   // --------------------------------------------
   // ENGINE CONFIG
   // --------------------------------------------
-  EngineConfig cfg = {
+  EngineConfig_t cfg = {
       .window_width = 1280,
       .window_height = 720,
 
@@ -36,7 +36,7 @@ int main(void) {
       .max_statics = 1024,
   };
 
-  Engine eng;
+  Engine_t eng;
   engine_init(&eng, &cfg);
 
   EnableCursor();
@@ -51,23 +51,23 @@ int main(void) {
   camera.position = (Vector3){0, 0, 0};
   camera.target = (Vector3){0, 0, 0};
   camera.up = (Vector3){0, 1, 0};
-  camera.fovy = cfg.fov_deg; // previously 60.0f
+  camera.fovy = cfg.fov_deg;
   camera.projection = CAMERA_PERSPECTIVE;
 
-  SetMasterVolume(1.0f);
+  SetMasterVolume(0.1f);
 
-  GameState_t gs = InitGame();
+  GameState_t gs = InitGame(engine_get());
   SoundSystem_t soundSys = InitSoundSystem();
 
   gs.state = STATE_MAINMENU;
 
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
-    UpdateGame(&gs, &soundSys, &camera, dt);
+    UpdateGame(&gs, &eng, &soundSys, &camera, dt);
   }
 
   CloseAudioDevice();
-  engine_shutdown(); // <-- replaces CloseWindow()
+  engine_shutdown();
 
   return 0;
 }

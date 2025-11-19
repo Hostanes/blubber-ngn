@@ -1,16 +1,16 @@
-#include <string.h>
 #include "engine.h"
 #include "raylib.h"
 #include <stdlib.h>
+#include <string.h>
 
 // Global engine pointer
-static Engine *g_engine = NULL;
+static Engine_t *g_engine = NULL;
 
-Engine *engine_get(void) { return g_engine; }
+Engine_t *engine_get(void) { return g_engine; }
 
-void engine_init(Engine *eng, const EngineConfig *cfg) {
-  g_engine = eng;          // <-- Store the pointer first (critical)
-  g_engine->config = *cfg; // now safe
+void engine_init(struct Engine *eng, const struct EngineConfig *cfg) {
+  g_engine = eng;
+  g_engine->config = *cfg;
 
   SetConfigFlags(
       FLAG_VSYNC_HINT); // must come BEFORE InitWindow if you use flags

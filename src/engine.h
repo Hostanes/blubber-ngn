@@ -1,7 +1,7 @@
 
 #ifndef ENGINE_H
 #define ENGINE_H
-#include "game.h"
+#include "engine_types.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -18,10 +18,10 @@ typedef struct EngineConfig {
   int max_actors;
   int max_particles;
   int max_statics;
-} EngineConfig;
+} EngineConfig_t;
 
 typedef struct Engine {
-  EngineConfig config;
+  EngineConfig_t config;
 
   // ----------------------------------------
   // ECS moved from GameState_t
@@ -32,18 +32,18 @@ typedef struct Engine {
   StaticPool_t statics;
   ParticlePool_t particles;
 
-  Terrain_t terrain; // yes, this too belongs in engine eventually
-  EntityGrid_t grid; // engine owns the world
-} Engine;
+  Terrain_t terrain;
+  // EntityGrid_t grid;
+} Engine_t;
 
 // Initializes the engine with the given configuration.
 // Currently this only stores config and initializes the window.
 // Later: camera, ECS, pools, systems, etc.
-void engine_init(struct Engine *eng, const EngineConfig *cfg);
+void engine_init(struct Engine *eng, const struct EngineConfig *cfg);
 
 // Shutdown logic (stub for now)
 void engine_shutdown(void);
 
-Engine *engine_get(void);
+Engine_t *engine_get(void);
 
 #endif

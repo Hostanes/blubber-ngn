@@ -1,8 +1,8 @@
 // game_init.c
 // Refactored initialization, multi-ray system, and entity factories.
 // Requires game.h in the same include path.
-
 #include "game.h"
+#include "engine.h"
 #include "raylib.h"
 #include "raymath.h"
 #include <math.h>
@@ -111,17 +111,17 @@ Vector3 ConvertOrientationToVector3(Orientation o) {
 // -----------------------------------------------
 // Ray helpers (orientation-based)
 // -----------------------------------------------
-void AddRayToEntity(GameState_t *gs, entity_t e, int parentModelIndex,
+void AddRayToEntity(Engine_t *eng, entity_t e, int parentModelIndex,
                     Vector3 localOffset, Orientation oriOffset,
                     float distance) {
-  if (e < 0 || e >= gs->em.count)
+  if (e < 0 || e >= eng->em.count)
     return;
 
-  int idx = gs->components.rayCounts[e];
+  int idx = eng->actors.rayCounts[e];
   if (idx >= MAX_RAYS_PER_ENTITY)
     return; // too many rays
 
-  Raycast_t *rc = &gs->components.raycasts[e][idx];
+  Raycast_t *rc = &eng->actors.raycasts[e][idx];
   rc->active = true;
   rc->parentModelIndex = parentModelIndex;
   rc->localOffset = localOffset;
@@ -132,14 +132,14 @@ void AddRayToEntity(GameState_t *gs, entity_t e, int parentModelIndex,
   rc->ray.position = Vector3Zero();
   rc->ray.direction = Vector3Zero();
 
-  gs->components.rayCounts[e] = idx + 1;
+  eng->actors.rayCounts[e] = idx + 1;
 }
 
 // -----------------------------------------------
 // Terrain initialization
 // -----------------------------------------------
-void InitTerrain(GameState_t *gs, Texture2D sandTex) {
-  Terrain_t *terrain = &gs->terrain;
+void InitTerrain(GameState_t *gs, Engine_t *eng, Texture2D sandTex) {
+  Terrain_t *terrain = &eng->terrain;
 
   terrain->model = LoadModel("assets/models/terrain.glb");
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
@@ -260,21 +260,22 @@ static void BuildHeightmap(Terrain_t *terrain) {
 // -----------------------------------------------
 // Entity factory helpers
 // -----------------------------------------------
-static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
-  entity_t e = gs->em.count++;
-  gs->em.alive[e] = 1;
-  gs->em.masks[e] = C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION | C_HITBOX |
-                    C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG | C_GRAVITY;
+static entity_t CreatePlayer(Engine_t *eng, Vector3 pos) {
+  entity_t e = eng->em.count++;
+  eng->em.alive[e] = 1;
+  eng->em.masks[e] = C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION |
+                     C_HITBOX | C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG |
+                     C_GRAVITY;
 
-  gs->components.positions[e] = pos;
-  gs->components.velocities[e] = (Vector3){0, 0, 0};
-  gs->components.stepCycle[e] = 0;
-  gs->components.prevStepCycle[e] = 0;
-  gs->components.stepRate[e] = 2.0f;
-  gs->components.types[e] = ENTITY_PLAYER;
+  eng->actors.positions[e] = pos;
+  eng->actors.velocities[e] = (Vector3){0, 0, 0};
+  eng->actors.stepCycle[e] = 0;
+  eng->actors.prevStepCycle[e] = 0;
+  eng->actors.stepRate[e] = 2.0f;
+  eng->actors.types[e] = ENTITY_PLAYER;
 
   // Model collection: 3 parts (legs, torso/head, gun)
-  ModelCollection_t *mc = &gs->components.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
   *mc = InitModelCollection(5);
 
   mc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
@@ -326,37 +327,37 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   // mc->rotLocks[4][2] = false;
 
   // initialize rayCount and add a muzzle ray for the gun (model index 2)
-  gs->components.rayCounts[e] = 0;
+  eng->actors.rayCounts[e] = 0;
   // Main aim ray - parent to torso (model index 1)
-  AddRayToEntity(gs, e, 1,
+  AddRayToEntity(eng, e, 1,
                  (Vector3){0, 0, 0},     // offset near head/center of torso
                  (Orientation){0, 0, 0}, // forward
                  500.0f);                // long aim distance
 
   // Gun muzzle ray - still parent to gun (model index 2)
-  AddRayToEntity(gs, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+  AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // 2 guns
-  gs->components.muzzleVelocities[0] = MemAlloc(sizeof(float) * 2);
-  gs->components.muzzleVelocities[0][0] = 1000.0f;
-  gs->components.dropRates[0] = MemAlloc(sizeof(float) * 2);
-  gs->components.dropRates[0][0] = 70.0f;
+  eng->actors.muzzleVelocities[0] = MemAlloc(sizeof(float) * 2);
+  eng->actors.muzzleVelocities[0][0] = 1000.0f;
+  eng->actors.dropRates[0] = MemAlloc(sizeof(float) * 2);
+  eng->actors.dropRates[0][0] = 70.0f;
 
   // cooldown & firerate allocations
-  gs->components.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
-  gs->components.cooldowns[e][0] = 0.8;
-  gs->components.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  gs->components.firerate[e][0] = 0.2f;
+  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors.cooldowns[e][0] = 0.8;
+  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors.firerate[e][0] = 0.2f;
 
   // Collision
-  ModelCollection_t *col = &gs->components.collisionCollections[e];
+  ModelCollection_t *col = &eng->actors.collisionCollections[e];
   *col = InitModelCollection(1);
   Mesh moveBox = GenMeshCube(4, 8, 4);
   col->models[0] = LoadModelFromMesh(moveBox);
   col->offsets[0] = (Vector3){0, 5, 0};
 
   // Hitbox
-  ModelCollection_t *hit = &gs->components.hitboxCollections[e];
+  ModelCollection_t *hit = &eng->actors.hitboxCollections[e];
   *hit = InitModelCollection(1);
   Mesh hitbox1 = GenMeshCube(4, 10, 4);
   hit->models[0] = LoadModelFromMesh(hitbox1);
@@ -366,18 +367,18 @@ static entity_t CreatePlayer(GameState_t *gs, Vector3 pos) {
   return id;
 }
 
-static int CreateStatic(GameState_t *gs, Vector3 pos, Vector3 size, Color c) {
+static int CreateStatic(Engine_t *eng, Vector3 pos, Vector3 size, Color c) {
   // find open slot
   int i = 0;
-  while (i < MAX_ENTITIES && gs->statics.modelCollections[i].countModels != 0)
+  while (i < MAX_ENTITIES && eng->statics.modelCollections[i].countModels != 0)
     i++;
 
   if (i >= MAX_ENTITIES)
     return -1; // no room
 
-  gs->statics.positions[i] = pos;
+  eng->statics.positions[i] = pos;
 
-  ModelCollection_t *mc = &gs->statics.modelCollections[i];
+  ModelCollection_t *mc = &eng->statics.modelCollections[i];
   *mc = InitModelCollection(1);
 
   Mesh cube = GenMeshCube(size.x, size.y, size.z);
@@ -388,14 +389,14 @@ static int CreateStatic(GameState_t *gs, Vector3 pos, Vector3 size, Color c) {
   mc->parentIds[0] = -1;
 
   // collision too
-  ModelCollection_t *col = &gs->statics.collisionCollections[i];
+  ModelCollection_t *col = &eng->statics.collisionCollections[i];
   *col = InitModelCollection(1);
   col->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
   col->offsets[0] = Vector3Zero();
   col->parentIds[0] = -1;
 
   // hitbox too
-  ModelCollection_t *hb = &gs->statics.hitboxCollections[i];
+  ModelCollection_t *hb = &eng->statics.hitboxCollections[i];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
   hb->offsets[0] = Vector3Zero();
@@ -405,18 +406,18 @@ static int CreateStatic(GameState_t *gs, Vector3 pos, Vector3 size, Color c) {
   return id;
 }
 
-static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
-  entity_t e = gs->em.count++;
-  gs->em.alive[e] = 1;
-  gs->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
-                    C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
-                    C_GRAVITY;
-  gs->components.positions[e] = pos;
-  gs->components.types[e] = ENTITY_TURRET;
-  gs->components.hitPoints[e] = 200.0f;
+static entity_t CreateTurret(Engine_t *eng, Vector3 pos) {
+  entity_t e = eng->em.count++;
+  eng->em.alive[e] = 1;
+  eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
+                     C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
+                     C_GRAVITY;
+  eng->actors.positions[e] = pos;
+  eng->actors.types[e] = ENTITY_TURRET;
+  eng->actors.hitPoints[e] = 200.0f;
 
   // visual models (base + barrel)
-  ModelCollection_t *mc = &gs->components.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
   *mc = InitModelCollection(2);
 
   mc->models[0] = LoadModelFromMesh(GenMeshCylinder(2.0f, 5.0f, 5));
@@ -428,38 +429,38 @@ static entity_t CreateTurret(GameState_t *gs, Vector3 pos) {
   mc->parentIds[1] = 0;
 
   // hitbox
-  ModelCollection_t *hb = &gs->components.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(10, 10, 10));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
 
   // ray: attach to barrel (model 1) muzzle
-  gs->components.rayCounts[e] = 0;
-  AddRayToEntity(gs, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+  eng->actors.rayCounts[e] = 0;
+  AddRayToEntity(eng, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
-  gs->components.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
-  gs->components.cooldowns[e][0] = 0.0f;
-  gs->components.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  gs->components.firerate[e][0] = 0.4f;
+  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors.cooldowns[e][0] = 0.0f;
+  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors.firerate[e][0] = 0.4f;
 
   entity_t id = MakeEntityID(ET_STATIC, e);
   return id;
 }
 
-static entity_t CreateMech(GameState_t *gs, Vector3 pos) {
-  entity_t e = gs->em.count++;
-  gs->em.alive[e] = 1;
-  gs->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
-                    C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
-                    C_GRAVITY;
-  gs->components.positions[e] = pos;
-  gs->components.types[e] = ENTITY_MECH;
-  gs->components.hitPoints[e] = 100.0f;
+static entity_t CreateMech(Engine_t *eng, Vector3 pos) {
+  entity_t e = eng->em.count++;
+  eng->em.alive[e] = 1;
+  eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
+                     C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
+                     C_GRAVITY;
+  eng->actors.positions[e] = pos;
+  eng->actors.types[e] = ENTITY_MECH;
+  eng->actors.hitPoints[e] = 100.0f;
 
   // visual models (base + barrel)
-  ModelCollection_t *mc = &gs->components.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
   *mc = InitModelCollection(2);
 
   mc->models[0] = LoadModelFromMesh(GenMeshCylinder(2.0f, 5.0f, 5));
@@ -471,21 +472,21 @@ static entity_t CreateMech(GameState_t *gs, Vector3 pos) {
   mc->parentIds[1] = 0;
 
   // hitbox
-  ModelCollection_t *hb = &gs->components.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(20, 20, 20));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
 
   // ray: attach to barrel (model 1) muzzle
-  gs->components.rayCounts[e] = 0;
-  AddRayToEntity(gs, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+  eng->actors.rayCounts[e] = 0;
+  AddRayToEntity(eng, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
-  gs->components.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
-  gs->components.cooldowns[e][0] = 0.0f;
-  gs->components.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  gs->components.firerate[e][0] = 0.4f;
+  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors.cooldowns[e][0] = 0.0f;
+  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors.firerate[e][0] = 0.4f;
 
   entity_t id = MakeEntityID(ET_STATIC, e);
   return id;
@@ -518,28 +519,28 @@ float GetTerrainHeightAtPosition(Terrain_t *terrain, float wx, float wz) {
 //----------------------------------------
 // Add all entities to the grid
 //----------------------------------------
-void PopulateGridWithEntities(EntityGrid_t *grid, GameState_t *gs) {
+void PopulateGridWithEntities(EntityGrid_t *grid, Engine_t *eng) {
   // --- Actors ---
-  for (int i = 0; i < gs->em.count; i++) {
-    if (!gs->em.alive[i])
+  for (int i = 0; i < eng->em.count; i++) {
+    if (!eng->em.alive[i])
       continue;
-    Vector3 pos = gs->components.positions[i];
+    Vector3 pos = eng->actors.positions[i];
     GridAddEntity(grid, MakeEntityID(ET_ACTOR, i), pos);
   }
 
   // --- Statics ---
   for (int i = 0; i < MAX_STATICS; i++) {
-    if (gs->statics.modelCollections[i].countModels == 0)
+    if (eng->statics.modelCollections[i].countModels == 0)
       continue;
-    Vector3 pos = gs->statics.positions[i];
+    Vector3 pos = eng->statics.positions[i];
     GridAddEntity(grid, MakeEntityID(ET_STATIC, i), pos);
   }
 
   // --- Projectiles ---
   for (int i = 0; i < MAX_PROJECTILES; i++) {
-    if (!gs->projectiles.active[i])
+    if (!eng->projectiles.active[i])
       continue;
-    Vector3 pos = gs->projectiles.positions[i];
+    Vector3 pos = eng->projectiles.positions[i];
     GridAddEntity(grid, MakeEntityID(ET_PROJECTILE, i), pos);
   }
 }
@@ -573,29 +574,29 @@ void PrintGrid(EntityGrid_t *grid) {
 // -----------------------------------------------
 // InitGame: orchestrates initialization
 // -----------------------------------------------
-GameState_t InitGame(void) {
+GameState_t InitGame(Engine_t *eng) {
 
   GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
   memset(gs, 0, sizeof(GameState_t));
 
-  gs->em.count = 0;
-  memset(gs->em.alive, 0, sizeof(gs->em.alive));
-  memset(gs->em.masks, 0, sizeof(gs->em.masks));
+  eng->em.count = 0;
+  memset(eng->em.alive, 0, sizeof(eng->em.alive));
+  memset(eng->em.masks, 0, sizeof(eng->em.masks));
 
   gs->state = STATE_INLEVEL;
   gs->pHeadbobTimer = 0.0f;
 
   // terrain
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-  InitTerrain(gs, sandTex);
+  InitTerrain(gs, eng, sandTex);
 
-  BuildHeightmap(&gs->terrain);
+  BuildHeightmap(&eng->terrain);
 
   float cellSize = GRID_CELL_SIZE;
-  AllocGrid(&gs->grid, &gs->terrain, cellSize);
+  AllocGrid(&gs->grid, &eng->terrain, cellSize);
 
   // create player at origin-ish
-  gs->playerId = GetEntityIndex(CreatePlayer(gs, (Vector3){0, 10.0f, 0}));
+  gs->playerId = GetEntityIndex(CreatePlayer(eng, (Vector3){0, 10.0f, 0}));
 
   // create a bunch of simple houses/walls
   int numStatics = 200;
@@ -608,42 +609,42 @@ GameState_t InitGame(void) {
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
     float z =
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+    float y = GetTerrainHeightAtPosition(&eng->terrain, x, z);
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255), 255};
 
-    CreateStatic(gs, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
+    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
   }
   // create a sample turret
-  CreateTurret(gs, (Vector3){500.0f, 8.0f, 30.0f});
+  CreateTurret(eng, (Vector3){500.0f, 8.0f, 30.0f});
 
   // ensure rayCounts initialized for any entities that weren't touched
-  for (int i = 0; i < gs->em.count; i++) {
-    if (gs->components.rayCounts[i] == 0)
-      gs->components.rayCounts[i] = 0;
+  for (int i = 0; i < eng->em.count; i++) {
+    if (eng->actors.rayCounts[i] == 0)
+      eng->actors.rayCounts[i] = 0;
   }
 
   // Initialize projectile pool
   for (int i = 0; i < MAX_PROJECTILES; i++) {
-    gs->projectiles.active[i] = false;
-    gs->projectiles.positions[i] = Vector3Zero();
-    gs->projectiles.velocities[i] = Vector3Zero();
-    gs->projectiles.lifetimes[i] = 0.0f;
-    gs->projectiles.radii[i] = 1.0f; // default bullet size
-    gs->projectiles.owners[i] = -1;
-    gs->projectiles.types[i] = -1;
+    eng->projectiles.active[i] = false;
+    eng->projectiles.positions[i] = Vector3Zero();
+    eng->projectiles.velocities[i] = Vector3Zero();
+    eng->projectiles.lifetimes[i] = 0.0f;
+    eng->projectiles.radii[i] = 1.0f; // default bullet size
+    eng->projectiles.owners[i] = -1;
+    eng->projectiles.types[i] = -1;
   }
 
   for (int i = 0; i < MAX_PARTICLES; i++) {
-    gs->particles.active[i] = false;
-    gs->particles.lifetimes[i] = 0;
-    gs->particles.positions[i] = Vector3Zero();
-    gs->particles.types[i] = -1;
+    eng->particles.active[i] = false;
+    eng->particles.lifetimes[i] = 0;
+    eng->particles.positions[i] = Vector3Zero();
+    eng->particles.types[i] = -1;
   }
 
-  PopulateGridWithEntities(&gs->grid, gs);
+  PopulateGridWithEntities(&gs->grid, eng);
 
   PrintGrid(&gs->grid);
 

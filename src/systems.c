@@ -34,9 +34,9 @@ void UpdateRayCast(Raycast_t *raycast, Vector3 position,
   raycast->ray.direction = ConvertOrientationToVector3(orientation);
 }
 
-void UpdateRayCastToModel(GameState_t *gs, Raycast_t *raycast, int entityId,
-                          int modelId) {
-  ModelCollection_t *collection = &gs->components.modelCollections[entityId];
+void UpdateRayCastToModel(GameState_t *gs, Engine_t *eng, Raycast_t *raycast,
+                          int entityId, int modelId) {
+  ModelCollection_t *collection = &eng->actors.modelCollections[entityId];
 
   // --- Handle per-axis inversion ---
   float yawInvert = collection->rotInverts[modelId][0] ? -1.0f : 1.0f;
@@ -91,7 +91,8 @@ void UpdateRaycastFromTorso(ModelCollection_t *mc, Raycast_t *rc) {
 // with an entity with C_HITBOX flag
 // should later return the entity ID/index or its type
 
-bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast, entity_t self) {
+bool CheckRaycastCollision(GameState_t *gs, Engine_t *eng, Raycast_t *raycast,
+                           entity_t self) {
   bool hit = false;
   RayCollision collision;
 
@@ -99,19 +100,19 @@ bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast, entity_t self) {
   float closestDist = FLT_MAX;
   int hitEntity = -1;
 
-  for (int i = 0; i < gs->em.count; i++) {
-    if (!gs->em.alive[i])
+  for (int i = 0; i < eng->em.count; i++) {
+    if (!eng->em.alive[i])
       continue;
 
     // Only check entities that have a hitbox collection
-    if (!(gs->em.masks[i] & C_HITBOX))
+    if (!(eng->em.masks[i] & C_HITBOX))
       continue;
 
     if (i == self) {
       continue;
     }
 
-    ModelCollection_t *hitboxes = &gs->components.hitboxCollections[i];
+    ModelCollection_t *hitboxes = &eng->actors.hitboxCollections[i];
 
     // Iterate over each model in the entity's hitbox collection
     for (int m = 0; m < hitboxes->countModels; m++) {
@@ -145,17 +146,17 @@ bool CheckRaycastCollision(GameState_t *gs, Raycast_t *raycast, entity_t self) {
   return hit;
 }
 
-void UpdateEntityRaycasts(GameState_t *gs, entity_t e) {
-  if (e < 0 || e >= gs->em.count)
+void UpdateEntityRaycasts(Engine_t *eng, entity_t e) {
+  if (e < 0 || e >= eng->em.count)
     return;
 
-  ModelCollection_t *mc = &gs->components.modelCollections[e];
-  int rayCount = gs->components.rayCounts[e];
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  int rayCount = eng->actors.rayCounts[e];
   if (rayCount <= 0)
     return;
 
   // --- Update primary raycast (index 0) to follow torso ---
-  Raycast_t *primary = &gs->components.raycasts[e][0];
+  Raycast_t *primary = &eng->actors.raycasts[e][0];
   UpdateRaycastFromTorso(mc, primary);
 
   // Compute the target point this ray points at
@@ -165,7 +166,7 @@ void UpdateEntityRaycasts(GameState_t *gs, entity_t e) {
 
   // --- Update secondary raycasts to point at the same target ---
   for (int i = 1; i < rayCount; i++) {
-    Raycast_t *rc = &gs->components.raycasts[e][i];
+    Raycast_t *rc = &eng->actors.raycasts[e][i];
 
     // Keep the ray origin at its local offset from the model
     Vector3 origin =
@@ -213,48 +214,48 @@ void UpdateTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float dt) {
   float damping = 6.0f;
 }
 
-void spawnProjectile(GameState_t *gs, Vector3 pos, Vector3 velocity,
+void spawnProjectile(Engine_t *eng, Vector3 pos, Vector3 velocity,
                      float lifetime, float radius, float dropRate, int owner,
                      int type) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
-    if (gs->projectiles.active[i])
+    if (eng->projectiles.active[i])
       continue;
 
-    gs->projectiles.active[i] = true;
-    gs->projectiles.positions[i] = pos;
-    gs->projectiles.velocities[i] = velocity;
-    gs->projectiles.lifetimes[i] = lifetime;
-    gs->projectiles.radii[i] = radius;
-    gs->projectiles.owners[i] = owner;
-    gs->projectiles.types[i] = type;
-    gs->projectiles.dropRates[i] = dropRate;
+    eng->projectiles.active[i] = true;
+    eng->projectiles.positions[i] = pos;
+    eng->projectiles.velocities[i] = velocity;
+    eng->projectiles.lifetimes[i] = lifetime;
+    eng->projectiles.radii[i] = radius;
+    eng->projectiles.owners[i] = owner;
+    eng->projectiles.types[i] = type;
+    eng->projectiles.dropRates[i] = dropRate;
     break;
   }
 }
 
-void FireProjectile(GameState_t *gs, entity_t shooter, int rayIndex) {
-  if (!gs->components.raycasts[shooter][rayIndex].active)
+void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex) {
+  if (!eng->actors.raycasts[shooter][rayIndex].active)
     return;
 
   int gunId = 0;
 
-  Ray *ray = &gs->components.raycasts[shooter][rayIndex].ray;
+  Ray *ray = &eng->actors.raycasts[shooter][rayIndex].ray;
 
   Vector3 origin = ray->position;
   Vector3 dir = Vector3Normalize(ray->direction);
 
   // Load weapon stats from components
-  float muzzleVel = gs->components.muzzleVelocities[shooter][gunId]
-                        ? gs->components.muzzleVelocities[shooter][gunId]
+  float muzzleVel = eng->actors.muzzleVelocities[shooter][gunId]
+                        ? eng->actors.muzzleVelocities[shooter][gunId]
                         : 10.0f; // default fallback
 
-  float drop = gs->components.dropRates[shooter][gunId]
-                   ? gs->components.dropRates[shooter][gunId]
+  float drop = eng->actors.dropRates[shooter][gunId]
+                   ? eng->actors.dropRates[shooter][gunId]
                    : 1.0f;
 
   Vector3 vel = Vector3Scale(dir, muzzleVel);
   printf("spawning projectile\n");
-  spawnProjectile(gs, origin, vel,
+  spawnProjectile(eng, origin, vel,
                   10.0f,   // lifetime sec
                   0.5f,    // radius
                   drop,    // drop rate
@@ -264,12 +265,12 @@ void FireProjectile(GameState_t *gs, entity_t shooter, int rayIndex) {
 
 // ========== END GUN ==========
 
-void UpdateRayDistance(GameState_t *gs, entity_t e, float dt) {
-  if (e < 0 || e >= gs->em.count)
+void UpdateRayDistance(GameState_t *gs, Engine_t *eng, entity_t e, float dt) {
+  if (e < 0 || e >= eng->em.count)
     return;
 
   int rayIndex = 0; // the main torso ray
-  Raycast_t *rc = &gs->components.raycasts[e][rayIndex];
+  Raycast_t *rc = &eng->actors.raycasts[e][rayIndex];
 
   // Get mouse wheel movement
   int wheelMove = GetMouseWheelMove(); // +1 scroll up, -1 scroll down
@@ -287,18 +288,16 @@ void UpdateRayDistance(GameState_t *gs, entity_t e, float dt) {
   }
 }
 
-void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
-                         Camera3D *camera) {
-
-  Engine *eng = engine_get();
+void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
+                         SoundSystem_t *soundSys, float dt, Camera3D *camera) {
 
   int pid = gs->playerId;
-  Vector3 *pos = gs->components.positions;
-  Vector3 *vel = gs->components.velocities;
+  Vector3 *pos = eng->actors.positions;
+  Vector3 *vel = eng->actors.velocities;
 
   // player leg and torso orientations
-  Orientation *leg = &gs->components.modelCollections[pid].orientations[0];
-  Orientation *torso = &gs->components.modelCollections[pid].orientations[1];
+  Orientation *leg = &eng->actors.modelCollections[pid].orientations[0];
+  Orientation *torso = &eng->actors.modelCollections[pid].orientations[1];
 
   bool isSprinting = IsKeyDown(KEY_LEFT_SHIFT);
 
@@ -342,7 +341,7 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
   // gs->entities.collisionCollections[pid].orientations[pid].yaw =
   // torso[pid].yaw;
 
-  UpdateRayDistance(gs, gs->playerId, dt);
+  UpdateRayDistance(gs, eng, gs->playerId, dt);
 
   // Clamp torso pitch between -89° and +89°
   if (torso[pid].pitch > 1.2f)
@@ -379,15 +378,15 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
   }
 
   if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) &&
-      gs->components.cooldowns[pid][0] <= 0) {
+      eng->actors.cooldowns[pid][0] <= 0) {
     printf("firing\n");
-    gs->components.cooldowns[pid][0] = gs->components.firerate[pid][0];
+    eng->actors.cooldowns[pid][0] = eng->actors.firerate[pid][0];
     QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.4f, 1.0f);
 
-    ApplyTorsoRecoil(&gs->components.modelCollections[gs->playerId], 1, 0.05f,
+    ApplyTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, 0.05f,
                      (Vector3){-0.2f, 1.0f, 0});
 
-    FireProjectile(gs, gs->playerId, 1);
+    FireProjectile(eng, gs->playerId, 1);
   }
 
   // Step cycle update
@@ -396,11 +395,10 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
 
   if (speed > 1.0f) {
     gs->pHeadbobTimer += dt * 8.0f;
-    gs->components.stepRate[pid] = speed * 0.07;
+    eng->actors.stepRate[pid] = speed * 0.07;
 
-    float prev = gs->components.prevStepCycle[pid];
-    float curr =
-        gs->components.stepCycle[pid] + gs->components.stepRate[pid] * dt;
+    float prev = eng->actors.prevStepCycle[pid];
+    float curr = eng->actors.stepCycle[pid] + eng->actors.stepRate[pid] * dt;
 
     if (curr >= 1.0f)
       curr -= 1.0f; // wrap cycle
@@ -409,30 +407,30 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
       QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.2f, 1.0f);
     }
 
-    gs->components.stepCycle[pid] = curr;
-    gs->components.prevStepCycle[pid] = curr;
+    eng->actors.stepCycle[pid] = curr;
+    eng->actors.prevStepCycle[pid] = curr;
   } else {
     gs->pHeadbobTimer = 0;
-    gs->components.stepCycle[pid] = 0.0f;
-    gs->components.prevStepCycle[pid] = 0.0f;
+    eng->actors.stepCycle[pid] = 0.0f;
+    eng->actors.prevStepCycle[pid] = 0.0f;
   }
 }
 
 // ------------- Weapon Cooldowns -------------
 
-void DecrementCooldowns(GameState_t *gs, float dt) {
-  for (int i = 0; i < gs->em.count; i++) {
+void DecrementCooldowns(Engine_t *eng, float dt) {
+  for (int i = 0; i < eng->em.count; i++) {
     // Skip dead entities
-    if (!gs->em.alive[i])
+    if (!eng->em.alive[i])
       continue;
 
     // Only process entities that have the cooldown component
-    if (gs->em.masks[i] & C_COOLDOWN_TAG) {
-      gs->components.cooldowns[i][0] -= dt;
+    if (eng->em.masks[i] & C_COOLDOWN_TAG) {
+      eng->actors.cooldowns[i][0] -= dt;
 
       // Clamp to zero
-      if (gs->components.cooldowns[i][0] < 0.0f)
-        gs->components.cooldowns[i][0] = 0.0f;
+      if (eng->actors.cooldowns[i][0] < 0.0f)
+        eng->actors.cooldowns[i][0] = 0.0f;
     }
   }
 }
@@ -494,16 +492,16 @@ float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz) {
   return h; // interpolated height at (wx, wz)
 }
 
-static float GetTerrainHeightAtEntity(GameState_t *gs, entity_t entity) {
+static float GetTerrainHeightAtEntity(Engine_t *eng, entity_t entity) {
 
-  Vector3 pos = gs->components.positions[entity];
-  return GetTerrainHeightAtXZ(&gs->terrain, gs->components.positions[entity].x,
-                              gs->components.positions[entity].z);
+  Vector3 pos = eng->actors.positions[entity];
+  return GetTerrainHeightAtXZ(&eng->terrain, eng->actors.positions[entity].x,
+                              eng->actors.positions[entity].z);
 }
 
-void ApplyTerrainCollision(GameState_t *gs, int entityId, float dt) {
-  Vector3 *pos = &gs->components.positions[entityId];
-  Vector3 *vel = &gs->components.velocities[entityId];
+void ApplyTerrainCollision(Engine_t *eng, int entityId, float dt) {
+  Vector3 *pos = &eng->actors.positions[entityId];
+  Vector3 *vel = &eng->actors.velocities[entityId];
 
   // Apply gravity
   vel->y -= GRAVITY * dt;
@@ -514,7 +512,7 @@ void ApplyTerrainCollision(GameState_t *gs, int entityId, float dt) {
   pos->y += vel->y * dt;
 
   // Compute terrain height
-  float terrainY = GetTerrainHeightAtEntity(gs, entityId);
+  float terrainY = GetTerrainHeightAtEntity(eng, entityId);
 
   // Clamp above terrain + offset
   float desiredY = terrainY + ENTITY_FEET_OFFSET;
@@ -676,8 +674,7 @@ bool SphereIntersectsOBB(Vector3 sphereCenter, float radius, Vector3 boxCenter,
 }
 
 // Check if projectile intersects entity's collision OBB
-bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex,
-                                   entity_t eid) {
+bool ProjectileIntersectsEntityOBB(Engine_t *eng, int projIndex, entity_t eid) {
   EntityCategory_t cat = GetEntityCategory(eid);
   int idx = GetEntityIndex(eid);
 
@@ -686,12 +683,12 @@ bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex,
   // figure out which hitboxes to read
   switch (cat) {
   case ET_ACTOR:
-    if (!gs->em.alive[idx])
+    if (!eng->em.alive[idx])
       return false;
-    col = &gs->components.hitboxCollections[idx];
+    col = &eng->actors.hitboxCollections[idx];
     break;
   case ET_STATIC:
-    col = &gs->statics.hitboxCollections[idx];
+    col = &eng->statics.hitboxCollections[idx];
     break;
   default:
     return false; // projectiles or unknown
@@ -700,8 +697,8 @@ bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex,
   if (!col || col->countModels <= 0)
     return false;
 
-  Vector3 sphere = gs->projectiles.positions[projIndex];
-  float radius = gs->projectiles.radii[projIndex];
+  Vector3 sphere = eng->projectiles.positions[projIndex];
+  float radius = eng->projectiles.radii[projIndex];
 
   for (int m = 0; m < col->countModels; m++) {
     Model model = col->models[m];
@@ -722,55 +719,55 @@ bool ProjectileIntersectsEntityOBB(GameState_t *gs, int projIndex,
   return false;
 }
 
-void spawnParticle(GameState_t *gs, Vector3 pos, float lifetime, int type) {
+void spawnParticle(Engine_t *eng, Vector3 pos, float lifetime, int type) {
   for (int i = 0; i < MAX_PARTICLES; i++) {
-    if (gs->particles.active[i])
+    if (eng->particles.active[i])
       continue;
 
-    gs->particles.active[i] = true;
-
-    gs->particles.types[i] = type;
-    gs->particles.positions[i] = pos;
-    gs->particles.lifetimes[i] = lifetime;
-    gs->particles.startLifetimes[i] = lifetime;
+    eng->particles.active[i] = true;
+    eng->particles.types[i] = type;
+    eng->particles.positions[i] = pos;
+    eng->particles.lifetimes[i] = lifetime;
+    eng->particles.startLifetimes[i] = lifetime;
 
     printf("PARTICLE spawned particle at index %d\n", i);
     break;
   }
 }
 
-void UpdateProjectiles(GameState_t *gs, float dt) {
+void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
-    if (!gs->projectiles.active[i])
+    if (!eng->projectiles.active[i])
       continue;
 
     // Lifetime
-    gs->projectiles.lifetimes[i] -= dt;
-    if (gs->projectiles.lifetimes[i] <= 0.0f) {
-      gs->projectiles.active[i] = false;
+    eng->projectiles.lifetimes[i] -= dt;
+    if (eng->projectiles.lifetimes[i] <= 0.0f) {
+      eng->projectiles.active[i] = false;
       continue;
     }
 
-    Vector3 prevPos = gs->projectiles.positions[i];
+    Vector3 prevPos = eng->projectiles.positions[i];
 
     // Gravity
-    gs->projectiles.velocities[i].y -= gs->projectiles.dropRates[i] * dt;
+    eng->projectiles.velocities[i].y -= eng->projectiles.dropRates[i] * dt;
 
     // Move
-    gs->projectiles.positions[i] =
-        Vector3Add(gs->projectiles.positions[i],
-                   Vector3Scale(gs->projectiles.velocities[i], dt));
+    eng->projectiles.positions[i] =
+        Vector3Add(eng->projectiles.positions[i],
+                   Vector3Scale(eng->projectiles.velocities[i], dt));
 
-    Vector3 projPos = gs->projectiles.positions[i];
+    Vector3 projPos = eng->projectiles.positions[i];
 
     // Update grid
     GridRemoveEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), prevPos);
     GridAddEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), projPos);
 
     // ===== TERRAIN COLLISION =====
-    if (GetTerrainHeightAtXZ(&gs->terrain, projPos.x, projPos.z) >= projPos.y) {
-      gs->projectiles.active[i] = false;
-      spawnParticle(gs, prevPos, 5, 2);
+    if (GetTerrainHeightAtXZ(&eng->terrain, projPos.x, projPos.z) >=
+        projPos.y) {
+      eng->projectiles.active[i] = false;
+      spawnParticle(eng, prevPos, 5, 2);
       continue;
     }
 
@@ -793,13 +790,13 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
             continue;
 
           int s = GetEntityIndex(e);
-          if (!gs->statics.modelCollections[s].countModels)
+          if (!eng->statics.modelCollections[s].countModels)
             continue;
 
-          if (ProjectileIntersectsEntityOBB(gs, i, e)) {
+          if (ProjectileIntersectsEntityOBB(eng, i, e)) {
             printf("PROJECTILE: hit Static ID %d\n", s);
-            spawnParticle(gs, prevPos, 1, 1);
-            gs->projectiles.active[i] = false;
+            spawnParticle(eng, prevPos, 1, 1);
+            eng->projectiles.active[i] = false;
             goto next_projectile;
           }
         }
@@ -821,23 +818,23 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
             continue;
 
           int idx = GetEntityIndex(e);
-          if (!(gs->em.masks[idx] & C_HITBOX))
+          if (!(eng->em.masks[idx] & C_HITBOX))
             continue;
-          if (!gs->em.alive[idx])
+          if (!eng->em.alive[idx])
             continue;
-          if (idx == gs->projectiles.owners[i])
+          if (idx == eng->projectiles.owners[i])
             continue;
 
-          if (ProjectileIntersectsEntityOBB(gs, i, e)) {
-            spawnParticle(gs, prevPos, 2, 1);
-            gs->projectiles.active[i] = false;
+          if (ProjectileIntersectsEntityOBB(eng, i, e)) {
+            spawnParticle(eng, prevPos, 2, 1);
+            eng->projectiles.active[i] = false;
 
             printf("PROJECTILE: hit Actor ID %d\n", idx);
 
-            if (gs->em.masks[idx] & C_HITPOINT_TAG) {
-              gs->components.hitPoints[idx] -= 50.0f;
-              if (gs->components.hitPoints[idx] <= 0)
-                gs->em.alive[idx] = 0;
+            if (eng->em.masks[idx] & C_HITPOINT_TAG) {
+              eng->actors.hitPoints[idx] -= 50.0f;
+              if (eng->actors.hitPoints[idx] <= 0)
+                eng->em.alive[idx] = 0;
             }
             goto next_projectile;
           }
@@ -849,16 +846,16 @@ void UpdateProjectiles(GameState_t *gs, float dt) {
   }
 }
 
-void UpdateParticles(GameState_t *gs, float dt) {
+void UpdateParticles(Engine_t *eng, float dt) {
   for (int i = 0; i < MAX_PARTICLES; i++) {
-    if (!gs->particles.active[i])
+    if (!eng->particles.active[i])
       continue;
 
-    gs->particles.lifetimes[i] -= dt;
+    eng->particles.lifetimes[i] -= dt;
 
-    if (gs->particles.lifetimes[i] <= 0.0f) {
+    if (eng->particles.lifetimes[i] <= 0.0f) {
       printf("PARTICLE died\n");
-      gs->particles.active[i] = false;
+      eng->particles.active[i] = false;
     }
   }
 }
@@ -866,18 +863,18 @@ void UpdateParticles(GameState_t *gs, float dt) {
 //----------------------------------------
 // Update actor position with gravity, damping
 //----------------------------------------
-static void UpdateActorPosition(GameState_t *gs, int i, float dt) {
-  Vector3 *pos = gs->components.positions;
-  Vector3 *vel = gs->components.velocities;
-  Vector3 *prevPos = gs->components.prevPositions;
+static void UpdateActorPosition(Engine_t *eng, int i, float dt) {
+  Vector3 *pos = eng->actors.positions;
+  Vector3 *vel = eng->actors.velocities;
+  Vector3 *prevPos = eng->actors.prevPositions;
 
   // Store previous position
   prevPos[i] = pos[i];
 
   // Gravity
-  if (gs->em.masks[i] & C_GRAVITY) {
+  if (eng->em.masks[i] & C_GRAVITY) {
     pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
-    ApplyTerrainCollision(gs, i, dt);
+    ApplyTerrainCollision(eng, i, dt);
   }
 
   // Damping horizontal velocity
@@ -888,16 +885,16 @@ static void UpdateActorPosition(GameState_t *gs, int i, float dt) {
 //----------------------------------------
 // Actor vs Actor collisions using grid
 //----------------------------------------
-static void ResolveActorCollisions(GameState_t *gs) {
-  int emCount = gs->em.count;
-  Vector3 *pos = gs->components.positions;
-  Vector3 *vel = gs->components.velocities;
+static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
+  int emCount = eng->em.count;
+  Vector3 *pos = eng->actors.positions;
+  Vector3 *vel = eng->actors.velocities;
 
   for (int i = 0; i < emCount; i++) {
-    if (!gs->em.alive[i])
+    if (!eng->em.alive[i])
       continue;
 
-    EntityType_t typeI = gs->components.types[i];
+    EntityType_t typeI = eng->actors.types[i];
     if (!(typeI == ENTITY_PLAYER || typeI == ENTITY_MECH ||
           typeI == ENTITY_TANK))
       continue;
@@ -920,20 +917,20 @@ static void ResolveActorCollisions(GameState_t *gs) {
             continue;
 
           int j = GetEntityIndex(e);
-          if (i == j || !gs->em.alive[j])
+          if (i == j || !eng->em.alive[j])
             continue;
-          if (!(gs->em.masks[j] & C_COLLISION))
+          if (!(eng->em.masks[j] & C_COLLISION))
             continue;
 
-          EntityType_t typeJ = gs->components.types[j];
+          EntityType_t typeJ = eng->actors.types[j];
           if (!(typeJ == ENTITY_PLAYER || typeJ == ENTITY_MECH ||
                 typeJ == ENTITY_TANK))
             continue;
 
           // Check and resolve collision
           if (CheckAndResolveOBBCollision(
-                  &pos[i], &gs->components.collisionCollections[i], &pos[j],
-                  &gs->components.collisionCollections[j])) {
+                  &pos[i], &eng->actors.collisionCollections[i], &pos[j],
+                  &eng->actors.collisionCollections[j])) {
 
             Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[i], pos[j]));
             float velDot = Vector3DotProduct(vel[i], mtvDir);
@@ -949,16 +946,16 @@ static void ResolveActorCollisions(GameState_t *gs) {
 //----------------------------------------
 // Actor vs Static collisions using grid
 //----------------------------------------
-static void ResolveActorStaticCollisions(GameState_t *gs) {
-  int emCount = gs->em.count;
-  Vector3 *pos = gs->components.positions;
-  Vector3 *vel = gs->components.velocities;
+static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
+  int emCount = eng->em.count;
+  Vector3 *pos = eng->actors.positions;
+  Vector3 *vel = eng->actors.velocities;
 
   for (int i = 0; i < emCount; i++) {
-    if (!gs->em.alive[i])
+    if (!eng->em.alive[i])
       continue;
 
-    EntityType_t type = gs->components.types[i];
+    EntityType_t type = eng->actors.types[i];
     if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
       continue;
 
@@ -981,17 +978,17 @@ static void ResolveActorStaticCollisions(GameState_t *gs) {
 
           int s = GetEntityIndex(e);
 
-          if (!gs->statics.modelCollections[s].countModels)
+          if (!eng->statics.modelCollections[s].countModels)
             continue;
 
           // Check and resolve collision
           if (CheckAndResolveOBBCollision(
-                  &pos[i], &gs->components.collisionCollections[i],
-                  &gs->statics.positions[s],
-                  &gs->statics.collisionCollections[s])) {
+                  &pos[i], &eng->actors.collisionCollections[i],
+                  &eng->statics.positions[s],
+                  &eng->statics.collisionCollections[s])) {
 
             Vector3 mtvDir = Vector3Normalize(
-                Vector3Subtract(pos[i], gs->statics.positions[s]));
+                Vector3Subtract(pos[i], eng->statics.positions[s]));
             float velDot = Vector3DotProduct(vel[i], mtvDir);
             if (velDot > 0.f)
               vel[i] = Vector3Subtract(vel[i], Vector3Scale(mtvDir, velDot));
@@ -1005,214 +1002,52 @@ static void ResolveActorStaticCollisions(GameState_t *gs) {
 //----------------------------------------
 // Main physics system
 //----------------------------------------
-void PhysicsSystem(GameState_t *gs, float dt) {
-  int emCount = gs->em.count;
+void PhysicsSystem(GameState_t *gs, Engine_t *eng, float dt) {
+  int emCount = eng->em.count;
 
   // ===== Update projectiles =====
-  UpdateProjectiles(gs, dt);
+  UpdateProjectiles(gs, eng, dt);
 
   // ===== Update actors =====
   for (int i = 0; i < emCount; i++) {
-    if (!gs->em.alive[i])
+    if (!eng->em.alive[i])
       continue;
 
-    EntityType_t type = gs->components.types[i];
+    EntityType_t type = eng->actors.types[i];
     if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
       continue;
 
-    UpdateActorPosition(gs, i, dt);
+    UpdateActorPosition(eng, i, dt);
 
     // Reinsert into grid if moved
-    if (!Vector3Equals(gs->components.prevPositions[i],
-                       gs->components.positions[i])) {
+    if (!Vector3Equals(eng->actors.prevPositions[i],
+                       eng->actors.positions[i])) {
       // printf("updating entity position\n");
-      UpdateEntityInGrid(gs, MakeEntityID(ET_ACTOR, i));
+      UpdateEntityInGrid(gs, eng, MakeEntityID(ET_ACTOR, i));
     }
   }
 
   // ===== Resolve collisions =====
-  ResolveActorCollisions(gs);
-  ResolveActorStaticCollisions(gs);
+  ResolveActorCollisions(gs, eng);
+  ResolveActorStaticCollisions(gs, eng);
 }
 
 // ---------------- TURRET AI SYSTEM ----------------
 
-void TurretAISystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
+void TurretAISystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                    float dt) {
   int playerId = gs->playerId;
-  Vector3 playerPos = gs->components.positions[playerId];
-
-  const float engageRange = 500.0f; // turrets become idle beyond this range
-  const float minAccuracy = 0.6f;   // worst accuracy
-  const float maxAccuracy = 1.0f;   // best accuracy at close range
-
-  for (int i = 0; i < gs->em.count; i++) {
-    if (!gs->em.alive[i])
-      continue;
-    if (!(gs->em.masks[i] & C_TURRET_BEHAVIOUR_1))
-      continue;
-
-    Vector3 turretPos = gs->components.positions[i];
-    ModelCollection_t *turretModels = &gs->components.modelCollections[i];
-
-    Orientation *base = &turretModels->orientations[0];
-    Orientation *barrel = &turretModels->orientations[1];
-
-    // --- Distance and accuracy falloff ---
-    Vector3 toPlayer = Vector3Subtract(playerPos, turretPos);
-    float distanceToPlayer = Vector3Length(toPlayer);
-
-    // If far away, idle (look straight up)
-    if (distanceToPlayer > engageRange) {
-      base->yaw =
-          Lerp(base->yaw, 0.0f, dt * 1.0f); // slowly return to neutral yaw
-      barrel->pitch =
-          Lerp(barrel->pitch, -PI / 2.0f, dt * 1.0f); // look straight up
-      continue;
-    }
-
-    // Scale accuracy with distance
-    float distRatio = distanceToPlayer / engageRange; // 0 near, 1 at max
-    float accuracy = maxAccuracy - (maxAccuracy - minAccuracy) * distRatio;
-    if (accuracy < minAccuracy)
-      accuracy = minAccuracy;
-
-    // --- Aim at player ---
-    float maxOffsetAngle =
-        (1.0f - accuracy) * (PI / 4.0f); // less accurate = larger offset
-    float yawOffset = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
-    float pitchOffset =
-        ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
-
-    float targetYaw = atan2f(toPlayer.z, toPlayer.x) - PI / 2.0f + yawOffset;
-    float targetPitch =
-        atan2f(toPlayer.y,
-               Vector3Length((Vector3){toPlayer.x, 0, toPlayer.z})) +
-        pitchOffset;
-
-    // --- Smooth rotate ---
-    float yawDiff = targetYaw - base->yaw;
-    if (yawDiff > PI)
-      yawDiff -= 2 * PI;
-    if (yawDiff < -PI)
-      yawDiff += 2 * PI;
-    base->yaw += yawDiff * dt * 4.0f;
-
-    barrel->pitch = Lerp(barrel->pitch, targetPitch, dt * 2.0f);
-
-    // --- Check if aimed ---
-    float maxAllowedError = (1.0f - accuracy) * (PI / 12.0f);
-    bool yawAligned = fabsf(yawDiff) < maxAllowedError;
-    bool pitchAligned = fabsf(barrel->pitch - targetPitch) < maxAllowedError;
-
-    // --- Optional random misses ---
-    if (accuracy < 1.0f) {
-      float missChance = 1.0f - accuracy;
-      if (((float)rand() / RAND_MAX) < missChance) {
-        yawAligned = false;
-        pitchAligned = false;
-      }
-    }
-
-    // --- Fire if aligned ---
-    if (yawAligned && pitchAligned && gs->components.cooldowns[i][0] <= 0.0f) {
-      gs->components.cooldowns[i][0] = gs->components.firerate[i][0];
-      UpdateRayCastToModel(gs, &gs->components.raycasts[i][0], i, 1);
-      QueueSound(soundSys, SOUND_WEAPON_FIRE, turretPos, 0.3f, 1.0f);
-
-      bool hit = CheckRaycastCollision(gs, &gs->components.raycasts[i][0], i);
-      if (hit)
-        printf("Turret %d hit something!\n", i);
-    }
-  }
+  Vector3 playerPos = eng->actors.positions[playerId];
 }
 
-void MechAISystem(GameState_t *gs, SoundSystem_t *soundSys, float dt) {
+void MechAISystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                  float dt) {
   int playerId = gs->playerId;
-  Vector3 playerPos = gs->components.positions[playerId];
+  Vector3 playerPos = eng->actors.positions[playerId];
 
   const float engageRange = 500.0f; // turrets become idle beyond this range
   const float minAccuracy = 0.6f;   // worst accuracy
   const float maxAccuracy = 1.0f;   // best accuracy at close range
-
-  for (int i = 0; i < gs->em.count; i++) {
-    if (!gs->em.alive[i])
-      continue;
-    if (!(gs->em.masks[i] & C_TURRET_BEHAVIOUR_1))
-      continue;
-
-    Vector3 turretPos = gs->components.positions[i];
-    ModelCollection_t *turretModels = &gs->components.modelCollections[i];
-
-    Orientation *base = &turretModels->orientations[0];
-    Orientation *barrel = &turretModels->orientations[1];
-
-    // --- Distance and accuracy falloff ---
-    Vector3 toPlayer = Vector3Subtract(playerPos, turretPos);
-    float distanceToPlayer = Vector3Length(toPlayer);
-
-    // If far away, idle (look straight up)
-    if (distanceToPlayer > engageRange) {
-      base->yaw =
-          Lerp(base->yaw, 0.0f, dt * 1.0f); // slowly return to neutral yaw
-      barrel->pitch =
-          Lerp(barrel->pitch, -PI / 2.0f, dt * 1.0f); // look straight up
-      continue;
-    }
-
-    // Scale accuracy with distance
-    float distRatio = distanceToPlayer / engageRange; // 0 near, 1 at max
-    float accuracy = maxAccuracy - (maxAccuracy - minAccuracy) * distRatio;
-    if (accuracy < minAccuracy)
-      accuracy = minAccuracy;
-
-    // --- Aim at player ---
-    float maxOffsetAngle =
-        (1.0f - accuracy) * (PI / 4.0f); // less accurate = larger offset
-    float yawOffset = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
-    float pitchOffset =
-        ((float)rand() / RAND_MAX * 2.0f - 1.0f) * maxOffsetAngle;
-
-    float targetYaw = atan2f(toPlayer.z, toPlayer.x) - PI / 2.0f + yawOffset;
-    float targetPitch =
-        atan2f(toPlayer.y,
-               Vector3Length((Vector3){toPlayer.x, 0, toPlayer.z})) +
-        pitchOffset;
-
-    // --- Smooth rotate ---
-    float yawDiff = targetYaw - base->yaw;
-    if (yawDiff > PI)
-      yawDiff -= 2 * PI;
-    if (yawDiff < -PI)
-      yawDiff += 2 * PI;
-    base->yaw += yawDiff * dt * 4.0f;
-
-    barrel->pitch = Lerp(barrel->pitch, targetPitch, dt * 2.0f);
-
-    // --- Check if aimed ---
-    float maxAllowedError = (1.0f - accuracy) * (PI / 12.0f);
-    bool yawAligned = fabsf(yawDiff) < maxAllowedError;
-    bool pitchAligned = fabsf(barrel->pitch - targetPitch) < maxAllowedError;
-
-    // --- Optional random misses ---
-    if (accuracy < 1.0f) {
-      float missChance = 1.0f - accuracy;
-      if (((float)rand() / RAND_MAX) < missChance) {
-        yawAligned = false;
-        pitchAligned = false;
-      }
-    }
-
-    // --- Fire if aligned ---
-    if (yawAligned && pitchAligned && gs->components.cooldowns[i][0] <= 0.0f) {
-      gs->components.cooldowns[i][0] = gs->components.firerate[i][0];
-      UpdateRayCastToModel(gs, &gs->components.raycasts[i][0], i, 1);
-      QueueSound(soundSys, SOUND_WEAPON_FIRE, turretPos, 0.3f, 1.0f);
-
-      bool hit = CheckRaycastCollision(gs, &gs->components.raycasts[i][0], i);
-      if (hit)
-        printf("Turret %d hit something!\n", i);
-    }
-  }
 }
 
 // ---------------- Rendering ----------------
@@ -1347,12 +1182,13 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
   }
 }
 
-void DrawProjectiles(GameState_t *gs) {
+void DrawProjectiles(Engine_t *eng) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
-    if (!gs->projectiles.active[i])
+    if (!eng->projectiles.active[i])
       continue;
 
-    DrawSphere(gs->projectiles.positions[i], gs->projectiles.radii[i], YELLOW);
+    DrawSphere(eng->projectiles.positions[i], eng->projectiles.radii[i],
+               YELLOW);
   }
 }
 
@@ -1417,16 +1253,16 @@ void DrawParticles(ParticlePool_t *pp) {
   }
 }
 
-void DrawRaycasts(GameState_t *gs) {
-  for (int i = 0; i < gs->em.count; i++) {
-    if (!gs->em.alive[i])
+void DrawRaycasts(GameState_t *gs, Engine_t *eng) {
+  for (int i = 0; i < eng->em.count; i++) {
+    if (!eng->em.alive[i])
       continue; // skip dead entities
-    if (!(gs->em.masks[i] & C_RAYCAST))
+    if (!(eng->em.masks[i] & C_RAYCAST))
       continue; // skip entities without raycast
 
-    for (int j = 0; j < gs->components.rayCounts[i]; j++) {
+    for (int j = 0; j < eng->actors.rayCounts[i]; j++) {
 
-      Raycast_t *raycast = &gs->components.raycasts[i][j];
+      Raycast_t *raycast = &eng->actors.raycasts[i][j];
 
       // Color for debug: player = RED, others = BLUE
       Color c = (i == gs->playerId) ? RED : BLUE;
@@ -1437,18 +1273,16 @@ void DrawRaycasts(GameState_t *gs) {
 }
 
 // --- Main Render Function ---
-void RenderSystem(GameState_t *gs, Camera3D camera) {
-
-  Engine *eng = engine_get();
+void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
   const float bobAmount = BOB_AMOUNT; // height in meters, visual only
 
   int pid = gs->playerId;
-  Vector3 playerPos = gs->components.positions[pid];
-  ModelCollection_t *mc = &gs->components.modelCollections[pid];
+  Vector3 playerPos = eng->actors.positions[pid];
+  ModelCollection_t *mc = &eng->actors.modelCollections[pid];
 
   // --- Compute headbob ---
-  float t = gs->components.stepCycle[pid];
+  float t = eng->actors.stepCycle[pid];
   float bobTri = (t < 0.5f) ? (t * 2.0f) : (2.0f - t * 2.0f); // 0->1->0
   bobTri = 1.0f - bobTri;                                     // flip to drop
   float torsoBobY = bobTri * bobAmount;
@@ -1459,7 +1293,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   // Update torso model collection transforms
   UpdateModelCollectionWorldTransforms(mc, torsoPos, camera.target,
-                                       gs->components.types[pid]);
+                                       eng->actors.types[pid]);
 
   // --- Compute forward from torso orientation ---
   Orientation torsoOri = mc->globalOrientations[1]; // torso model index
@@ -1500,7 +1334,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   rlSetMatrixProjection(proj);
 
-  DrawModel(gs->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
+  DrawModel(eng->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
 
   // --- Draw world terrain/chunks ---
   // for (int z = 0; z < WORLD_SIZE_Z; z++) {
@@ -1511,67 +1345,67 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   // }
 
   // --- Draw all entities ---
-  DrawProjectiles(gs);
+  DrawProjectiles(eng);
 
-  DrawParticles(&gs->particles);
+  DrawParticles(&eng->particles);
 
-  for (int i = 0; i < gs->em.count; i++) {
-    Vector3 entityPos = gs->components.positions[i];
+  for (int i = 0; i < eng->em.count; i++) {
+    Vector3 entityPos = eng->actors.positions[i];
 
     // Update world transforms
-    UpdateModelCollectionWorldTransforms(&gs->components.modelCollections[i],
+    UpdateModelCollectionWorldTransforms(&eng->actors.modelCollections[i],
                                          entityPos, camera.target,
-                                         gs->components.types[i]);
-    UpdateModelCollectionWorldTransforms(
-        &gs->components.collisionCollections[i], entityPos, camera.target, 0);
-    UpdateModelCollectionWorldTransforms(&gs->components.hitboxCollections[i],
+                                         eng->actors.types[i]);
+    UpdateModelCollectionWorldTransforms(&eng->actors.collisionCollections[i],
+                                         entityPos, camera.target, 0);
+    UpdateModelCollectionWorldTransforms(&eng->actors.hitboxCollections[i],
                                          entityPos, camera.target, 0);
 
-    DrawRaycasts(gs);
+    DrawRaycasts(gs, eng);
 
     // Visual models (solid white)
-    DrawModelCollection(&gs->components.modelCollections[i], entityPos, WHITE,
+    DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,
                         false);
 
     // Movement collision boxes (green wireframe)
-    DrawModelCollection(&gs->components.collisionCollections[i], entityPos,
-                        GREEN, true);
+    DrawModelCollection(&eng->actors.collisionCollections[i], entityPos, GREEN,
+                        true);
 
     Color hitboxColor = RED;
-    if (!gs->em.alive[i]) {
+    if (!eng->em.alive[i]) {
       hitboxColor = BLACK;
     }
     // Hitboxes (red wireframe)
-    DrawModelCollection(&gs->components.hitboxCollections[i], entityPos,
+    DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
                         hitboxColor, true);
   }
 
   for (int i = 0; i < MAX_STATICS; i++) {
-    if (gs->statics.modelCollections[i].countModels == 0)
+    if (eng->statics.modelCollections[i].countModels == 0)
       continue; // ✅ skip unused static entries
-    Vector3 entityPos = gs->statics.positions[i];
+    Vector3 entityPos = eng->statics.positions[i];
     // TODO replaced types with 0, currently types arent used for anything so
     // keep in mind for later ig
 
     // Update world transforms
-    UpdateModelCollectionWorldTransforms(&gs->statics.modelCollections[i],
+    UpdateModelCollectionWorldTransforms(&eng->statics.modelCollections[i],
                                          entityPos, camera.target, 0);
-    UpdateModelCollectionWorldTransforms(&gs->statics.collisionCollections[i],
+    UpdateModelCollectionWorldTransforms(&eng->statics.collisionCollections[i],
                                          entityPos, camera.target, 0);
-    UpdateModelCollectionWorldTransforms(&gs->statics.hitboxCollections[i],
+    UpdateModelCollectionWorldTransforms(&eng->statics.hitboxCollections[i],
                                          entityPos, camera.target, 0);
 
     // Visual models (solid white)
-    DrawModelCollection(&gs->statics.modelCollections[i], entityPos, WHITE,
+    DrawModelCollection(&eng->statics.modelCollections[i], entityPos, WHITE,
                         false);
 
     // Movement collision boxes (green wireframe)
-    DrawModelCollection(&gs->statics.collisionCollections[i], entityPos, GREEN,
+    DrawModelCollection(&eng->statics.collisionCollections[i], entityPos, GREEN,
                         true);
 
     Color hitboxColor = RED;
     // Hitboxes (red wireframe)
-    DrawModelCollection(&gs->statics.hitboxCollections[i], entityPos,
+    DrawModelCollection(&eng->statics.hitboxCollections[i], entityPos,
                         hitboxColor, true);
   }
 
@@ -1587,7 +1421,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
            "Torso Yaw: %.2f  Pitch: %.2f  Roll: %.2f\n"
            "Camera Yaw: %.2f  Pitch: %.2f\n Convergence distance %f",
            torsoOri.yaw, torsoOri.pitch, torsoOri.roll, camYaw, camPitch,
-           gs->components.raycasts[pid][0].distance);
+           eng->actors.raycasts[pid][0].distance);
 
   // Draw text at top-left
   DrawText(debugOri, 10, 40, 20, RAYWHITE);
@@ -1603,10 +1437,10 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
 
   // draw torso leg orientation
   Orientation legs_orientation =
-      gs->components.modelCollections[gs->playerId].orientations[0];
+      eng->actors.modelCollections[gs->playerId].orientations[0];
 
   Orientation torso_orientation =
-      gs->components.modelCollections[gs->playerId].orientations[1];
+      eng->actors.modelCollections[gs->playerId].orientations[1];
 
   float legYaw = fmod(legs_orientation.yaw, 2 * PI);
   if (legYaw < 0)
@@ -1653,9 +1487,7 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   EndDrawing();
 }
 
-void MainMenuSystem(GameState_t *gs) {
-
-  Engine *eng = engine_get();
+void MainMenuSystem(GameState_t *gs, Engine_t *eng) {
 
   BeginDrawing();
   ClearBackground(BLACK);
@@ -1682,10 +1514,8 @@ void MainMenuSystem(GameState_t *gs) {
   EndDrawing();
 }
 
-void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
-                float dt) {
-
-  Engine *eng = engine_get();
+void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                Camera3D *camera, float dt) {
 
   if (GetScreenHeight() != eng->config.window_height) {
     eng->config.window_width = GetScreenWidth();
@@ -1694,32 +1524,32 @@ void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
 
   if (gs->state == STATE_INLEVEL) {
 
-    PlayerControlSystem(gs, soundSys, dt, camera);
+    PlayerControlSystem(gs, eng, soundSys, dt, camera);
 
     int entity = 0; // player
     int rayIndex = 0;
-    Raycast_t *rc = &gs->components.raycasts[entity][rayIndex];
-    ModelCollection_t *mc = &gs->components.modelCollections[entity];
+    Raycast_t *rc = &eng->actors.raycasts[entity][rayIndex];
+    ModelCollection_t *mc = &eng->actors.modelCollections[entity];
 
-    UpdateRayCastToModel(gs, rc, entity, 1);
-    UpdateEntityRaycasts(gs, entity);
+    UpdateRayCastToModel(gs, eng, rc, entity, 1);
+    UpdateEntityRaycasts(eng, entity);
 
-    TurretAISystem(gs, soundSys, dt);
+    TurretAISystem(gs, eng, soundSys, dt);
 
-    DecrementCooldowns(gs, dt);
+    DecrementCooldowns(eng, dt);
 
-    UpdateTorsoRecoil(&gs->components.modelCollections[gs->playerId], 1, dt);
+    UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
 
-    PhysicsSystem(gs, dt);
-    UpdateParticles(gs, dt);
+    PhysicsSystem(gs, eng, dt);
+    UpdateParticles(eng, dt);
 
-    RenderSystem(gs, *camera);
+    RenderSystem(gs, eng, *camera);
 
     int pid = gs->playerId;
-    Vector3 playerPos = gs->components.positions[pid];
+    Vector3 playerPos = eng->actors.positions[pid];
 
     ProcessSoundSystem(soundSys, playerPos);
   } else if (gs->state == STATE_MAINMENU) {
-    MainMenuSystem(gs);
+    MainMenuSystem(gs, eng);
   }
 }
