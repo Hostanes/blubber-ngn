@@ -1,39 +1,58 @@
-
 // main.c
 // Entry point for the refactored Mech Arena demo.
 // Depends on: game.h, sound.h, systems.h, raylib, raymath
 
 #include "game.h"
+
+#include "engine.h"
 #include "raylib.h"
 #include "sound.h"
 #include "systems.h"
 #include <raymath.h>
 #include <stdio.h>
+#include <sys/types.h>
 
 int main(void) {
   printf("raylib version: %s\n", RAYLIB_VERSION);
 
-  int screenWidth = 1280;
-  int screenHeight = 720;
+  SetConfigFlags(FLAG_VSYNC_HINT); // leave this here for now
 
-  InitWindow(screenWidth, screenHeight, "Mech Arena Demo (refactor)");
+  // --------------------------------------------
+  // ENGINE CONFIG
+  // --------------------------------------------
+  EngineConfig cfg = {
+      .window_width = 1280,
+      .window_height = 720,
 
-  SetConfigFlags(FLAG_VSYNC_HINT);
-  InitWindow(screenWidth, screenHeight, "MechArenaDemo");
+      // We'll move FOV, near, far into engine later.
+      .fov_deg = 60.0f,
+      .near_plane = 0.1f,
+      .far_plane = 5000.0f,
+
+      .max_entities = 2048,
+      .max_projectiles = 256,
+      .max_actors = 256,
+      .max_particles = 4096,
+      .max_statics = 1024,
+  };
+
+  Engine eng;
+  engine_init(&eng, &cfg);
 
   EnableCursor();
-
   SetTargetFPS(60);
 
   LoadAssets();
 
+  // --------------------------------------------
+  // CAMERA SETUP (still here for now)
+  // --------------------------------------------
   Camera3D camera = {0};
   camera.position = (Vector3){0, 0, 0};
   camera.target = (Vector3){0, 0, 0};
   camera.up = (Vector3){0, 1, 0};
-  camera.fovy = 60.0f;
+  camera.fovy = cfg.fov_deg; // previously 60.0f
   camera.projection = CAMERA_PERSPECTIVE;
-
 
   SetMasterVolume(1.0f);
 
@@ -48,7 +67,7 @@ int main(void) {
   }
 
   CloseAudioDevice();
-  CloseWindow();
+  engine_shutdown(); // <-- replaces CloseWindow()
 
   return 0;
 }

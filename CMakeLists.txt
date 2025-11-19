@@ -21,6 +21,7 @@ set(SOURCES
     src/game.c
     src/sound.c
     src/systems.c
+    src/engine.c
 )
 
 # ------------------- Executable -------------------

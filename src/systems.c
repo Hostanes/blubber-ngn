@@ -1,7 +1,7 @@
 // systems.c
 // Implements player input, physics, and rendering
-
 #include "systems.h"
+#include "engine.h"
 #include "game.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -289,6 +289,9 @@ void UpdateRayDistance(GameState_t *gs, entity_t e, float dt) {
 
 void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
                          Camera3D *camera) {
+
+  Engine *eng = engine_get();
+
   int pid = gs->playerId;
   Vector3 *pos = gs->components.positions;
   Vector3 *vel = gs->components.velocities;
@@ -301,13 +304,12 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
 
   float sensitivity = 0.0007f;
 
-  float baseFOV = 60.0f;
-  float sprintFOV = 80.0f;
+  float baseFOV = eng->config.fov_deg;
+  float sprintFOV = baseFOV * 1.1;
   float zoomFOV = 10.0f;
   float fovSpeed = 12.0f; // how fast FOV interpolates
 
   float targetFOV = isSprinting ? sprintFOV : baseFOV;
-  camera->fovy = camera->fovy + (targetFOV - camera->fovy) * dt * fovSpeed;
 
   float totalSpeedMult = isSprinting ? 1.5f : 1.0f;
   float forwardSpeedMult = 5.0f * totalSpeedMult;
@@ -319,7 +321,9 @@ void PlayerControlSystem(GameState_t *gs, SoundSystem_t *soundSys, float dt,
     sensitivity = 0.0002f;
     camera->fovy = 10;
   } else {
-    camera->fovy = 60;
+    camera->fovy = baseFOV;
+    // TODO fix interpolation
+    camera->fovy = camera->fovy + (targetFOV - camera->fovy) * dt * fovSpeed;
     sensitivity = 0.0007f;
   }
 
@@ -1435,6 +1439,8 @@ void DrawRaycasts(GameState_t *gs) {
 // --- Main Render Function ---
 void RenderSystem(GameState_t *gs, Camera3D camera) {
 
+  Engine *eng = engine_get();
+
   const float bobAmount = BOB_AMOUNT; // height in meters, visual only
 
   int pid = gs->playerId;
@@ -1483,8 +1489,9 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   camera.target = Vector3Add(eye, forward);
 
   Matrix proj = MatrixPerspective(
-      camera.fovy * DEG2RAD, (float)GetScreenWidth() / (float)GetScreenHeight(),
-      0.01f, 10000.0f);
+      camera.fovy * DEG2RAD,
+      (float)eng->config.window_width / (float)eng->config.window_height,
+      eng->config.near_plane, eng->config.far_plane);
 
   BeginDrawing();
   ClearBackground((Color){20, 20, 30, 255});
@@ -1591,7 +1598,8 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
            playerPos.x, playerPos.y, playerPos.z);
 
   int textWidth = MeasureText(posText, 20);
-  DrawText(posText, GetScreenWidth() - textWidth - 10, 10, 20, RAYWHITE);
+  DrawText(posText, eng->config.window_width - textWidth - 10, 10, 20,
+           RAYWHITE);
 
   // draw torso leg orientation
   Orientation legs_orientation =
@@ -1618,11 +1626,12 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
            "legs yaw: %f \ntorso yaw: %f \ndiff: %f\n", legYaw, torsoYaw, diff);
 
   int rotTextWidth = MeasureText(rotText, 20);
-  DrawText(rotText, GetScreenWidth() - rotTextWidth - 10, 30, 20, RAYWHITE);
+  DrawText(rotText, eng->config.window_width - rotTextWidth - 10, 30, 20,
+           RAYWHITE);
 
   float length = 50.0f;
-  Vector2 arrowStart =
-      (Vector2){GetScreenWidth() * 0.8, GetScreenHeight() * 0.8};
+  Vector2 arrowStart = (Vector2){eng->config.window_width * 0.8,
+                                 eng->config.window_height * 0.8};
 
   float endX = arrowStart.x + cosf(-diff) * length;
   float endY = arrowStart.y + sinf(-diff) * length;
@@ -1638,18 +1647,22 @@ void RenderSystem(GameState_t *gs, Camera3D camera) {
   // Draw other UI shapes
   DrawCircleV(arrowStart, 10, DARKBLUE);
 
-  DrawCircleLines(GetScreenWidth() / 2, GetScreenHeight() / 2, 10, RED);
+  DrawCircleLines(eng->config.window_width / 2, eng->config.window_height / 2,
+                  10, RED);
 
   EndDrawing();
 }
 
 void MainMenuSystem(GameState_t *gs) {
+
+  Engine *eng = engine_get();
+
   BeginDrawing();
   ClearBackground(BLACK);
 
   // Simple button rectangle
-  Rectangle startButton = {GetScreenWidth() / 2.0f - 100,
-                           GetScreenHeight() / 2.0f - 25, 200, 50};
+  Rectangle startButton = {eng->config.window_width / 2.0f - 100,
+                           eng->config.window_height / 2.0f - 25, 200, 50};
 
   // Check if mouse is over the button
   Vector2 mousePos = GetMousePosition();
@@ -1671,6 +1684,13 @@ void MainMenuSystem(GameState_t *gs) {
 
 void UpdateGame(GameState_t *gs, SoundSystem_t *soundSys, Camera3D *camera,
                 float dt) {
+
+  Engine *eng = engine_get();
+
+  if (GetScreenHeight() != eng->config.window_height) {
+    eng->config.window_width = GetScreenWidth();
+    eng->config.window_height = GetScreenHeight();
+  }
 
   if (gs->state == STATE_INLEVEL) {
 
