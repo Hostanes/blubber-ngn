@@ -124,6 +124,18 @@ typedef struct {
   Orientation *globalOrientations;
 } ModelCollection_t;
 
+typedef uint32_t ComponentID;
+
+// TODO implement this instead of hardcoded components
+// this is just for actors
+// TODO later on implement dynamic archetypes
+typedef struct {
+  ComponentID id;
+  size_t element_size;
+  void *data;     // contiguous array: element_size * max_entities
+  bool *occupied; // per entity
+} ComponentStorage;
+
 typedef struct {
 
   Vector3 positions[MAX_ENTITIES];
