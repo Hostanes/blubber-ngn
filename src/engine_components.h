@@ -131,14 +131,16 @@ typedef uint32_t ComponentID;
 // TODO later on implement dynamic archetypes
 typedef struct {
   ComponentID id;
-  size_t element_size;
-  void *data;     // contiguous array: element_size * max_entities
+  size_t elementSize;
+  void *data; // contiguous array: element_size * max_entities
+  int count;
   bool *occupied; // per entity
 } ComponentStorage_t;
 
 typedef struct {
 
-  ComponentStorage_t *ComponentStore;
+  ComponentStorage_t *componentStore;
+  int componentCount;
 
   // TODO transition below into the dynamic Component store above
   Vector3 positions[MAX_ENTITIES];

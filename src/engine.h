@@ -47,4 +47,18 @@ void engine_shutdown(void);
 
 Engine_t *engine_get(void);
 
+//
+//  Engine Component Store
+//
+
+int registerComponent(ActorComponents_t *actors, size_t elementSize);
+
+void addComponentToElement(EntityManager_t *em, ActorComponents_t *actors,
+                           entity_t entity, int componentId,
+                           void *elementValue);
+
+void getComponent(ActorComponents_t *actors, entity_t entity, int componentId);
+
+void RemoveComponentFromElement(ActorComponents_t *actors, entity_t entity);
+
 #endif
