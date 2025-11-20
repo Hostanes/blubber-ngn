@@ -15,7 +15,7 @@
 int main(void) {
   printf("raylib version: %s\n", RAYLIB_VERSION);
 
-  SetConfigFlags(FLAG_VSYNC_HINT); // leave this here for now
+  SetConfigFlags(FLAG_VSYNC_HINT); 
 
   // --------------------------------------------
   // ENGINE CONFIG
@@ -24,7 +24,6 @@ int main(void) {
       .window_width = 1280,
       .window_height = 720,
 
-      // We'll move FOV, near, far into engine later.
       .fov_deg = 60.0f,
       .near_plane = 0.1f,
       .far_plane = 5000.0f,

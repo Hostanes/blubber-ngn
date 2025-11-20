@@ -1,0 +1,17 @@
+Your most important problem is the one infront of you
+
+
+Rewrite the static components in the actor pool
+to use the dynamic ComponentStore variable.
+
+add these functions:
+- register(Element size): adds a new component to the Component Store
+	the store is at first completely empty
+- Add(Element index, value)
+- Remove(Element index)
+
+still not sure whether Element index should always be the ID, or add
+some other linking system
+
+and then slowly transition to using these in the code
+while rewriting the systems

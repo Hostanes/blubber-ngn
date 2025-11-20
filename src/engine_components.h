@@ -1,11 +1,11 @@
 
 #ifndef ENGINE_TYPES_H
 #define ENGINE_TYPES_H
-
 #include "raylib.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #define HEIGHTMAP_RES_X 512
 #define HEIGHTMAP_RES_Z 512
@@ -134,10 +134,13 @@ typedef struct {
   size_t element_size;
   void *data;     // contiguous array: element_size * max_entities
   bool *occupied; // per entity
-} ComponentStorage;
+} ComponentStorage_t;
 
 typedef struct {
 
+  ComponentStorage_t *ComponentStore;
+
+  // TODO transition below into the dynamic Component store above
   Vector3 positions[MAX_ENTITIES];
   Vector3 prevPositions[MAX_ENTITIES];
   Vector3 velocities[MAX_ENTITIES];
