@@ -57,7 +57,7 @@ void addComponentToElement(EntityManager_t *em, ActorComponents_t *actors,
                            entity_t entity, int componentId,
                            void *elementValue);
 
-void getComponent(ActorComponents_t *actors, entity_t entity, int componentId);
+void *getComponent(ActorComponents_t *actors, entity_t entity, int componentId);
 
 void RemoveComponentFromElement(ActorComponents_t *actors, entity_t entity);
 

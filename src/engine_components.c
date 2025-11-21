@@ -33,12 +33,23 @@ void addComponentToElement(EntityManager_t *em, ActorComponents_t *actors,
   em->masks[entity] |= (1 << componentId);
 }
 
-void getComponent(ActorComponents_t *actors, entity_t entity, int componentId) {
-  //
-  //
+void *getComponent(ActorComponents_t *actors, entity_t entity,
+                   int componentId) {
+  ComponentStorage_t *cs = &actors->componentStore[componentId];
+  if (!cs->occupied[entity]) {
+    return NULL;
+  }
+
+  return (uint8_t *)cs->data + (entity * cs->elementSize);
 }
 
-void RemoveComponentFromElement(ActorComponents_t *actors, entity_t entity) {
-  //
-  //
+void removeComponentFromEntity(EntityManager_t *em, ActorComponents_t *actors,
+                               entity_t entity, ComponentID id) {
+  ComponentStorage_t *cs = &actors->componentStore[id];
+  cs->occupied[entity] = false;
+
+  // zero memory for safety
+  memset((uint8_t *)cs->data + entity * cs->elementSize, 0, cs->elementSize);
+
+  em->masks[entity] &= ~(1 << id);
 }
