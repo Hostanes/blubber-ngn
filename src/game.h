@@ -10,23 +10,57 @@
 #include <stdlib.h>
 
 //----------------------------------------
+// Terrain
+//----------------------------------------
+typedef struct {
+  Mesh mesh;
+  Model model;
+  float *height;
+  float minX, minZ;
+  int hmWidth, hmHeight;
+  float cellSizeX, cellSizeZ;
+  float worldWidth, worldLength;
+} Terrain_t;
+
+//----------------------------------------
+// Grid
+//----------------------------------------
+typedef struct {
+  int entities[32];
+  int count;
+} GridNode_t;
+
+typedef struct {
+  GridNode_t **nodes;
+  float cellSize;
+  float minX, minZ;
+  int width, length;
+} EntityGrid_t;
+
+// Component IDs are stored here
+// Component values themselves are stored in engine -> actors -> Component Store
+typedef struct {
+  int cid_Positions;
+  int cid_prevPositions;
+  int cid_velocities;
+
+  int cid_stepCycle;
+  int cid_prevStepCycle;
+  int cid_stepRate;
+
+  // TODO add others
+
+} ActorComponentRegistry_t;
+
+//----------------------------------------
 // Game State
 //----------------------------------------
 typedef struct {
-  // EntityManager_t em;           // entity manager
-  // ActorComponents_t components; // all components
-
-  // ProjectilePool_t projectiles;
-
-  // StaticPool_t statics;
-
-  // ParticlePool_t particles;
-
   int playerId;
   AllState_t state;
   float pHeadbobTimer;
 
-  // Terrain_t terrain;
+  Terrain_t terrain;
 
   EntityGrid_t grid;
 } GameState_t;

@@ -71,20 +71,6 @@ typedef enum {
 } ComponentFlag_t;
 
 typedef int32_t entity_t;
-
-//----------------------------------------
-// Terrain
-//----------------------------------------
-typedef struct {
-  Mesh mesh;
-  Model model;
-  float *height;
-  float minX, minZ;
-  int hmWidth, hmHeight;
-  float cellSizeX, cellSizeZ;
-  float worldWidth, worldLength;
-} Terrain_t;
-
 //----------------------------------------
 // Entity Manager + Components
 //----------------------------------------
@@ -139,7 +125,7 @@ typedef struct {
 
 typedef struct {
 
-  ComponentStorage_t *componentStore;
+  ComponentStorage_t *componentStore; //  TODO define max comps
   int componentCount;
 
   // TODO transition below into the dynamic Component store above
@@ -195,22 +181,6 @@ typedef struct {
   float lifetimes[MAX_PARTICLES];
   float startLifetimes[MAX_PARTICLES];
 } ParticlePool_t;
-
-//----------------------------------------
-// Grid
-//----------------------------------------
-typedef struct {
-  int entities[32];
-  int count;
-} GridNode_t;
-
-typedef struct {
-  GridNode_t **nodes;
-  float cellSize;
-  float minX, minZ;
-  int width, length;
-} EntityGrid_t;
-
 // Inline category ID helpers
 static inline entity_t MakeEntityID(EntityCategory_t cat, int index) {
   return ((uint32_t)cat << ENTITY_TYPE_SHIFT) | (index & ENTITY_INDEX_MASK);

@@ -139,7 +139,7 @@ void AddRayToEntity(Engine_t *eng, entity_t e, int parentModelIndex,
 // Terrain initialization
 // -----------------------------------------------
 void InitTerrain(GameState_t *gs, Engine_t *eng, Texture2D sandTex) {
-  Terrain_t *terrain = &eng->terrain;
+  Terrain_t *terrain = &gs->terrain;
 
   terrain->model = LoadModel("assets/models/terrain.glb");
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
@@ -590,10 +590,10 @@ GameState_t InitGame(Engine_t *eng) {
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
   InitTerrain(gs, eng, sandTex);
 
-  BuildHeightmap(&eng->terrain);
+  BuildHeightmap(&gs->terrain);
 
   float cellSize = GRID_CELL_SIZE;
-  AllocGrid(&gs->grid, &eng->terrain, cellSize);
+  AllocGrid(&gs->grid, &gs->terrain, cellSize);
 
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, (Vector3){0, 10.0f, 0}));
@@ -609,7 +609,7 @@ GameState_t InitGame(Engine_t *eng) {
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
     float z =
         GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&eng->terrain, x, z);
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255),

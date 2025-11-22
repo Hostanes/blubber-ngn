@@ -15,7 +15,7 @@
 
 #define BOB_AMOUNT 0.5f
 
-#define GRAVITY 20.0f // units per second²
+#define GRAVITY 20.0f // units per second2
 #define TERMINAL_VELOCITY 50.0f
 
 #define ENTITY_FEET_OFFSET 10.0f // how high the entity "stands" above terrain
@@ -492,14 +492,16 @@ float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz) {
   return h; // interpolated height at (wx, wz)
 }
 
-static float GetTerrainHeightAtEntity(Engine_t *eng, entity_t entity) {
+static float GetTerrainHeightAtEntity(Engine_t *eng, Terrain_t *terrain,
+                                      entity_t entity) {
 
   Vector3 pos = eng->actors.positions[entity];
-  return GetTerrainHeightAtXZ(&eng->terrain, eng->actors.positions[entity].x,
+  return GetTerrainHeightAtXZ(terrain, eng->actors.positions[entity].x,
                               eng->actors.positions[entity].z);
 }
 
-void ApplyTerrainCollision(Engine_t *eng, int entityId, float dt) {
+void ApplyTerrainCollision(Engine_t *eng, Terrain_t *terrain, int entityId,
+                           float dt) {
   Vector3 *pos = &eng->actors.positions[entityId];
   Vector3 *vel = &eng->actors.velocities[entityId];
 
@@ -512,7 +514,7 @@ void ApplyTerrainCollision(Engine_t *eng, int entityId, float dt) {
   pos->y += vel->y * dt;
 
   // Compute terrain height
-  float terrainY = GetTerrainHeightAtEntity(eng, entityId);
+  float terrainY = GetTerrainHeightAtEntity(eng, terrain, entityId);
 
   // Clamp above terrain + offset
   float desiredY = terrainY + ENTITY_FEET_OFFSET;
@@ -764,8 +766,7 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
     GridAddEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), projPos);
 
     // ===== TERRAIN COLLISION =====
-    if (GetTerrainHeightAtXZ(&eng->terrain, projPos.x, projPos.z) >=
-        projPos.y) {
+    if (GetTerrainHeightAtXZ(&gs->terrain, projPos.x, projPos.z) >= projPos.y) {
       eng->projectiles.active[i] = false;
       spawnParticle(eng, prevPos, 5, 2);
       continue;
@@ -863,7 +864,8 @@ void UpdateParticles(Engine_t *eng, float dt) {
 //----------------------------------------
 // Update actor position with gravity, damping
 //----------------------------------------
-static void UpdateActorPosition(Engine_t *eng, int i, float dt) {
+static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int i,
+                                float dt) {
   Vector3 *pos = eng->actors.positions;
   Vector3 *vel = eng->actors.velocities;
   Vector3 *prevPos = eng->actors.prevPositions;
@@ -874,7 +876,7 @@ static void UpdateActorPosition(Engine_t *eng, int i, float dt) {
   // Gravity
   if (eng->em.masks[i] & C_GRAVITY) {
     pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
-    ApplyTerrainCollision(eng, i, dt);
+    ApplyTerrainCollision(eng, &gs->terrain, i, dt);
   }
 
   // Damping horizontal velocity
@@ -1017,7 +1019,7 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, float dt) {
     if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
       continue;
 
-    UpdateActorPosition(eng, i, dt);
+    UpdateActorPosition(eng, gs, i, dt);
 
     // Reinsert into grid if moved
     if (!Vector3Equals(eng->actors.prevPositions[i],
@@ -1334,7 +1336,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
   rlSetMatrixProjection(proj);
 
-  DrawModel(eng->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
+  DrawModel(gs->terrain.model, (Vector3){0, 0, 0}, 1.0f, BROWN);
 
   // --- Draw world terrain/chunks ---
   // for (int z = 0; z < WORLD_SIZE_Z; z++) {

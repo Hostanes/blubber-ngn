@@ -24,17 +24,12 @@ typedef struct EngineConfig {
 typedef struct Engine {
   EngineConfig_t config;
 
-  // ----------------------------------------
-  // ECS moved from GameState_t
-  // ----------------------------------------
   EntityManager_t em;
   ActorComponents_t actors;
   ProjectilePool_t projectiles;
   StaticPool_t statics;
   ParticlePool_t particles;
 
-  Terrain_t terrain;
-  // EntityGrid_t grid;
 } Engine_t;
 
 // Initializes the engine with the given configuration.
