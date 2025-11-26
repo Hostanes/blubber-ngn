@@ -164,14 +164,17 @@ static inline void UpdateEntityInGrid(GameState_t *gs, Engine_t *eng,
   if (type != ENTITY_PLAYER && type != ENTITY_MECH && type != ENTITY_TANK)
     return;
 
-  Vector3 prevPos = eng->actors.prevPositions[idx];
-  Vector3 currPos = eng->actors.positions[idx];
+  Vector3 *prevPos =
+      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_prevPositions);
 
-  GridRemoveEntity(&gs->grid, e, prevPos);
+  Vector3 *currPos =
+      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_Positions);
 
-  GridAddEntity(&gs->grid, e, currPos);
+  GridRemoveEntity(&gs->grid, e, *prevPos);
 
-  eng->actors.prevPositions[idx] = currPos;
+  GridAddEntity(&gs->grid, e, *currPos);
+
+  prevPos = currPos;
 }
 
 //----------------------------------------

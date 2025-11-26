@@ -229,7 +229,8 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   const float bobAmount = BOB_AMOUNT; // height in meters, visual only
 
   int pid = gs->playerId;
-  Vector3 playerPos = eng->actors.positions[pid];
+  Vector3 *playerPos = (Vector3 *)getComponent(&eng->actors, gs->playerId,
+                                               gs->compReg.cid_Positions);
   ModelCollection_t *mc = &eng->actors.modelCollections[pid];
 
   // --- Compute headbob ---
@@ -239,7 +240,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   float torsoBobY = bobTri * bobAmount;
 
   // --- Update torso position with bob ---
-  Vector3 torsoPos = playerPos;
+  Vector3 torsoPos = *playerPos;
   torsoPos.y += 10.0f + torsoBobY; // base height + bob
 
   // Update torso model collection transforms
@@ -301,7 +302,8 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   DrawParticles(&eng->particles);
 
   for (int i = 0; i < eng->em.count; i++) {
-    Vector3 entityPos = eng->actors.positions[i];
+    Vector3 entityPos =
+        *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
 
     // Update world transforms
     UpdateModelCollectionWorldTransforms(&eng->actors.modelCollections[i],
@@ -380,7 +382,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   // Draw player position
   char posText[64];
   snprintf(posText, sizeof(posText), "Player Pos: X: %.2f  Y: %.2f  Z: %.2f",
-           playerPos.x, playerPos.y, playerPos.z);
+           playerPos->x, playerPos->y, playerPos->z);
 
   int textWidth = MeasureText(posText, 20);
   DrawText(posText, eng->config.window_width - textWidth - 10, 10, 20,

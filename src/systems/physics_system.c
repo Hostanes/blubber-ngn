@@ -60,18 +60,20 @@ float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz) {
   return h; // interpolated height at (wx, wz)
 }
 
-static float GetTerrainHeightAtEntity(Engine_t *eng, Terrain_t *terrain,
-                                      entity_t entity) {
-
-  Vector3 pos = eng->actors.positions[entity];
-  return GetTerrainHeightAtXZ(terrain, eng->actors.positions[entity].x,
-                              eng->actors.positions[entity].z);
+static float GetTerrainHeightAtEntity(Engine_t *eng, GameState_t *gs,
+                                      Terrain_t *terrain, entity_t entity) {
+  Vector3 pos =
+      *(Vector3 *)getComponent(&eng->actors, entity, gs->compReg.cid_Positions);
+  return GetTerrainHeightAtXZ(terrain, pos.x, pos.z);
 }
 
-void ApplyTerrainCollision(Engine_t *eng, Terrain_t *terrain, int entityId,
-                           float dt) {
-  Vector3 *pos = &eng->actors.positions[entityId];
-  Vector3 *vel = &eng->actors.velocities[entityId];
+void ApplyTerrainCollision(Engine_t *eng, GameState_t *gs, Terrain_t *terrain,
+                           int entityId, float dt) {
+
+  Vector3 *pos = (Vector3 *)getComponent(&eng->actors, entityId,
+                                         gs->compReg.cid_Positions);
+  Vector3 *vel = (Vector3 *)getComponent(&eng->actors, entityId,
+                                         gs->compReg.cid_velocities);
 
   // Apply gravity
   vel->y -= GRAVITY * dt;
@@ -82,7 +84,7 @@ void ApplyTerrainCollision(Engine_t *eng, Terrain_t *terrain, int entityId,
   pos->y += vel->y * dt;
 
   // Compute terrain height
-  float terrainY = GetTerrainHeightAtEntity(eng, terrain, entityId);
+  float terrainY = GetTerrainHeightAtEntity(eng, gs, terrain, entityId);
 
   // Clamp above terrain + offset
   float desiredY = terrainY + ENTITY_FEET_OFFSET;
@@ -95,24 +97,36 @@ void ApplyTerrainCollision(Engine_t *eng, Terrain_t *terrain, int entityId,
 //----------------------------------------
 // Update actor position with gravity, damping
 //----------------------------------------
-static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int i,
+
+static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int entityId,
                                 float dt) {
-  Vector3 *pos = eng->actors.positions;
-  Vector3 *vel = eng->actors.velocities;
-  Vector3 *prevPos = eng->actors.prevPositions;
+  // --- Lookup dynamic components ---
+  Vector3 *pos = (Vector3 *)getComponent(&eng->actors, entityId,
+                                         gs->compReg.cid_Positions);
+  Vector3 *vel = (Vector3 *)getComponent(&eng->actors, entityId,
+                                         gs->compReg.cid_velocities);
+  Vector3 *prev = (Vector3 *)getComponent(&eng->actors, entityId,
+                                          gs->compReg.cid_prevPositions);
 
-  // Store previous position
-  prevPos[i] = pos[i];
+  // Safety (during migration) — skip if not yet migrated
+  if (!pos || !vel || !prev)
+    return;
 
-  // Gravity
-  if (eng->em.masks[i] & C_GRAVITY) {
-    pos[i] = Vector3Add(pos[i], Vector3Scale(vel[i], dt));
-    ApplyTerrainCollision(eng, &gs->terrain, i, dt);
+  // --- Store previous position ---
+  *prev = *pos;
+
+  // --- Apply gravity if the entity has the C_GRAVITY flag ---
+  if (eng->em.masks[entityId] & C_GRAVITY) {
+    // pos += vel * dt
+    *pos = Vector3Add(*pos, Vector3Scale(*vel, dt));
+
+    // Clamp to terrain and apply vertical collision
+    ApplyTerrainCollision(eng, gs, &gs->terrain, entityId, dt);
   }
 
-  // Damping horizontal velocity
-  vel[i].x *= 0.65f;
-  vel[i].z *= 0.65f;
+  // --- Horizontal damping ---
+  vel->x *= 0.65f;
+  vel->z *= 0.65f;
 }
 
 //----------------------------------------
@@ -120,8 +134,10 @@ static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int i,
 //----------------------------------------
 static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
   int emCount = eng->em.count;
-  Vector3 *pos = eng->actors.positions;
-  Vector3 *vel = eng->actors.velocities;
+  Vector3 *pos =
+      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+  Vector3 *vel =
+      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_velocities);
 
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
@@ -181,8 +197,10 @@ static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
 //----------------------------------------
 static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
   int emCount = eng->em.count;
-  Vector3 *pos = eng->actors.positions;
-  Vector3 *vel = eng->actors.velocities;
+  Vector3 *pos =
+      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+  Vector3 *vel =
+      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_velocities);
 
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
@@ -253,8 +271,10 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, float dt) {
     UpdateActorPosition(eng, gs, i, dt);
 
     // Reinsert into grid if moved
-    if (!Vector3Equals(eng->actors.prevPositions[i],
-                       eng->actors.positions[i])) {
+    if (!Vector3Equals(*(Vector3 *)getComponent(&eng->actors, i,
+                                                gs->compReg.cid_prevPositions),
+                       (*(Vector3 *)getComponent(&eng->actors, i,
+                                                 gs->compReg.cid_Positions)))) {
       // printf("updating entity position\n");
       UpdateEntityInGrid(gs, eng, MakeEntityID(ET_ACTOR, i));
     }

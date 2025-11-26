@@ -11,6 +11,8 @@
 #include <string.h>
 #include <sys/types.h>
 
+#define MAX_COMPONENTS 32
+
 #ifndef PI
 #define PI 3.14159265358979323846f
 #endif
@@ -260,15 +262,20 @@ static void BuildHeightmap(Terrain_t *terrain) {
 // -----------------------------------------------
 // Entity factory helpers
 // -----------------------------------------------
-static entity_t CreatePlayer(Engine_t *eng, Vector3 pos) {
+static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
+                             Vector3 pos) {
   entity_t e = eng->em.count++;
   eng->em.alive[e] = 1;
   eng->em.masks[e] = C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION |
                      C_HITBOX | C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG |
                      C_GRAVITY;
 
-  eng->actors.positions[e] = pos;
-  eng->actors.velocities[e] = (Vector3){0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  Vector3 vel = {0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+                        &vel);
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+                        &pos);
   eng->actors.stepCycle[e] = 0;
   eng->actors.prevStepCycle[e] = 0;
   eng->actors.stepRate[e] = 2.0f;
@@ -406,13 +413,15 @@ static int CreateStatic(Engine_t *eng, Vector3 pos, Vector3 size, Color c) {
   return id;
 }
 
-static entity_t CreateTurret(Engine_t *eng, Vector3 pos) {
+static entity_t CreateTurret(Engine_t *eng, ActorComponentRegistry_t compReg,
+                             Vector3 pos) {
   entity_t e = eng->em.count++;
   eng->em.alive[e] = 1;
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
                      C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
                      C_GRAVITY;
-  eng->actors.positions[e] = pos;
+
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
   eng->actors.types[e] = ENTITY_TURRET;
   eng->actors.hitPoints[e] = 200.0f;
 
@@ -449,13 +458,15 @@ static entity_t CreateTurret(Engine_t *eng, Vector3 pos) {
   return id;
 }
 
-static entity_t CreateMech(Engine_t *eng, Vector3 pos) {
+static entity_t CreateMech(Engine_t *eng, ActorComponentRegistry_t compReg,
+                           Vector3 pos) {
   entity_t e = eng->em.count++;
   eng->em.alive[e] = 1;
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
                      C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
                      C_GRAVITY;
-  eng->actors.positions[e] = pos;
+
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
   eng->actors.types[e] = ENTITY_MECH;
   eng->actors.hitPoints[e] = 100.0f;
 
@@ -519,13 +530,15 @@ float GetTerrainHeightAtPosition(Terrain_t *terrain, float wx, float wz) {
 //----------------------------------------
 // Add all entities to the grid
 //----------------------------------------
-void PopulateGridWithEntities(EntityGrid_t *grid, Engine_t *eng) {
+void PopulateGridWithEntities(EntityGrid_t *grid,
+                              ActorComponentRegistry_t compReg, Engine_t *eng) {
   // --- Actors ---
   for (int i = 0; i < eng->em.count; i++) {
     if (!eng->em.alive[i])
       continue;
-    Vector3 pos = eng->actors.positions[i];
-    GridAddEntity(grid, MakeEntityID(ET_ACTOR, i), pos);
+    Vector3 *pos =
+        (Vector3 *)getComponent(&eng->actors, i, compReg.cid_Positions);
+    GridAddEntity(grid, MakeEntityID(ET_ACTOR, i), *pos);
   }
 
   // --- Statics ---
@@ -583,6 +596,19 @@ GameState_t InitGame(Engine_t *eng) {
   memset(eng->em.alive, 0, sizeof(eng->em.alive));
   memset(eng->em.masks, 0, sizeof(eng->em.masks));
 
+  eng->actors.componentCount = 0;
+  eng->actors.componentStore =
+      malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+  memset(eng->actors.componentStore, 0,
+         sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+
+  // REGISTER COMPONENTS
+  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_prevPositions =
+      registerComponent(&eng->actors, sizeof(Vector3));
+  // END REGISTER COMPONENTS
+
   gs->state = STATE_INLEVEL;
   gs->pHeadbobTimer = 0.0f;
 
@@ -596,7 +622,8 @@ GameState_t InitGame(Engine_t *eng) {
   AllocGrid(&gs->grid, &gs->terrain, cellSize);
 
   // create player at origin-ish
-  gs->playerId = GetEntityIndex(CreatePlayer(eng, (Vector3){0, 10.0f, 0}));
+  gs->playerId =
+      GetEntityIndex(CreatePlayer(eng, gs->compReg, (Vector3){0, 10.0f, 0}));
 
   // create a bunch of simple houses/walls
   int numStatics = 200;
@@ -617,8 +644,6 @@ GameState_t InitGame(Engine_t *eng) {
 
     CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
   }
-  // create a sample turret
-  CreateTurret(eng, (Vector3){500.0f, 8.0f, 30.0f});
 
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
@@ -644,7 +669,7 @@ GameState_t InitGame(Engine_t *eng) {
     eng->particles.types[i] = -1;
   }
 
-  PopulateGridWithEntities(&gs->grid, eng);
+  PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 
   PrintGrid(&gs->grid);
 

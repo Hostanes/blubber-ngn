@@ -32,25 +32,6 @@ void DecrementCooldowns(Engine_t *eng, float dt) {
   }
 }
 
-// ---------------- TURRET AI SYSTEM ----------------
-
-void TurretAISystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
-                    float dt) {
-  int playerId = gs->playerId;
-  Vector3 playerPos = eng->actors.positions[playerId];
-}
-
-void MechAISystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
-                  float dt) {
-  int playerId = gs->playerId;
-  Vector3 playerPos = eng->actors.positions[playerId];
-
-  const float engageRange = 500.0f; // turrets become idle beyond this range
-  const float minAccuracy = 0.6f;   // worst accuracy
-  const float maxAccuracy = 1.0f;   // best accuracy at close range
-}
-
-
 void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                 Camera3D *camera, float dt) {
 
@@ -71,8 +52,6 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     UpdateRayCastToModel(gs, eng, rc, entity, 1);
     UpdateEntityRaycasts(eng, entity);
 
-    TurretAISystem(gs, eng, soundSys, dt);
-
     DecrementCooldowns(eng, dt);
 
     UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
@@ -83,9 +62,10 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     RenderSystem(gs, eng, *camera);
 
     int pid = gs->playerId;
-    Vector3 playerPos = eng->actors.positions[pid];
+    Vector3 *playerPos = (Vector3 *)getComponent(&eng->actors, gs->playerId,
+                                                 gs->compReg.cid_Positions);
 
-    ProcessSoundSystem(soundSys, playerPos);
+    ProcessSoundSystem(soundSys, *playerPos);
   } else if (gs->state == STATE_MAINMENU) {
     MainMenuSystem(gs, eng);
   }

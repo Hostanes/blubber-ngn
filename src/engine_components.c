@@ -53,3 +53,9 @@ void removeComponentFromEntity(EntityManager_t *em, ActorComponents_t *actors,
 
   em->masks[entity] &= ~(1 << id);
 }
+
+// return an entire array of a component
+void *GetComponentArray(ActorComponents_t *actors,
+                                      ComponentID cid) {
+  return actors->componentStore[cid].data;
+}

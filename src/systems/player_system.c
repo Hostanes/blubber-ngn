@@ -66,8 +66,11 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
                          SoundSystem_t *soundSys, float dt, Camera3D *camera) {
 
   int pid = gs->playerId;
-  Vector3 *pos = eng->actors.positions;
-  Vector3 *vel = eng->actors.velocities;
+
+  Vector3 *pos =
+      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+  Vector3 *vel =
+      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_velocities);
 
   // player leg and torso orientations
   Orientation *leg = &eng->actors.modelCollections[pid].orientations[0];
