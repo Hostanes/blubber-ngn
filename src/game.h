@@ -60,6 +60,8 @@ typedef struct {
   AllState_t state;
   float pHeadbobTimer;
 
+  ActorComponentRegistry_t compReg;
+
   Terrain_t terrain;
 
   EntityGrid_t grid;

@@ -129,7 +129,7 @@ typedef struct {
   int componentCount;
 
   // TODO transition below into the dynamic Component store above
-  Vector3 positions[MAX_ENTITIES];
+  Vector3 positions[MAX_ENTITIES]; // CURRENTLY MIGRATING AWAY
   Vector3 prevPositions[MAX_ENTITIES];
   Vector3 velocities[MAX_ENTITIES];
 

@@ -7,7 +7,7 @@
 #include "engine.h"
 #include "raylib.h"
 #include "sound.h"
-#include "systems.h"
+#include "systems/systems.h"
 #include <raymath.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -15,7 +15,7 @@
 int main(void) {
   printf("raylib version: %s\n", RAYLIB_VERSION);
 
-  SetConfigFlags(FLAG_VSYNC_HINT); 
+  SetConfigFlags(FLAG_VSYNC_HINT);
 
   // --------------------------------------------
   // ENGINE CONFIG

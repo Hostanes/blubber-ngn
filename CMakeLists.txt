@@ -20,9 +20,21 @@ set(SOURCES
     src/main.c
     src/game.c
     src/sound.c
-    src/systems.c
     src/engine.c
+    src/engine_components.c
+    src/systems/systems.c
+    src/systems/collision_system.c
+    src/systems/projectile_system.c
+    src/systems/render_system.c
+    src/systems/game_updates.c
+    src/systems/raycast_system.c
+    src/systems/raycast_system.c
+    src/systems/physics_system.c
+    src/systems/menu_system.c
+    src/systems/player_system.c
+    src/systems/particle_system.c
 )
+
 
 # ------------------- Executable -------------------
 add_executable(MechArenaDemo ${SOURCES})
