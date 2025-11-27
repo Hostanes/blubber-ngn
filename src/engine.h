@@ -21,6 +21,10 @@ typedef struct EngineConfig {
   int max_statics;
 } EngineConfig_t;
 
+typedef struct System {
+
+} System_t;
+
 typedef struct Engine {
   EngineConfig_t config;
 

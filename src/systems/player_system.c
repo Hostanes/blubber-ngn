@@ -165,6 +165,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
     FireProjectile(eng, gs->playerId, 1);
   }
+  eng->actors.modelCollections[pid].offsets[2].z = 8.0f - *(eng->actors.cooldowns[pid]);
 
   // Step cycle update
   Vector3 velocity = vel[pid];

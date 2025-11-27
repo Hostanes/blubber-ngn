@@ -304,9 +304,11 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // gun as primitive model
   Mesh gunMesh = GenMeshCube(2.0f, 2.0f, 10.0f);
-  mc->models[2] = LoadModelFromMesh(gunMesh);
-  mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = PURPLE;
-  mc->offsets[2] = (Vector3){8.0f, -2, 6};
+  // mc->models[2] = LoadModelFromMesh(gunMesh);
+  mc->models[2] = LoadModel("assets/models/gun1.glb");
+  mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
+  mc->offsets[2] = (Vector3){8.0f, -2, 10};
+  mc->orientations[2] = (Orientation){0, PI/2, 0};
   mc->parentIds[2] = 1;
 
   mc->rotLocks[2][0] = true;
@@ -354,7 +356,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.cooldowns[e][0] = 0.8;
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 0.2f;
+  eng->actors.firerate[e][0] = 0.8f;
 
   // Collision
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
@@ -626,7 +628,7 @@ GameState_t InitGame(Engine_t *eng) {
       GetEntityIndex(CreatePlayer(eng, gs->compReg, (Vector3){0, 10.0f, 0}));
 
   // create a bunch of simple houses/walls
-  int numStatics = 200;
+  int numStatics = 5;
   for (int i = 0; i < numStatics; i++) {
     float width = GetRandomValue(10, 40);
     float height = GetRandomValue(15, 55);

@@ -21,8 +21,8 @@ int main(void) {
   // ENGINE CONFIG
   // --------------------------------------------
   EngineConfig_t cfg = {
-      .window_width = 1280,
-      .window_height = 720,
+      .window_width = 1280*1.2,
+      .window_height = 720*1.2,
 
       .fov_deg = 60.0f,
       .near_plane = 0.1f,
