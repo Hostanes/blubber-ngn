@@ -56,16 +56,12 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
     UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
 
-    PhysicsSystem(gs, eng, dt);
+    PhysicsSystem(gs, eng, soundSys, dt);
     UpdateParticles(eng, dt);
 
     RenderSystem(gs, eng, *camera);
 
-    int pid = gs->playerId;
-    Vector3 *playerPos = (Vector3 *)getComponent(&eng->actors, gs->playerId,
-                                                 gs->compReg.cid_Positions);
-
-    ProcessSoundSystem(soundSys, *playerPos);
+    ProcessSoundSystem(soundSys, eng, gs);
   } else if (gs->state == STATE_MAINMENU) {
     MainMenuSystem(gs, eng);
   }

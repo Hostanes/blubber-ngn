@@ -26,7 +26,7 @@ int main(void) {
 
       .fov_deg = 60.0f,
       .near_plane = 0.1f,
-      .far_plane = 5000.0f,
+      .far_plane = 10000.0f,
 
       .max_entities = 2048,
       .max_projectiles = 256,

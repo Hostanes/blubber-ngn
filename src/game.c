@@ -3,6 +3,7 @@
 // Requires game.h in the same include path.
 #include "game.h"
 #include "engine.h"
+#include "engine_components.h"
 #include "raylib.h"
 #include "raymath.h"
 #include <math.h>
@@ -26,6 +27,7 @@ static ModelCollection_t InitModelCollection(int countModels) {
   mc.countModels = countModels;
 
   mc.models = (Model *)malloc(sizeof(Model) * countModels);
+  mc.isActive = (bool *)malloc(sizeof(bool) * countModels);
   mc.offsets = (Vector3 *)malloc(sizeof(Vector3) * countModels);
   mc.orientations = (Orientation *)malloc(sizeof(Orientation) * countModels);
   mc.parentIds = (int *)malloc(sizeof(int) * countModels);
@@ -43,6 +45,7 @@ static ModelCollection_t InitModelCollection(int countModels) {
   for (int i = 0; i < countModels; i++) {
     // Zero out Model struct so raylib won't have garbage
     memset(&mc.models[i], 0, sizeof(Model));
+    mc.isActive[i] = true;
     mc.offsets[i] = (Vector3){0, 0, 0};
     mc.orientations[i] = (Orientation){0, 0, 0};
     mc.parentIds[i] = -1;
@@ -308,7 +311,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->models[2] = LoadModel("assets/models/gun1.glb");
   mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
   mc->offsets[2] = (Vector3){8.0f, -2, 10};
-  mc->orientations[2] = (Orientation){0, PI/2, 0};
+  mc->orientations[2] = (Orientation){0, PI / 2, 0};
   mc->parentIds[2] = 1;
 
   mc->rotLocks[2][0] = true;
@@ -356,12 +359,12 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.cooldowns[e][0] = 0.8;
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 0.1f;
+  eng->actors.firerate[e][0] = 0.5f;
 
   // Collision
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
   *col = InitModelCollection(1);
-  Mesh moveBox = GenMeshCube(4, 8, 4);
+  Mesh moveBox = GenMeshCube(4, 15, 4);
   col->models[0] = LoadModelFromMesh(moveBox);
   col->offsets[0] = (Vector3){0, 5, 0};
 
@@ -458,6 +461,81 @@ static entity_t CreateTurret(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   entity_t id = MakeEntityID(ET_STATIC, e);
   return id;
+}
+
+static entity_t CreateDestructible(Engine_t *eng,
+                                   ActorComponentRegistry_t compReg,
+                                   Vector3 pos, float hitPoints,
+                                   const char *modelPath, Color tint) {
+  //-----------------------------------------------------
+  // Allocate new ACTOR entity (because it has HP + hitbox)
+  //-----------------------------------------------------
+  int e = eng->em.count++;
+  eng->em.alive[e] = 1;
+
+  eng->em.masks[e] =
+      C_POSITION | C_MODEL | C_COLLISION | C_HITBOX | C_HITPOINT_TAG;
+
+  eng->actors.types[e] = ENTITY_DESTRUCT;
+  eng->actors.hitPoints[e] = hitPoints;
+
+  //-----------------------------------------------------
+  // Position component
+  //-----------------------------------------------------
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+
+  //-----------------------------------------------------
+  // VISUAL MODEL
+  //-----------------------------------------------------
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  *mc = InitModelCollection(2);
+  mc->isActive[0] = true;
+  mc->isActive[1] = false;
+
+  mc->models[0] = LoadModel(modelPath);
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = tint;
+  mc->offsets[0] = (Vector3){0, 0, 0};
+  mc->parentIds[0] = -1;
+
+  mc->models[1] = LoadModel("assets/models/fuel-tank2.glb");
+  mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = tint;
+  mc->offsets[1] = (Vector3){0, 0, 0};
+  mc->parentIds[1] = -1;
+
+  //-----------------------------------------------------
+  // Extract true mesh bounds to build hitbox + collision box
+  //-----------------------------------------------------
+  BoundingBox bb = GetMeshBoundingBox(mc->models[0].meshes[0]);
+
+  Vector3 half = Vector3Scale(Vector3Subtract(bb.max, bb.min), 0.5f);
+  Vector3 size = Vector3Scale(half, 2.0f); // full extents
+
+  //-----------------------------------------------------
+  // COLLISION MODEL (same size as bounding box)
+  //-----------------------------------------------------
+  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  *col = InitModelCollection(1);
+
+  Mesh colMesh = GenMeshCube(size.x, size.y, size.z);
+  col->models[0] = LoadModelFromMesh(colMesh);
+  col->offsets[0] = (Vector3){0, 20, 0};
+  col->parentIds[0] = -1;
+
+  //-----------------------------------------------------
+  // HITBOX MODEL (same size, normally identical)
+  //-----------------------------------------------------
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  *hb = InitModelCollection(1);
+
+  Mesh hbMesh = GenMeshCube(size.x, size.y, size.z);
+  hb->models[0] = LoadModelFromMesh(hbMesh);
+  hb->offsets[0] = (Vector3){0, 20, 0};
+  hb->parentIds[0] = -1;
+
+  //-----------------------------------------------------
+  // Return final ID
+  //-----------------------------------------------------
+  return MakeEntityID(ET_ACTOR, e);
 }
 
 static entity_t CreateMech(Engine_t *eng, ActorComponentRegistry_t compReg,
@@ -623,9 +701,17 @@ GameState_t InitGame(Engine_t *eng) {
   float cellSize = GRID_CELL_SIZE;
   AllocGrid(&gs->grid, &gs->terrain, cellSize);
 
+  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 0.0f};
+  playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
+                                                playerStartPos.z);
+
   // create player at origin-ish
-  gs->playerId =
-      GetEntityIndex(CreatePlayer(eng, gs->compReg, (Vector3){0, 10.0f, 0}));
+  gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
+
+  CreateDestructible(
+      eng, gs->compReg,
+      (Vector3){100, GetTerrainHeightAtPosition(&gs->terrain, 20, 200), 20}, 20,
+      "assets/models/fuel-tank1.glb", LIGHTGRAY);
 
   // create a bunch of simple houses/walls
   int numStatics = 50;
@@ -634,10 +720,8 @@ GameState_t InitGame(Engine_t *eng) {
     float height = GetRandomValue(15, 55);
     float depth = GetRandomValue(10, 40);
 
-    float x =
-        GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
-    float z =
-        GetRandomValue(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2) * TERRAIN_SCALE;
+    float x = GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 1000;
+    float z = GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE + 1000;
     float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
@@ -673,7 +757,7 @@ GameState_t InitGame(Engine_t *eng) {
 
   PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 
-  PrintGrid(&gs->grid);
+  // PrintGrid(&gs->grid);
 
   return *gs;
 }

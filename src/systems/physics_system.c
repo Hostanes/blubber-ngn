@@ -253,11 +253,12 @@ static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
 //----------------------------------------
 // Main physics system
 //----------------------------------------
-void PhysicsSystem(GameState_t *gs, Engine_t *eng, float dt) {
+void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                   float dt) {
   int emCount = eng->em.count;
 
   // ===== Update projectiles =====
-  UpdateProjectiles(gs, eng, dt);
+  UpdateProjectiles(gs, eng, soundSys, dt);
 
   // ===== Update actors =====
   for (int i = 0; i < emCount; i++) {

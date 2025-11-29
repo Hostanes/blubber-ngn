@@ -31,7 +31,8 @@ void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex);
 void DecrementCooldowns(Engine_t *eng, float dt);
 
 // ---------- Projectiles ----------
-void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt);
+void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                       float dt);
 
 // ---------- Particles ----------
 void UpdateParticles(Engine_t *eng, float dt);
@@ -57,9 +58,10 @@ void SpawnSandBurst(Engine_t *eng, Vector3 pos);
 void SpawnSmoke(Engine_t *eng, Vector3 pos);
 
 // ---------- Physics ----------
+void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                   float dt);
 float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz);
 bool ProjectileIntersectsEntityOBB(Engine_t *eng, int projIndex, entity_t eid);
-void PhysicsSystem(GameState_t *gs, Engine_t *eng, float dt);
 bool CheckAndResolveOBBCollision(Vector3 *aPos, ModelCollection_t *aCC,
                                  Vector3 *bPos, ModelCollection_t *bCC);
 void ApplyTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float intensity,
@@ -81,6 +83,10 @@ void MainMenuSystem(GameState_t *gs, Engine_t *eng);
 // ---------- Game Update ----------
 void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                 Camera3D *camera, float dt);
+
+// death system
+void KillEntity(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                entity_t id);
 
 // other
 

@@ -140,6 +140,26 @@ bool SphereIntersectsOBB(Vector3 sphereCenter, float radius, Vector3 boxCenter,
   return Vector3LengthSqr(delta) <= radius * radius;
 }
 
+bool SegmentIntersectsOBB(Vector3 p0, Vector3 p1, ModelCollection_t *coll,
+                          Vector3 entityPos) {
+  Ray ray;
+  ray.position = p0;
+  ray.direction = Vector3Normalize(Vector3Subtract(p1, p0));
+
+  float maxDist = Vector3Distance(p0, p1);
+
+  // We only test model index 0 (collision box)
+  BoundingBox bb = GetMeshBoundingBox(coll->models[0].meshes[0]);
+
+  // Transform: shift OBB into world space
+  bb.min = Vector3Add(bb.min, entityPos);
+  bb.max = Vector3Add(bb.max, entityPos);
+
+  float dist = GetRayCollisionBox(ray, bb).distance;
+
+  return (dist > 0 && dist <= maxDist);
+}
+
 // Check if projectile intersects entity's collision OBB
 bool ProjectileIntersectsEntityOBB(Engine_t *eng, int projIndex, entity_t eid) {
   EntityCategory_t cat = GetEntityCategory(eid);

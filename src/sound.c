@@ -3,6 +3,8 @@
 // Implements sound system initialization, queuing, and processing
 
 #include "sound.h"
+#include "engine.h"
+#include "game.h"
 #include "raymath.h"
 #include <raylib.h>
 
@@ -24,10 +26,9 @@ SoundSystem_t InitSoundSystem(void) {
   sys.assets[SOUND_FOOTSTEP].sound = LoadSound("assets/audio/mech_step_1.wav");
   sys.assets[SOUND_WEAPON_FIRE].sound =
       LoadSound("assets/audio/cannon_shot_1.wav");
-  // sys.assets[SOUND_EXPLOSION].sound = LoadSound("assets/sfx/explosion.wav");
-  // sys.assets[SOUND_UI_CLICK].sound = LoadSound("assets/sfx/ui_click.wav");
+  sys.assets[SOUND_EXPLOSION].sound = LoadSound("assets/audio/explosion1.wav");
 
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < 3; i++) {
     for (int j = 0; j < SOUND_ALIASES; j++) {
       sys.assets[i].alias[j] = LoadSoundAlias(sys.assets[i].sound);
     }
@@ -44,8 +45,22 @@ void QueueSound(SoundSystem_t *sys, SoundType_t type, Vector3 pos, float vol,
   }
 }
 
-void ProcessSoundSystem(SoundSystem_t *sys, Vector3 listenerPos) {
+float NearDampen(float dist) {
+  if (dist >= 4.0f)
+    return 1.0f;          // normal
+  float t = dist / 4.0f;  // 1 → 0
+  return 0.5f + 0.5f * t; // 0.5 → 1 (soft near)
+}
+
+void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
+
+  Vector3 listenerPos = *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+                                                 gs->compReg.cid_Positions);
+
+  const float REF_DIST = 3.0f; // No extra loudness inside this range
+
   for (int i = 0; i < sys->eventCount; i++) {
+
     SoundEvent_t event = sys->events[i];
     SoundAsset_t *asset = &sys->assets[event.type];
 
@@ -54,13 +69,42 @@ void ProcessSoundSystem(SoundSystem_t *sys, Vector3 listenerPos) {
 
     Sound *sound = &asset->alias[idx];
 
-    // distance-based volume fade
     float dist = Vector3Distance(listenerPos, event.position);
-    float atten = 1.0f / (1.0f + 0.01f * dist); // simple falloff
 
-    SetSoundVolume(*sound, event.volume * atten * 0.5f);
-    SetSoundPitch(*sound, event.pitch);
+    //------------------------------------
+    // Distance attenuation with ref dist
+    //------------------------------------
+    float atten = (dist <= REF_DIST) ? 1.0f : (REF_DIST / dist);
+
+    //------------------------------------
+    // Near-field soften (under 4m)
+    //------------------------------------
+    float nearSoft = (dist >= 4.0f) ? 1.0f : (0.5f + 0.5f * (dist / 4.0f));
+
+    //------------------------------------
+    // Final volume
+    //------------------------------------
+    float volume = event.volume * atten * nearSoft;
+    SetSoundVolume(*sound, volume);
+
+    //------------------------------------
+    // Soft pitch shift when extremely close
+    //------------------------------------
+    float pitchFactor = 1.0f - 0.1f * fmaxf(0.0f, (4.0f - dist) / 4.0f);
+    SetSoundPitch(*sound, event.pitch * pitchFactor);
+
+    //------------------------------------
+    // Tiny stereo diffusion for near sounds
+    //------------------------------------
+    float pan = 0.5f;
+    if (dist < 4.0f)
+      pan += GetRandomValue(-30, 30) / 1000.0f; // ±0.03
+
+    SetSoundPan(*sound, pan);
+
+    //------------------------------------
     PlaySoundMultiCompat(*sound);
   }
-  sys->eventCount = 0; // clear for next frame
+
+  sys->eventCount = 0;
 }

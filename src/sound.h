@@ -3,6 +3,8 @@
 // Audio system: assets, events, and processing
 
 #pragma once
+#include "engine.h"
+#include "game.h"
 #include "raylib.h"
 
 #define MAX_SOUNDS 128
@@ -40,4 +42,4 @@ typedef struct {
 SoundSystem_t InitSoundSystem(void);
 void QueueSound(SoundSystem_t *sys, SoundType_t type, Vector3 pos, float vol,
                 float pitch);
-void ProcessSoundSystem(SoundSystem_t *sys, Vector3 listenerPos);
+void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs);

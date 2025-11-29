@@ -81,6 +81,7 @@ typedef enum {
   ENTITY_MECH,
   ENTITY_TANK,
   ENTITY_WALL,
+  ENTITY_DESTRUCT,
   ENTITY_TURRET
 } EntityType_t;
 
@@ -97,6 +98,7 @@ typedef struct {
 typedef struct {
   int countModels;
   Model *models;
+  bool *isActive; // on/off for each model
   Vector3 *offsets;
   Orientation *orientations;
   int *parentIds; //  TODO parents should be specific for each axis

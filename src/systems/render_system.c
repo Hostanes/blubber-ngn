@@ -115,6 +115,10 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
     rotMat = MatrixMultiply(MatrixRotateX(pitch), rotMat);
     rotMat = MatrixMultiply(MatrixRotateZ(roll), rotMat);
 
+    if (!mc->isActive[m]) {
+      continue;
+    }
+
     // --- Draw model using world transform ---
     rlPushMatrix();
     rlTranslatef(drawPos.x, drawPos.y, drawPos.z);
@@ -153,6 +157,8 @@ float ParticleBaseSize(int type) {
     return 2.5f; //
   case 3:
     return 2.0f; //
+  case 4:
+    return 3.0f; //
   default:
     return 1.0f;
   }
@@ -180,7 +186,7 @@ void DrawParticles(ParticlePool_t *pp) {
     float size = baseSize * t; // size goes from baseSize → 0
 
     // Fade out linearly
-    float alpha = t/2; // 1 → 0
+    float alpha = t / 2; // 1 → 0
 
     Color c = WHITE;
     switch (type) {

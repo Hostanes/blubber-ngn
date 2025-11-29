@@ -1,7 +1,8 @@
 #include "systems.h"
 #include <raylib.h>
 
-void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
+void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                       float dt) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
     if (!eng->projectiles.active[i])
       continue;
@@ -15,10 +16,6 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
 
     Vector3 prevPos = eng->projectiles.positions[i];
 
-    // Velocity loss
-    // Apply drag (friction)
-    // float drag = 1.0f; // 1.0 = no slowdown, lower = more drag
-   
     eng->projectiles.dropRates[i] += 0.5f;
 
     // Gravity
@@ -103,9 +100,10 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
             printf("PROJECTILE: hit Actor ID %d\n", idx);
 
             if (eng->em.masks[idx] & C_HITPOINT_TAG) {
-              eng->actors.hitPoints[idx] -= 50.0f;
-              if (eng->actors.hitPoints[idx] <= 0)
-                eng->em.alive[idx] = 0;
+              eng->actors.hitPoints[idx] -= 10.0f;
+              if (eng->actors.hitPoints[idx] <= 0) {
+                KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
+              }
             }
             goto next_projectile;
           }

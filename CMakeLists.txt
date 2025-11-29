@@ -33,6 +33,8 @@ set(SOURCES
     src/systems/menu_system.c
     src/systems/player_system.c
     src/systems/particle_system.c
+    src/systems/death_system.c
+    src/systems/ai_system.c
 )
 
 

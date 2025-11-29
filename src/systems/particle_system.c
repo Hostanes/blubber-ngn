@@ -111,7 +111,7 @@ void UpdateParticles(Engine_t *eng, float dt) {
     // Smoke → slow rise + sideways drifting
     // ----------------------
     case 4:
-      pos->y += 3.0f * dt;
+      pos->y += 10.0f * dt;
       pos->x += ((float)GetRandomValue(-10, 10) / 200.0f);
       pos->z += ((float)GetRandomValue(-10, 10) / 200.0f);
       break;
