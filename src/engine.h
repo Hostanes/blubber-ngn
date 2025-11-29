@@ -1,4 +1,3 @@
-
 #ifndef ENGINE_H
 #define ENGINE_H
 
@@ -22,7 +21,7 @@ typedef struct EngineConfig {
 } EngineConfig_t;
 
 typedef struct System {
-
+  // void(*SystemFunction)(GameState_t *gs, Engine_t *eng);
 } System_t;
 
 typedef struct Engine {

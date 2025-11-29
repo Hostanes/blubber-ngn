@@ -1,4 +1,5 @@
 #include "systems.h"
+#include <raylib.h>
 
 void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
@@ -13,6 +14,12 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
     }
 
     Vector3 prevPos = eng->projectiles.positions[i];
+
+    // Velocity loss
+    // Apply drag (friction)
+    // float drag = 1.0f; // 1.0 = no slowdown, lower = more drag
+   
+    eng->projectiles.dropRates[i] += 0.5f;
 
     // Gravity
     eng->projectiles.velocities[i].y -= eng->projectiles.dropRates[i] * dt;
@@ -31,7 +38,7 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
     // ===== TERRAIN COLLISION =====
     if (GetTerrainHeightAtXZ(&gs->terrain, projPos.x, projPos.z) >= projPos.y) {
       eng->projectiles.active[i] = false;
-      spawnParticle(eng, prevPos, 5, 2);
+      SpawnDust(eng, prevPos);
       continue;
     }
 
@@ -59,7 +66,7 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt) {
 
           if (ProjectileIntersectsEntityOBB(eng, i, e)) {
             printf("PROJECTILE: hit Static ID %d\n", s);
-            spawnParticle(eng, prevPos, 1, 1);
+            SpawnMetalDust(eng, prevPos);
             eng->projectiles.active[i] = false;
             goto next_projectile;
           }

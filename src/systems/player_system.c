@@ -160,12 +160,23 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
     eng->actors.cooldowns[pid][0] = eng->actors.firerate[pid][0];
     QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.4f, 1.0f);
 
-    ApplyTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, 0.05f,
+    ApplyTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, 0.01f,
                      (Vector3){-0.2f, 1.0f, 0});
 
+    Ray *ray = &eng->actors.raycasts[gs->playerId][1].ray;
+
+    float muzzleOffset = 15.0f; // tune this value depending on your gun model
+    Vector3 forward = Vector3Normalize(ray->direction);
+
+    Vector3 muzzlePos =
+        Vector3Add(ray->position, Vector3Scale(forward, muzzleOffset));
+
     FireProjectile(eng, gs->playerId, 1);
+    SpawnSmoke(eng, muzzlePos);
   }
-  eng->actors.modelCollections[pid].offsets[2].z = 8.0f - *(eng->actors.cooldowns[pid]);
+
+  eng->actors.modelCollections[pid].offsets[2].z =
+      8.0f - *(eng->actors.cooldowns[pid]);
 
   // Step cycle update
   Vector3 velocity = vel[pid];

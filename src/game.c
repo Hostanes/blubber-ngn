@@ -348,15 +348,15 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // 2 guns
   eng->actors.muzzleVelocities[0] = MemAlloc(sizeof(float) * 2);
-  eng->actors.muzzleVelocities[0][0] = 1000.0f;
+  eng->actors.muzzleVelocities[0][0] = 2500.0f;
   eng->actors.dropRates[0] = MemAlloc(sizeof(float) * 2);
-  eng->actors.dropRates[0][0] = 70.0f;
+  eng->actors.dropRates[0][0] = 20.0f;
 
   // cooldown & firerate allocations
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.cooldowns[e][0] = 0.8;
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 0.8f;
+  eng->actors.firerate[e][0] = 0.1f;
 
   // Collision
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
@@ -628,7 +628,7 @@ GameState_t InitGame(Engine_t *eng) {
       GetEntityIndex(CreatePlayer(eng, gs->compReg, (Vector3){0, 10.0f, 0}));
 
   // create a bunch of simple houses/walls
-  int numStatics = 5;
+  int numStatics = 50;
   for (int i = 0; i < numStatics; i++) {
     float width = GetRandomValue(10, 40);
     float height = GetRandomValue(15, 55);

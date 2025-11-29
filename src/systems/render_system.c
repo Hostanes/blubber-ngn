@@ -180,7 +180,7 @@ void DrawParticles(ParticlePool_t *pp) {
     float size = baseSize * t; // size goes from baseSize → 0
 
     // Fade out linearly
-    float alpha = t; // 1 → 0
+    float alpha = t/2; // 1 → 0
 
     Color c = WHITE;
     switch (type) {

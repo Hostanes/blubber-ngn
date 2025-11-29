@@ -155,6 +155,11 @@ typedef struct {
 
   EntityType_t types[MAX_ENTITIES];
 
+  // TODO
+  // AI state
+  // position target
+  // aiming target
+
 } ActorComponents_t;
 
 typedef struct {

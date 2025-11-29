@@ -37,6 +37,25 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, float dt);
 void UpdateParticles(Engine_t *eng, float dt);
 void spawnParticle(Engine_t *eng, Vector3 pos, float lifetime, int type);
 
+// --- General spawn wrapper ---
+static inline void SpawnParticleTyped(Engine_t *eng, Vector3 pos, float life,
+                                      int type);
+
+// --- Dust puff (type 0) ---
+void SpawnDust(Engine_t *eng, Vector3 pos);
+
+// --- Metal dust / debris (type 1) ---
+void SpawnMetalDust(Engine_t *eng, Vector3 pos);
+
+// --- Sparks (type 2) ---
+void SpawnSpark(Engine_t *eng, Vector3 pos);
+
+// --- Sand / dirt burst (type 3) ---
+void SpawnSandBurst(Engine_t *eng, Vector3 pos);
+
+// --- Smoke plume (type 4) ---
+void SpawnSmoke(Engine_t *eng, Vector3 pos);
+
 // ---------- Physics ----------
 float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz);
 bool ProjectileIntersectsEntityOBB(Engine_t *eng, int projIndex, entity_t eid);
