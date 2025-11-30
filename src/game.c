@@ -18,6 +18,30 @@
 #define PI 3.14159265358979323846f
 #endif
 
+void TriggerMessage(GameState_t *gs, const char *msg);
+
+// Called when the player is inside the cube
+static void Cube_OnCollision(Engine_t *eng, GameState_t *gs, entity_t self,
+                             entity_t other) {
+  int idx = GetEntityIndex(self);
+  ModelCollection_t *mc = &eng->actors.modelCollections[idx];
+
+  // Set color to BLUE
+  // mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
+
+  TriggerMessage(gs, "Cube Event Triggered");
+}
+
+// Called when the player leaves the cube
+static void Cube_OnCollisionExit(Engine_t *eng, GameState_t *gs, entity_t self,
+                                 entity_t other) {
+  int idx = GetEntityIndex(self);
+  ModelCollection_t *mc = &eng->actors.modelCollections[idx];
+
+  // Set color to RED
+  // mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
+}
+
 // -----------------------------------------------
 // Helper: initialize an empty ModelCollection
 // -----------------------------------------------
@@ -309,7 +333,8 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   Mesh gunMesh = GenMeshCube(2.0f, 2.0f, 10.0f);
   // mc->models[2] = LoadModelFromMesh(gunMesh);
   mc->models[2] = LoadModel("assets/models/gun1.glb");
-  mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
+  Texture2D gunTex = LoadTexture("assets/textures/gun1-texture.png");
+  mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = gunTex;
   mc->offsets[2] = (Vector3){8.0f, -2, 10};
   mc->orientations[2] = (Orientation){0, PI / 2, 0};
   mc->parentIds[2] = 1;
@@ -474,7 +499,7 @@ static entity_t CreateDestructible(Engine_t *eng,
   eng->em.alive[e] = 1;
 
   eng->em.masks[e] =
-      C_POSITION | C_MODEL | C_COLLISION | C_HITBOX | C_HITPOINT_TAG;
+      C_POSITION | C_MODEL | C_COLLISION | C_HITBOX | C_HITPOINT_TAG | C_SOLID;
 
   eng->actors.types[e] = ENTITY_DESTRUCT;
   eng->actors.hitPoints[e] = hitPoints;
@@ -534,6 +559,66 @@ static entity_t CreateDestructible(Engine_t *eng,
 
   //-----------------------------------------------------
   // Return final ID
+  //-----------------------------------------------------
+  return MakeEntityID(ET_ACTOR, e);
+}
+
+entity_t CreateColorSwitchCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
+                               Vector3 size) {
+  int e = eng->em.count++;
+  eng->em.alive[e] = 1;
+
+  // This entity receives collision events but is NOT solid
+  eng->em.masks[e] = C_POSITION | C_TRIGGER;
+
+  eng->actors.types[e] = ENTITY_TRIGGER;
+
+  //-----------------------------------------------------
+  // POSITION COMPONENT
+  //-----------------------------------------------------
+  addComponentToElement(&eng->em, &eng->actors, e, gs->compReg.cid_Positions,
+                        &pos);
+
+  //-----------------------------------------------------
+  // MODEL (visual)
+  //-----------------------------------------------------
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  *mc = InitModelCollection(1);
+
+  Mesh mesh = GenMeshCube(size.x, size.y, size.z);
+  mc->models[0] = LoadModelFromMesh(mesh);
+  mc->offsets[0] = Vector3Zero();
+  mc->parentIds[0] = -1;
+  mc->isActive[0] = false;
+  
+  // initial color = RED
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = LIGHTGRAY;
+
+  //-----------------------------------------------------
+  // COLLISION COLLECTION (same size)
+  //-----------------------------------------------------
+  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  *col = InitModelCollection(1);
+
+  col->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
+  col->offsets[0] = Vector3Zero();
+  col->parentIds[0] = -1;
+  col->isActive[0] = true;
+
+  //-----------------------------------------------------
+  // BEHAVIOR CALLBACK
+  //-----------------------------------------------------
+  BehaviorCallBacks_t cb = {0};
+  cb.onCollision = Cube_OnCollision;
+  cb.onCollisionExit = Cube_OnCollisionExit;
+  cb.onDeath = NULL;
+  cb.isColliding = false;
+
+  addComponentToElement(&eng->em, &eng->actors, e, gs->compReg.cid_behavior,
+                        &cb);
+
+  //-----------------------------------------------------
+  // Return entity ID
   //-----------------------------------------------------
   return MakeEntityID(ET_ACTOR, e);
 }
@@ -672,6 +757,15 @@ GameState_t InitGame(Engine_t *eng) {
   GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
   memset(gs, 0, sizeof(GameState_t));
 
+  gs->banner.active = false;
+  gs->banner.state = BANNER_HIDDEN;
+
+  gs->banner.y = -80.0f; // initial off-screen
+  gs->banner.hiddenY = -80.0f;
+  gs->banner.targetY = 0.0f; // slide down to top of screen
+  gs->banner.speed = 200.0f; // pixels/sec
+  gs->banner.visibleTime = 2.0f;
+
   eng->em.count = 0;
   memset(eng->em.alive, 0, sizeof(eng->em.alive));
   memset(eng->em.masks, 0, sizeof(eng->em.masks));
@@ -687,6 +781,8 @@ GameState_t InitGame(Engine_t *eng) {
   gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
   gs->compReg.cid_prevPositions =
       registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_behavior =
+      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
   // END REGISTER COMPONENTS
 
   gs->state = STATE_INLEVEL;
@@ -713,6 +809,11 @@ GameState_t InitGame(Engine_t *eng) {
       (Vector3){100, GetTerrainHeightAtPosition(&gs->terrain, 20, 200), 20}, 20,
       "assets/models/fuel-tank1.glb", LIGHTGRAY);
 
+  CreateColorSwitchCube(
+      eng, gs,
+      (Vector3){0, GetTerrainHeightAtPosition(&gs->terrain, 0,-300), -300},
+      (Vector3){50, 50, 50});
+
   // create a bunch of simple houses/walls
   int numStatics = 50;
   for (int i = 0; i < numStatics; i++) {
@@ -720,8 +821,10 @@ GameState_t InitGame(Engine_t *eng) {
     float height = GetRandomValue(15, 55);
     float depth = GetRandomValue(10, 40);
 
-    float x = GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 1000;
-    float z = GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE + 1000;
+    float x =
+        GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 1000;
+    float z =
+        GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE + 1000;
     float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),

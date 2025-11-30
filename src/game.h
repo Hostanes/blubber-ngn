@@ -9,6 +9,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+// Forward declare GameState_t so callbacks can reference it
+typedef struct GameState GameState_t;
+
 //----------------------------------------
 // Terrain
 //----------------------------------------
@@ -21,6 +24,51 @@ typedef struct {
   float cellSizeX, cellSizeZ;
   float worldWidth, worldLength;
 } Terrain_t;
+
+//----------------------------------------
+// Banner
+//----------------------------------------
+
+typedef enum {
+  BANNER_HIDDEN,
+  BANNER_SLIDE_IN,
+  BANNER_VISIBLE,
+  BANNER_SLIDE_OUT
+} BannerState;
+
+typedef struct {
+  char text[256];
+
+  BannerState state;
+
+  float timer;       // counts time while visible
+  float visibleTime; // how long message stays up
+
+  float y;       // current Y of banner
+  float targetY; // y-position when fully shown
+  float hiddenY; // y-position when fully hidden
+
+  float speed; // slide speed
+  bool active;
+} MessageBanner_t;
+
+//----------------------------------------
+// CallBacks
+//----------------------------------------
+
+typedef void (*OnCollisionFn)(Engine_t *, GameState_t *gs, entity_t self,
+                              entity_t other);
+typedef void (*OnCollisionExitFn)(Engine_t *, GameState_t *gs, entity_t self,
+                                  entity_t other);
+typedef void (*OnDeathFn)(Engine_t *, GameState_t *gs, entity_t self);
+
+typedef struct {
+  OnCollisionFn onCollision;
+  OnCollisionExitFn onCollisionExit;
+  bool isColliding;
+
+  OnDeathFn onDeath;
+} BehaviorCallBacks_t;
 
 //----------------------------------------
 // Grid
@@ -48,14 +96,14 @@ typedef struct {
   int cid_prevStepCycle;
   int cid_stepRate;
 
+  int cid_behavior;
   // TODO add others
-
 } ActorComponentRegistry_t;
 
 //----------------------------------------
 // Game State
 //----------------------------------------
-typedef struct {
+typedef struct GameState {
   int playerId;
   AllState_t state;
   float pHeadbobTimer;
@@ -65,6 +113,8 @@ typedef struct {
   Terrain_t terrain;
 
   EntityGrid_t grid;
+
+  MessageBanner_t banner;
 } GameState_t;
 
 //----------------------------------------

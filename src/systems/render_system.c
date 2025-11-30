@@ -443,5 +443,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   DrawCircleLines(eng->config.window_width / 2, eng->config.window_height / 2,
                   10, RED);
 
+  DrawMessageBanner(gs);
+
   EndDrawing();
 }

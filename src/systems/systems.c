@@ -59,6 +59,8 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     PhysicsSystem(gs, eng, soundSys, dt);
     UpdateParticles(eng, dt);
 
+    UpdateMessageBanner(gs, dt);
+
     RenderSystem(gs, eng, *camera);
 
     ProcessSoundSystem(soundSys, eng, gs);

@@ -130,8 +130,9 @@ static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int entityId,
 }
 
 //----------------------------------------
-// Actor vs Actor collisions using grid
+// Actor vs Actor collisions (solid + trigger)
 //----------------------------------------
+
 static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
   int emCount = eng->em.count;
   Vector3 *pos =
@@ -168,14 +169,9 @@ static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
           int j = GetEntityIndex(e);
           if (i == j || !eng->em.alive[j])
             continue;
-          if (!(eng->em.masks[j] & C_COLLISION))
+          if ((eng->em.masks[j] & C_TRIGGER)) {
             continue;
-
-          EntityType_t typeJ = eng->actors.types[j];
-          if (!(typeJ == ENTITY_PLAYER || typeJ == ENTITY_MECH ||
-                typeJ == ENTITY_TANK))
-            continue;
-
+          }
           // Check and resolve collision
           if (CheckAndResolveOBBCollision(
                   &pos[i], &eng->actors.collisionCollections[i], &pos[j],
@@ -250,6 +246,63 @@ static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
   }
 }
 
+static void ResolveTriggerEvents(GameState_t *gs, Engine_t *eng) {
+  int emCount = eng->em.count;
+  Vector3 *pos = GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+
+  for (int i = 0; i < emCount; i++) {
+
+    if (!eng->em.alive[i])
+      continue;
+    if (!(eng->em.masks[i] & C_TRIGGER))
+      continue;
+
+    // Trigger entity
+    BehaviorCallBacks_t *cb =
+        getComponent(&eng->actors, i, gs->compReg.cid_behavior);
+    if (!cb)
+      continue;
+
+    bool someoneOverlapping = false;
+
+    // Check if any actor overlaps the trigger
+    for (int j = 0; j < emCount; j++) {
+
+      if (i == j)
+        continue;
+      if (!eng->em.alive[j])
+        continue;
+
+      // Only react to things with a collision box
+      if (!(eng->em.masks[j] & C_COLLISION))
+        continue;
+
+      bool overlap =
+          CheckOBBOverlap(pos[i], &eng->actors.collisionCollections[i], pos[j],
+                          &eng->actors.collisionCollections[j]);
+
+      if (overlap) {
+        someoneOverlapping = true;
+
+        if (!cb->isColliding) {
+          if (cb->onCollision)
+            cb->onCollision(eng, gs, MakeEntityID(ET_ACTOR, i),
+                            MakeEntityID(ET_ACTOR, j));
+          cb->isColliding = true;
+        }
+      }
+    }
+
+    // If no one is overlapping but last frame was colliding → EXIT
+    if (!someoneOverlapping && cb->isColliding) {
+      if (cb->onCollisionExit)
+        cb->onCollisionExit(eng, gs, MakeEntityID(ET_ACTOR, i),
+                            0); // "no one"
+      cb->isColliding = false;
+    }
+  }
+}
+
 //----------------------------------------
 // Main physics system
 //----------------------------------------
@@ -284,4 +337,6 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
   // ===== Resolve collisions =====
   ResolveActorCollisions(gs, eng);
   ResolveActorStaticCollisions(gs, eng);
+
+  ResolveTriggerEvents(gs, eng);
 }

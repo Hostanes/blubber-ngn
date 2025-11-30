@@ -160,7 +160,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
     eng->actors.cooldowns[pid][0] = eng->actors.firerate[pid][0];
     QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.4f, 1.0f);
 
-    ApplyTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, 0.01f,
+    ApplyTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, 0.1f,
                      (Vector3){-0.2f, 1.0f, 0});
 
     Ray *ray = &eng->actors.raycasts[gs->playerId][1].ray;

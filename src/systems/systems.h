@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // ---------- Player ----------
 void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
@@ -67,6 +68,8 @@ bool CheckAndResolveOBBCollision(Vector3 *aPos, ModelCollection_t *aCC,
 void ApplyTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float intensity,
                       Vector3 direction);
 void UpdateTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float dt);
+bool CheckOBBOverlap(Vector3 aPos, ModelCollection_t *aCC, Vector3 bPos,
+                     ModelCollection_t *bCC);
 
 // ---------- AI ----------
 void TurretAISystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
@@ -83,6 +86,11 @@ void MainMenuSystem(GameState_t *gs, Engine_t *eng);
 // ---------- Game Update ----------
 void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                 Camera3D *camera, float dt);
+
+// ---------- Banner ----------
+
+void UpdateMessageBanner(GameState_t *gs, float dt);
+void DrawMessageBanner(GameState_t *gs);
 
 // death system
 void KillEntity(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,

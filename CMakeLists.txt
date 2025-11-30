@@ -35,6 +35,7 @@ set(SOURCES
     src/systems/particle_system.c
     src/systems/death_system.c
     src/systems/ai_system.c
+    src/systems/banner_system.c
 )
 
 

@@ -61,13 +61,15 @@ typedef enum {
   C_VELOCITY = 1u << 1,
   C_MODEL = 1u << 2,
   C_COLLISION = 1u << 3,
-  C_HITBOX = 1u << 4,
-  C_RAYCAST = 1u << 5,
-  C_PLAYER_TAG = 1u << 6,
-  C_COOLDOWN_TAG = 1u << 7,
-  C_HITPOINT_TAG = 1u << 8,
-  C_TURRET_BEHAVIOUR_1 = 1u << 9,
-  C_GRAVITY = 1u << 10,
+  C_SOLID = 1u << 4,
+  C_HITBOX = 1u << 5,
+  C_RAYCAST = 1u << 6,
+  C_PLAYER_TAG = 1u << 7,
+  C_COOLDOWN_TAG = 1u << 8,
+  C_HITPOINT_TAG = 1u << 9,
+  C_TURRET_BEHAVIOUR_1 = 1u << 10,
+  C_GRAVITY = 1u << 11,
+  C_TRIGGER = 1u << 12,
 } ComponentFlag_t;
 
 typedef int32_t entity_t;
@@ -82,7 +84,8 @@ typedef enum {
   ENTITY_TANK,
   ENTITY_WALL,
   ENTITY_DESTRUCT,
-  ENTITY_TURRET
+  ENTITY_TURRET,
+  ENTITY_TRIGGER
 } EntityType_t;
 
 typedef struct {

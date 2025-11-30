@@ -140,6 +140,80 @@ bool SphereIntersectsOBB(Vector3 sphereCenter, float radius, Vector3 boxCenter,
   return Vector3LengthSqr(delta) <= radius * radius;
 }
 
+bool CheckOBBOverlap(Vector3 aPos, ModelCollection_t *aCC, Vector3 bPos,
+                     ModelCollection_t *bCC) {
+  if (aCC->countModels == 0 || bCC->countModels == 0)
+    return false;
+
+  // Only model 0 used
+  Model aCube = aCC->models[0];
+  Model bCube = bCC->models[0];
+
+  Vector3 aOffset = aCC->offsets[0];
+  Vector3 bOffset = bCC->offsets[0];
+
+  BoundingBox aBBox = GetMeshBoundingBox(aCube.meshes[0]);
+  BoundingBox bBBox = GetMeshBoundingBox(bCube.meshes[0]);
+
+  Vector3 aHalf = Vector3Scale(Vector3Subtract(aBBox.max, aBBox.min), 0.5f);
+  Vector3 bHalf = Vector3Scale(Vector3Subtract(bBBox.max, bBBox.min), 0.5f);
+
+  Vector3 aCenter = Vector3Add(aPos, aOffset);
+  Vector3 bCenter = Vector3Add(bPos, bOffset);
+
+  Matrix aRot = MatrixRotateXYZ((Vector3){aCC->orientations[0].pitch,
+                                          aCC->orientations[0].yaw * -1,
+                                          aCC->orientations[0].roll});
+  Matrix bRot = MatrixRotateXYZ((Vector3){bCC->orientations[0].pitch,
+                                          bCC->orientations[0].yaw * -1,
+                                          bCC->orientations[0].roll});
+
+  Vector3 aCorners[8], bCorners[8];
+  for (int i = 0; i < 8; i++) {
+    aCorners[i] =
+        (Vector3){(i & 1 ? aHalf.x : -aHalf.x), (i & 2 ? aHalf.y : -aHalf.y),
+                  (i & 4 ? aHalf.z : -aHalf.z)};
+
+    bCorners[i] =
+        (Vector3){(i & 1 ? bHalf.x : -bHalf.x), (i & 2 ? bHalf.y : -bHalf.y),
+                  (i & 4 ? bHalf.z : -bHalf.z)};
+
+    aCorners[i] = Vector3Transform(aCorners[i], aRot);
+    bCorners[i] = Vector3Transform(bCorners[i], bRot);
+  }
+
+  Vector3 axes[15];
+  int idx = 0;
+
+  for (int i = 0; i < 3; i++)
+    axes[idx++] = OBBGetAxis(&aRot, i);
+
+  for (int i = 0; i < 3; i++)
+    axes[idx++] = OBBGetAxis(&bRot, i);
+
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      axes[idx++] =
+          Vector3CrossProduct(OBBGetAxis(&aRot, i), OBBGetAxis(&bRot, j));
+
+  // SAT test: if any axis separates them → no overlap
+  for (int i = 0; i < 15; i++) {
+    Vector3 axis = axes[i];
+    if (Vector3Length(axis) < 1e-6f)
+      continue;
+
+    axis = Vector3Normalize(axis);
+
+    Projection aProj = ProjectOBB(aCorners, 8, axis, aCenter);
+    Projection bProj = ProjectOBB(bCorners, 8, axis, bCenter);
+
+    if (GetOverlap(aProj, bProj) <= 0.0f)
+      return false; // separation → no collision
+  }
+
+  return true; // overlapped on all axes
+}
+
 bool SegmentIntersectsOBB(Vector3 p0, Vector3 p1, ModelCollection_t *coll,
                           Vector3 entityPos) {
   Ray ray;
