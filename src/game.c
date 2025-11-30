@@ -590,7 +590,7 @@ entity_t CreateColorSwitchCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
   mc->offsets[0] = Vector3Zero();
   mc->parentIds[0] = -1;
   mc->isActive[0] = false;
-  
+
   // initial color = RED
   mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = LIGHTGRAY;
 
@@ -764,7 +764,7 @@ GameState_t InitGame(Engine_t *eng) {
   gs->banner.hiddenY = -80.0f;
   gs->banner.targetY = 0.0f; // slide down to top of screen
   gs->banner.speed = 200.0f; // pixels/sec
-  gs->banner.visibleTime = 2.0f;
+  gs->banner.visibleTime = 5.0f;
 
   eng->em.count = 0;
   memset(eng->em.alive, 0, sizeof(eng->em.alive));
@@ -797,7 +797,7 @@ GameState_t InitGame(Engine_t *eng) {
   float cellSize = GRID_CELL_SIZE;
   AllocGrid(&gs->grid, &gs->terrain, cellSize);
 
-  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 0.0f};
+  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, -200.0f};
   playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
                                                 playerStartPos.z);
 
@@ -806,33 +806,71 @@ GameState_t InitGame(Engine_t *eng) {
 
   CreateDestructible(
       eng, gs->compReg,
-      (Vector3){100, GetTerrainHeightAtPosition(&gs->terrain, 20, 200), 20}, 20,
+      (Vector3){200, GetTerrainHeightAtPosition(&gs->terrain, 20, 200), 20}, 20,
       "assets/models/fuel-tank1.glb", LIGHTGRAY);
 
   CreateColorSwitchCube(
       eng, gs,
-      (Vector3){0, GetTerrainHeightAtPosition(&gs->terrain, 0,-300), -300},
-      (Vector3){50, 50, 50});
+      (Vector3){200, GetTerrainHeightAtPosition(&gs->terrain, 200, -250), -250},
+      (Vector3){100, 100, 100});
+
+  // ----------------------------------------------------
+  // SHOOTING RANGE MARKERS
+  // ----------------------------------------------------
+
+  Vector3 rangeStart = (Vector3){-100, 0, 100}; // starting 50 units ahead
+  rangeStart.y =
+      GetTerrainHeightAtPosition(&gs->terrain, rangeStart.x, rangeStart.z);
+
+  // Start marker (large)
+  CreateStatic(eng, (Vector3){rangeStart.x, rangeStart.y, rangeStart.z},
+               (Vector3){80, 40, 80}, // big marker block
+               RED);
+
+  // Distance markers every 500 units up to 5000 units
+  int maxRange = 5000;
+
+  for (int dist = 500; dist <= maxRange; dist += 500) {
+
+    float z = rangeStart.z + dist;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, rangeStart.x, z);
+
+    bool isBig = (dist % 1000 == 0);
+
+    Vector3 size;
+    Color color;
+
+    if (isBig) {
+      size = (Vector3){70, 70, 70}; // big markers every 1000
+      color = YELLOW;
+    } else {
+      size = (Vector3){40, 40, 40}; // small markers every 500
+      color = ORANGE;
+    }
+
+    CreateStatic(eng, (Vector3){rangeStart.x, y, z}, size, color);
+  }
 
   // create a bunch of simple houses/walls
-  int numStatics = 50;
-  for (int i = 0; i < numStatics; i++) {
-    float width = GetRandomValue(10, 40);
-    float height = GetRandomValue(15, 55);
-    float depth = GetRandomValue(10, 40);
+  // int numStatics = 50;
+  // for (int i = 0; i < numStatics; i++) {
+  //   float width = GetRandomValue(10, 40);
+  //   float height = GetRandomValue(15, 55);
+  //   float depth = GetRandomValue(10, 40);
 
-    float x =
-        GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 1000;
-    float z =
-        GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE + 1000;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+  //   float x =
+  //       GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 1000;
+  //   float z =
+  //       GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE + 1000;
+  //   float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
 
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
+  //   Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+  //                     (unsigned char)GetRandomValue(100, 255),
+  //                     (unsigned char)GetRandomValue(100, 255), 255};
 
-    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
-  }
+  //   CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth},
+  //   c);
+  // }
 
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
