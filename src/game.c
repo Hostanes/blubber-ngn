@@ -333,8 +333,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   Mesh gunMesh = GenMeshCube(2.0f, 2.0f, 10.0f);
   // mc->models[2] = LoadModelFromMesh(gunMesh);
   mc->models[2] = LoadModel("assets/models/gun1.glb");
-  Texture2D gunTex = LoadTexture("assets/textures/gun1-texture.png");
-  mc->models[2].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = gunTex;
+
   mc->offsets[2] = (Vector3){8.0f, -2, 10};
   mc->orientations[2] = (Orientation){0, PI / 2, 0};
   mc->parentIds[2] = 1;
@@ -404,6 +403,29 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   return id;
 }
 
+static int CreateSkybox(Engine_t *eng, Vector3 pos) {
+
+  int i = 0;
+  while (i < MAX_ENTITIES && eng->statics.modelCollections[i].countModels != 0)
+    i++;
+
+  if (i >= MAX_ENTITIES)
+    return -1; // no room
+
+  eng->statics.positions[i] = pos;
+
+  ModelCollection_t *mc = &eng->statics.modelCollections[i];
+  *mc = InitModelCollection(1);
+
+  mc->models[0] = LoadModel("assets/models/skybox.glb");
+
+  mc->offsets[0] = Vector3Zero();
+  mc->parentIds[0] = -1;
+
+  entity_t id = MakeEntityID(ET_STATIC, i);
+  return id;
+}
+
 static int CreateStatic(Engine_t *eng, Vector3 pos, Vector3 size, Color c) {
   // find open slot
   int i = 0;
@@ -441,6 +463,158 @@ static int CreateStatic(Engine_t *eng, Vector3 pos, Vector3 size, Color c) {
 
   entity_t id = MakeEntityID(ET_STATIC, i);
   return id;
+}
+
+static int CreateStaticModel(Engine_t *eng, Vector3 pos, const char *modelPath,
+                             Color tint) {
+  // Find an empty slot
+  int i = 0;
+  while (i < MAX_STATICS && eng->statics.modelCollections[i].countModels != 0)
+    i++;
+
+  if (i >= MAX_STATICS)
+    return -1;
+
+  eng->statics.positions[i] = pos;
+
+  // -------------------------------
+  // Load 3D model (visual)
+  // -------------------------------
+  ModelCollection_t *mc = &eng->statics.modelCollections[i];
+  *mc = InitModelCollection(1);
+
+  mc->models[0] = LoadModel(modelPath);
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = tint;
+
+  mc->offsets[0] = Vector3Zero();
+  mc->parentIds[0] = -1;
+
+  // -------------------------------
+  // Build collision from bounding box
+  // -------------------------------
+  BoundingBox bb = GetMeshBoundingBox(mc->models[0].meshes[0]);
+  Vector3 size = Vector3Subtract(bb.max, bb.min);
+
+  size.y -= 30;
+
+  // COLLISION MODEL
+  ModelCollection_t *col = &eng->statics.collisionCollections[i];
+  *col = InitModelCollection(1);
+  col->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
+  col->offsets[0] = Vector3Zero();
+  col->parentIds[0] = -1;
+
+  // HITBOX MODEL (same as collision)
+  ModelCollection_t *hb = &eng->statics.hitboxCollections[i];
+  *hb = InitModelCollection(1);
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
+  hb->offsets[0] = Vector3Zero();
+  hb->parentIds[0] = -1;
+
+  return MakeEntityID(ET_STATIC, i);
+}
+
+// Creates an actor target
+entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
+                           Vector3 pos,
+                           const char *modelPath, // visual model
+                           float hp, Color tint) {
+  int e = eng->em.count++;
+
+  eng->em.alive[e] = 1;
+
+  //--------------------------------------------------------
+  // COMPONENT MASK
+  //--------------------------------------------------------
+  // NO C_COLLISION → does not block movement
+  // YES C_HITBOX → projectiles should hit it
+  // YES C_HITPOINT_TAG → it has HP and uses death system
+  eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG;
+
+  eng->actors.types[e] = ENTITY_TURRET;
+  eng->actors.hitPoints[e] = hp;
+
+  //--------------------------------------------------------
+  // POSITION
+  //--------------------------------------------------------
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+
+  //--------------------------------------------------------
+  // VISUAL MODEL
+  //--------------------------------------------------------
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  *mc = InitModelCollection(2);
+
+  // --------------------------------------------------------
+  // MODEL 0: Main model from file
+  // --------------------------------------------------------
+  mc->models[0] = LoadModel(modelPath);
+
+  Texture2D texMain = LoadTexture("assets/textures/target/stand-baked.png");
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texMain;
+
+  Orientation standOrientation = {-PI / 2, 0, 0};
+
+  mc->offsets[0] = Vector3Zero();
+  mc->orientations[0] = standOrientation;
+  mc->parentIds[0] = -1;
+  mc->isActive[0] = true;
+
+  // --------------------------------------------------------
+  // MODEL 1: Cylinder (rotated on its side)
+  // --------------------------------------------------------
+
+  // Generate a cylinder mesh
+  Mesh cylMesh = GenMeshCylinder(7, 5, 16);
+  mc->models[1] = LoadModelFromMesh(cylMesh);
+
+  Texture2D texCyl = LoadTexture("assets/textures/target/target.png");
+
+  Vector3 cylOffset = {5, 8, 0};
+
+  mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texCyl;
+  mc->offsets[1] = cylOffset;
+
+  Orientation cylOrientation = {
+      PI / 2, // yaw
+      PI / 2, // pitch
+      0.0f    // roll (rotate cylinder sideways)
+  };
+
+  mc->localRotationOffset[1] = cylOrientation;
+
+  mc->parentIds[1] = 0;
+  mc->isActive[1] = true;
+
+  //--------------------------------------------------------
+  // HITBOX COLLECTION (2 hitboxes)
+  //--------------------------------------------------------
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  *hb = InitModelCollection(2);
+
+  // Stand
+  Mesh cube = GenMeshCube(5, 40, 25);
+  hb->models[0] = LoadModelFromMesh(cube);
+  hb->offsets[0] = Vector3Zero();
+  hb->orientations[0] = standOrientation;
+  hb->parentIds[0] = -1;
+  hb->isActive[0] = true;
+
+  // Target
+  hb->models[1] = LoadModelFromMesh(cylMesh);
+  hb->offsets[1] = cylOffset;
+  hb->parentIds[1] = 0;
+  hb->isActive[1] = true;
+  hb->localRotationOffset[1] = (Orientation){
+      0.0f,     // yaw
+      0.0f,     // pitch
+      PI / 2.0f // roll (rotate cylinder sideways)
+  };
+
+  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  *col = InitModelCollection(0); // no solids
+
+  return MakeEntityID(ET_ACTOR, e);
 }
 
 static entity_t CreateTurret(Engine_t *eng, ActorComponentRegistry_t compReg,
@@ -814,6 +988,8 @@ GameState_t InitGame(Engine_t *eng) {
       (Vector3){200, GetTerrainHeightAtPosition(&gs->terrain, 200, -250), -250},
       (Vector3){100, 100, 100});
 
+  CreateSkybox(eng, (Vector3){0, 0, 0});
+
   // ----------------------------------------------------
   // SHOOTING RANGE MARKERS
   // ----------------------------------------------------
@@ -822,18 +998,21 @@ GameState_t InitGame(Engine_t *eng) {
   rangeStart.y =
       GetTerrainHeightAtPosition(&gs->terrain, rangeStart.x, rangeStart.z);
 
-  // Start marker (large)
-  CreateStatic(eng, (Vector3){rangeStart.x, rangeStart.y, rangeStart.z},
-               (Vector3){80, 40, 80}, // big marker block
-               RED);
+
+  rangeStart.x += 100;
+  CreateStaticModel(eng, rangeStart, "assets/models/sandbags.glb", WHITE);
+
+  // CreateTargetActor(eng, gs->compReg, (Vector3){0, -100, 0},
+  //                   "assets/models/small-target.glb", 10, WHITE);
 
   // Distance markers every 500 units up to 5000 units
   int maxRange = 5000;
 
   for (int dist = 500; dist <= maxRange; dist += 500) {
 
+    float x = rangeStart.x - dist / 20.0f + 100;
     float z = rangeStart.z + dist;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, rangeStart.x, z);
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z)+20;
 
     bool isBig = (dist % 1000 == 0);
 
@@ -841,14 +1020,17 @@ GameState_t InitGame(Engine_t *eng) {
     Color color;
 
     if (isBig) {
-      size = (Vector3){70, 70, 70}; // big markers every 1000
-      color = YELLOW;
+
+      CreateTargetActor(eng, gs->compReg, (Vector3){x, y, z},
+                        "assets/models/small-target.glb", 10, WHITE);
+      continue;
     } else {
-      size = (Vector3){40, 40, 40}; // small markers every 500
-      color = ORANGE;
+      size = (Vector3){40, 10, 40}; // small markers every 500
+      y -= 20;
+      color = GREEN;
     }
 
-    CreateStatic(eng, (Vector3){rangeStart.x, y, z}, size, color);
+    CreateStatic(eng, (Vector3){x, y, z}, size, color);
   }
 
   // create a bunch of simple houses/walls

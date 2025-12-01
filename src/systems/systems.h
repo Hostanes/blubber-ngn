@@ -65,6 +65,8 @@ float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz);
 bool ProjectileIntersectsEntityOBB(Engine_t *eng, int projIndex, entity_t eid);
 bool CheckAndResolveOBBCollision(Vector3 *aPos, ModelCollection_t *aCC,
                                  Vector3 *bPos, ModelCollection_t *bCC);
+bool SegmentIntersectsOBB(Vector3 p0, Vector3 p1, ModelCollection_t *coll,
+                          int modelIndex);
 void ApplyTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float intensity,
                       Vector3 direction);
 void UpdateTorsoRecoil(ModelCollection_t *mc, int torsoIndex, float dt);

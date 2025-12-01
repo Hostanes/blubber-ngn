@@ -215,23 +215,42 @@ bool CheckOBBOverlap(Vector3 aPos, ModelCollection_t *aCC, Vector3 bPos,
 }
 
 bool SegmentIntersectsOBB(Vector3 p0, Vector3 p1, ModelCollection_t *coll,
-                          Vector3 entityPos) {
+                          int modelIndex) {
+  if (!coll || modelIndex < 0 || modelIndex >= coll->countModels)
+    return false;
+
+  Model *model = &coll->models[modelIndex];
+  if (model->meshCount == 0 || !model->meshes)
+    return false;
+
+  // Local-space bounding box (unrotated box)
+  BoundingBox bb = GetMeshBoundingBox(model->meshes[0]);
+
+  Vector3 center = coll->globalPositions[modelIndex];
+  Orientation O = coll->globalOrientations[modelIndex];
+
+  // Convert to rotation matrix
+  Matrix rot = MatrixRotateXYZ((Vector3){O.pitch, O.yaw, O.roll});
+  Matrix invRot = MatrixTranspose(rot);
+
+  // Build ray
   Ray ray;
   ray.position = p0;
   ray.direction = Vector3Normalize(Vector3Subtract(p1, p0));
-
   float maxDist = Vector3Distance(p0, p1);
 
-  // We only test model index 0 (collision box)
-  BoundingBox bb = GetMeshBoundingBox(coll->models[0].meshes[0]);
+  // Move ray into OBB local-space
+  Vector3 localOrigin = Vector3Subtract(ray.position, center);
+  localOrigin = Vector3Transform(localOrigin, invRot);
 
-  // Transform: shift OBB into world space
-  bb.min = Vector3Add(bb.min, entityPos);
-  bb.max = Vector3Add(bb.max, entityPos);
+  Vector3 localDir = Vector3Transform(ray.direction, invRot);
 
-  float dist = GetRayCollisionBox(ray, bb).distance;
+  Ray localRay = {localOrigin, localDir};
 
-  return (dist > 0 && dist <= maxDist);
+  // Ray vs AABB test in local box space
+  RayCollision hit = GetRayCollisionBox(localRay, bb);
+
+  return (hit.hit && hit.distance <= maxDist);
 }
 
 // Check if projectile intersects entity's collision OBB

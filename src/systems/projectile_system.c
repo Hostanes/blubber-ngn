@@ -4,55 +4,73 @@
 void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                        float dt) {
   for (int i = 0; i < MAX_PROJECTILES; i++) {
+
     if (!eng->projectiles.active[i])
       continue;
 
-    // Lifetime
+    //------------------------------
+    // LIFETIME
+    //------------------------------
     eng->projectiles.lifetimes[i] -= dt;
     if (eng->projectiles.lifetimes[i] <= 0.0f) {
       eng->projectiles.active[i] = false;
       continue;
     }
 
+    //------------------------------
+    // MOVEMENT + GRAVITY
+    //------------------------------
     Vector3 prevPos = eng->projectiles.positions[i];
 
+    // Gravity drop acceleration
     eng->projectiles.dropRates[i] += 0.5f;
-
-    // Gravity
     eng->projectiles.velocities[i].y -= eng->projectiles.dropRates[i] * dt;
 
-    // Move
-    eng->projectiles.positions[i] =
-        Vector3Add(eng->projectiles.positions[i],
-                   Vector3Scale(eng->projectiles.velocities[i], dt));
+    // Compute nextPos *before* moving
+    Vector3 vel = eng->projectiles.velocities[i];
+    Vector3 nextPos = Vector3Add(prevPos, Vector3Scale(vel, dt));
 
-    Vector3 projPos = eng->projectiles.positions[i];
+    // Update actual projectile position
+    eng->projectiles.positions[i] = nextPos;
 
-    // Update grid
+    //------------------------------
+    // UPDATE GRID POSITION
+    //------------------------------
     GridRemoveEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), prevPos);
-    GridAddEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), projPos);
+    GridAddEntity(&gs->grid, MakeEntityID(ET_PROJECTILE, i), nextPos);
 
-    // ===== TERRAIN COLLISION =====
-    if (GetTerrainHeightAtXZ(&gs->terrain, projPos.x, projPos.z) >= projPos.y) {
+    //------------------------------
+    // TERRAIN COLLISION (swept)
+    //------------------------------
+    float terrainY = GetTerrainHeightAtXZ(&gs->terrain, nextPos.x, nextPos.z);
+
+    if (terrainY >= nextPos.y) {
       eng->projectiles.active[i] = false;
       SpawnDust(eng, prevPos);
       continue;
     }
 
-    // ===== GRID CELL COORDS =====
-    int cx = (int)((projPos.x - gs->grid.minX) / gs->grid.cellSize);
-    int cz = (int)((projPos.z - gs->grid.minZ) / gs->grid.cellSize);
+    //------------------------------
+    // GRID CELL COORDS
+    //------------------------------
+    int cx = (int)((nextPos.x - gs->grid.minX) / gs->grid.cellSize);
+    int cz = (int)((nextPos.z - gs->grid.minZ) / gs->grid.cellSize);
 
-    // ===== STATIC COLLISION IN NEIGHBORING CELLS =====
+    //------------------------------
+    // ===== STATIC COLLISION =====
+    //------------------------------
     for (int dx = -1; dx <= 1; dx++) {
       for (int dz = -1; dz <= 1; dz++) {
+
         int nx = cx + dx;
         int nz = cz + dz;
         if (!IsCellValid(&gs->grid, nx, nz))
           continue;
 
         GridNode_t *node = &gs->grid.nodes[nx][nz];
+
         for (int n = 0; n < node->count; n++) {
+
           entity_t e = node->entities[n];
           if (GetEntityCategory(e) != ET_STATIC)
             continue;
@@ -61,8 +79,10 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
           if (!eng->statics.modelCollections[s].countModels)
             continue;
 
-          if (ProjectileIntersectsEntityOBB(eng, i, e)) {
-            printf("PROJECTILE: hit Static ID %d\n", s);
+          // SWEPT COLLISION CHECK
+          if (SegmentIntersectsOBB(prevPos, nextPos,
+                                   &eng->statics.hitboxCollections[s], 0)) {
+            printf("Projectile hit STATIC %d\n", s);
             SpawnMetalDust(eng, prevPos);
             eng->projectiles.active[i] = false;
             goto next_projectile;
@@ -71,21 +91,27 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
       }
     }
 
-    // ===== ACTOR COLLISION IN NEIGHBORING CELLS =====
+    //------------------------------
+    // ===== ACTOR COLLISION =====
+    //------------------------------
     for (int dx = -1; dx <= 1; dx++) {
       for (int dz = -1; dz <= 1; dz++) {
+
         int nx = cx + dx;
         int nz = cz + dz;
         if (!IsCellValid(&gs->grid, nx, nz))
           continue;
 
         GridNode_t *node = &gs->grid.nodes[nx][nz];
+
         for (int n = 0; n < node->count; n++) {
+
           entity_t e = node->entities[n];
           if (GetEntityCategory(e) != ET_ACTOR)
             continue;
 
           int idx = GetEntityIndex(e);
+
           if (!(eng->em.masks[idx] & C_HITBOX))
             continue;
           if (!eng->em.alive[idx])
@@ -93,11 +119,16 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
           if (idx == eng->projectiles.owners[i])
             continue;
 
-          if (ProjectileIntersectsEntityOBB(eng, i, e)) {
+          if (!eng->statics.modelCollections[n].countModels)
+            continue;
+
+          // SWEPT COLLISION CHECK
+          if (SegmentIntersectsOBB(prevPos, nextPos,
+                                   &eng->actors.hitboxCollections[idx], 0)) {
+            printf("Projectile hit ACTOR %d\n", idx);
+
             spawnParticle(eng, prevPos, 2, 1);
             eng->projectiles.active[i] = false;
-
-            printf("PROJECTILE: hit Actor ID %d\n", idx);
 
             if (eng->em.masks[idx] & C_HITPOINT_TAG) {
               eng->actors.hitPoints[idx] -= 10.0f;
@@ -105,6 +136,7 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                 KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
               }
             }
+
             goto next_projectile;
           }
         }
