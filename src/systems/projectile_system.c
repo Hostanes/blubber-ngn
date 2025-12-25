@@ -56,9 +56,9 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     int cx = (int)((nextPos.x - gs->grid.minX) / gs->grid.cellSize);
     int cz = (int)((nextPos.z - gs->grid.minZ) / gs->grid.cellSize);
 
-    //------------------------------
+    // ------------------------------
     // ===== STATIC COLLISION =====
-    //------------------------------
+    // ------------------------------
     for (int dx = -1; dx <= 1; dx++) {
       for (int dz = -1; dz <= 1; dz++) {
 
@@ -76,24 +76,31 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
             continue;
 
           int s = GetEntityIndex(e);
-          if (!eng->statics.modelCollections[s].countModels)
+
+          ModelCollection_t *hb = &eng->statics.hitboxCollections[s];
+          if (hb->countModels <= 0)
             continue;
 
-          // SWEPT COLLISION CHECK
-          if (SegmentIntersectsOBB(prevPos, nextPos,
-                                   &eng->statics.hitboxCollections[s], 0)) {
-            printf("Projectile hit STATIC %d\n", s);
-            SpawnMetalDust(eng, prevPos);
-            eng->projectiles.active[i] = false;
-            goto next_projectile;
+          // test EACH hitbox
+          for (int m = 0; m < hb->countModels; m++) {
+            if (!hb->isActive[m])
+              continue;
+
+            if (SegmentIntersectsOBB(prevPos, nextPos, hb, m)) {
+              printf("Projectile hit STATIC %d (hb %d)\n", s, m);
+
+              SpawnMetalDust(eng, prevPos);
+              eng->projectiles.active[i] = false;
+              goto next_projectile;
+            }
           }
         }
       }
     }
 
-    //------------------------------
+    // ------------------------------
     // ===== ACTOR COLLISION =====
-    //------------------------------
+    // ------------------------------
     for (int dx = -1; dx <= 1; dx++) {
       for (int dz = -1; dz <= 1; dz++) {
 
@@ -119,25 +126,31 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
           if (idx == eng->projectiles.owners[i])
             continue;
 
-          if (!eng->statics.modelCollections[n].countModels)
+          ModelCollection_t *hb = &eng->actors.hitboxCollections[idx];
+          if (hb->countModels <= 0)
             continue;
 
-          // SWEPT COLLISION CHECK
-          if (SegmentIntersectsOBB(prevPos, nextPos,
-                                   &eng->actors.hitboxCollections[idx], 0)) {
-            printf("Projectile hit ACTOR %d\n", idx);
+          // test EACH hitbox
+          for (int m = 0; m < hb->countModels; m++) {
+            if (!hb->isActive[m])
+              continue;
 
-            spawnParticle(eng, prevPos, 2, 1);
-            eng->projectiles.active[i] = false;
+            if (SegmentIntersectsOBB(prevPos, nextPos, hb, m)) {
+              printf("Projectile hit ACTOR %d (hb %d)\n", idx, m);
 
-            if (eng->em.masks[idx] & C_HITPOINT_TAG) {
-              eng->actors.hitPoints[idx] -= 10.0f;
-              if (eng->actors.hitPoints[idx] <= 0) {
-                KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
+              spawnParticle(eng, prevPos, 2, 1);
+              eng->projectiles.active[i] = false;
+
+              // existing HP logic
+              if (eng->em.masks[idx] & C_HITPOINT_TAG) {
+                eng->actors.hitPoints[idx] -= 10.0f;
+                if (eng->actors.hitPoints[idx] <= 0) {
+                  KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
+                }
               }
-            }
 
-            goto next_projectile;
+              goto next_projectile;
+            }
           }
         }
       }

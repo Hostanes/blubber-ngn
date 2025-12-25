@@ -29,6 +29,9 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
         *(Vector3 *)getComponent(&eng->actors, idx, gs->compReg.cid_Positions);
     eng->actors.modelCollections[idx].isActive[0] = false;
     eng->actors.modelCollections[idx].isActive[1] = true;
+
+    spawnParticle(eng, pos, 5, 2);
+
     QueueSound(soundSys, SOUND_EXPLOSION, pos, 10.0f, 1.0f);
     break;
 

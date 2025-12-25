@@ -368,7 +368,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   AddRayToEntity(eng, e, 1,
                  (Vector3){0, 0, 0},     // offset near head/center of torso
                  (Orientation){0, 0, 0}, // forward
-                 500.0f);                // long aim distance
+                 1000.0f);               // long aim distance
 
   // Gun muzzle ray - still parent to gun (model index 2)
   AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
@@ -570,7 +570,7 @@ entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   Texture2D texCyl = LoadTexture("assets/textures/target/target.png");
 
-  Vector3 cylOffset = {5, 8, 0};
+  Vector3 cylOffset = {9, 8, 0};
 
   mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texCyl;
   mc->offsets[1] = cylOffset;
@@ -598,7 +598,7 @@ entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
   hb->offsets[0] = Vector3Zero();
   hb->orientations[0] = standOrientation;
   hb->parentIds[0] = -1;
-  hb->isActive[0] = true;
+  hb->isActive[0] = false;
 
   // Target
   hb->models[1] = LoadModelFromMesh(cylMesh);
@@ -797,16 +797,30 @@ entity_t CreateColorSwitchCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
   return MakeEntityID(ET_ACTOR, e);
 }
 
-static entity_t CreateMech(Engine_t *eng, ActorComponentRegistry_t compReg,
+static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
                            Vector3 pos) {
   entity_t e = eng->em.count++;
   eng->em.alive[e] = 1;
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
-                     C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
-                     C_GRAVITY;
-
+                     C_TURRET_BEHAVIOUR_1 | C_TANK_MOVEMENT | C_COOLDOWN_TAG |
+                     C_RAYCAST | C_GRAVITY;
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
-  eng->actors.types[e] = ENTITY_MECH;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+                        &pos);
+  Vector3 vel = {0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+                        &vel);
+
+  Vector3 moveTarget = {0, 0, 0};
+  Vector3 aimTarget = {0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimTarget,
+                        &aimTarget);
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTarget,
+                        &moveTarget);
+  float timer = 0;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer, &timer);
+
+  eng->actors.types[e] = ENTITY_TANK;
   eng->actors.hitPoints[e] = 100.0f;
 
   // visual models (base + barrel)
@@ -957,6 +971,9 @@ GameState_t InitGame(Engine_t *eng) {
       registerComponent(&eng->actors, sizeof(Vector3));
   gs->compReg.cid_behavior =
       registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
+  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
   // END REGISTER COMPONENTS
 
   gs->state = STATE_INLEVEL;
@@ -990,6 +1007,10 @@ GameState_t InitGame(Engine_t *eng) {
 
   CreateSkybox(eng, (Vector3){0, 0, 0});
 
+  Vector3 tankPos = {100, 0, 100};
+  tankPos.y = GetTerrainHeightAtPosition(&gs->terrain, tankPos.x, tankPos.z);
+  CreateTank(eng, gs->compReg, tankPos);
+
   // ----------------------------------------------------
   // SHOOTING RANGE MARKERS
   // ----------------------------------------------------
@@ -998,7 +1019,6 @@ GameState_t InitGame(Engine_t *eng) {
   rangeStart.y =
       GetTerrainHeightAtPosition(&gs->terrain, rangeStart.x, rangeStart.z);
 
-
   rangeStart.x += 100;
   CreateStaticModel(eng, rangeStart, "assets/models/sandbags.glb", WHITE);
 
@@ -1006,13 +1026,13 @@ GameState_t InitGame(Engine_t *eng) {
   //                   "assets/models/small-target.glb", 10, WHITE);
 
   // Distance markers every 500 units up to 5000 units
-  int maxRange = 5000;
+  int maxRange = 3000;
 
   for (int dist = 500; dist <= maxRange; dist += 500) {
 
     float x = rangeStart.x - dist / 20.0f + 100;
     float z = rangeStart.z + dist;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z)+20;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z) + 20;
 
     bool isBig = (dist % 1000 == 0);
 
@@ -1034,25 +1054,23 @@ GameState_t InitGame(Engine_t *eng) {
   }
 
   // create a bunch of simple houses/walls
-  // int numStatics = 50;
-  // for (int i = 0; i < numStatics; i++) {
-  //   float width = GetRandomValue(10, 40);
-  //   float height = GetRandomValue(15, 55);
-  //   float depth = GetRandomValue(10, 40);
+  int numStatics = 100;
+  for (int i = 0; i < numStatics; i++) {
+    float width = GetRandomValue(10, 40);
+    float height = GetRandomValue(15, 55);
+    float depth = GetRandomValue(10, 40);
 
-  //   float x =
-  //       GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 1000;
-  //   float z =
-  //       GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE + 1000;
-  //   float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+    float x = GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE;
+    float z =
+        GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 2200;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
 
-  //   Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-  //                     (unsigned char)GetRandomValue(100, 255),
-  //                     (unsigned char)GetRandomValue(100, 255), 255};
+    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255), 255};
 
-  //   CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth},
-  //   c);
-  // }
+    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
+  }
 
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {

@@ -64,7 +64,7 @@ void UpdateRaycastFromTorso(ModelCollection_t *mc, Raycast_t *rc) {
 // check raycast collision
 // currently just returns true or false for any collision
 // with an entity with C_HITBOX flag
-// should later return the entity ID/index or its type
+// TODO should later return the entity ID/index or its type
 
 bool CheckRaycastCollision(GameState_t *gs, Engine_t *eng, Raycast_t *raycast,
                            entity_t self) {

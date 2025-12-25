@@ -97,7 +97,6 @@ void ApplyTerrainCollision(Engine_t *eng, GameState_t *gs, Terrain_t *terrain,
 //----------------------------------------
 // Update actor position with gravity, damping
 //----------------------------------------
-
 static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int entityId,
                                 float dt) {
   // --- Lookup dynamic components ---

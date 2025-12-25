@@ -152,7 +152,7 @@ float ParticleBaseSize(int type) {
   case 0:
     return 5.0f; //
   case 1:
-    return 1.0f; //
+    return 2.0f; //
   case 2:
     return 2.5f; //
   case 3:
@@ -320,7 +320,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     UpdateModelCollectionWorldTransforms(&eng->actors.hitboxCollections[i],
                                          entityPos, camera.target, 0);
 
-    DrawRaycasts(gs, eng);
+    // DrawRaycasts(gs, eng);
 
     // Visual models (solid white)
     DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,

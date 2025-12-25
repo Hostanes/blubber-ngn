@@ -56,6 +56,9 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
     UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
 
+    UpdateEnemyTargets(gs, eng, soundSys, dt);
+    UpdateEnemyVelocities(gs, eng, soundSys, dt);
+
     PhysicsSystem(gs, eng, soundSys, dt);
     UpdateParticles(eng, dt);
 

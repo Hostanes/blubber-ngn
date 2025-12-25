@@ -8,10 +8,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # ------------------- Raylib -------------------
-# Try to find raylib installed on system
 find_package(raylib 4.0 QUIET)
 
-# If not found, you can also specify a path manually
+# you can also specify a path manually
 # set(RAYLIB_INCLUDE_DIR "/path/to/raylib/include")
 # set(RAYLIB_LIBRARY "/path/to/raylib/libraylib.a")
 

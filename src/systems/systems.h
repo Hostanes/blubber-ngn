@@ -38,8 +38,6 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 // ---------- Particles ----------
 void UpdateParticles(Engine_t *eng, float dt);
 void spawnParticle(Engine_t *eng, Vector3 pos, float lifetime, int type);
-
-// --- General spawn wrapper ---
 static inline void SpawnParticleTyped(Engine_t *eng, Vector3 pos, float life,
                                       int type);
 
@@ -78,6 +76,10 @@ void TurretAISystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                     float dt);
 void MechAISystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                   float dt);
+void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
+                           SoundSystem_t *soundSys, float dt);
+void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
+                        float dt);
 
 // ---------- Rendering ----------
 void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera);
@@ -90,7 +92,7 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                 Camera3D *camera, float dt);
 
 // ---------- Banner ----------
-
+void TriggerMessage(GameState_t *gs, const char *msg);
 void UpdateMessageBanner(GameState_t *gs, float dt);
 void DrawMessageBanner(GameState_t *gs);
 
