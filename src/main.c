@@ -3,13 +3,14 @@
 // Depends on: game.h, sound.h, systems.h, raylib, raymath
 
 #include "game.h"
-
+#include "time.h"
 #include "engine.h"
 #include "raylib.h"
 #include "sound.h"
 #include "systems/systems.h"
 #include <raymath.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 
 int main(void) {
@@ -34,6 +35,8 @@ int main(void) {
       .max_particles = 4096,
       .max_statics = 1024,
   };
+
+  srand(time(0));
 
   Engine_t eng;
   engine_init(&eng, &cfg);

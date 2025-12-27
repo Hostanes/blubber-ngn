@@ -100,7 +100,10 @@ typedef struct {
 
   int cid_moveTarget;
   int cid_moveTimer;
+  int cid_moveBehaviour;
+
   int cid_aimTarget;
+  int cid_aimError;
 
   // TODO add others
 } ActorComponentRegistry_t;

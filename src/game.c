@@ -371,7 +371,8 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
                  1000.0f);               // long aim distance
 
   // Gun muzzle ray - still parent to gun (model index 2)
-  AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+  AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0},
+                 2500.0f);
 
   // 2 guns
   eng->actors.muzzleVelocities[0] = MemAlloc(sizeof(float) * 2);
@@ -818,28 +819,63 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTarget,
                         &moveTarget);
   float timer = 0;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer, &timer);
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+                        &timer);
+  int moveBehaviour = 1;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+                        &moveBehaviour);
+
+  float maxAimError = 0.1f; // Aim error radius in radians
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
+                        &maxAimError);
 
   eng->actors.types[e] = ENTITY_TANK;
   eng->actors.hitPoints[e] = 100.0f;
 
-  // visual models (base + barrel)
+  // visual models (base + turret + barrel)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
-  *mc = InitModelCollection(2);
+  *mc = InitModelCollection(3); // Now 3 models!
 
-  mc->models[0] = LoadModelFromMesh(GenMeshCylinder(2.0f, 5.0f, 5));
-  mc->offsets[0] = (Vector3){0, 0, 0};
-  mc->parentIds[0] = -1;
+  // Model 0: Tank base (body) - rotates with movement
+  mc->models[0] = LoadModelFromMesh(GenMeshCylinder(3.0f, 6.0f, 8));
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = DARKGRAY;
+  mc->offsets[0] = (Vector3){0, 0, 0}; // Center at y=3 (half height)
+  mc->parentIds[0] = -1;               // No parent
 
-  mc->models[1] = LoadModelFromMesh(GenMeshCube(1.0f, 1.0f, 6.0f));
-  mc->offsets[1] = (Vector3){0, 5.0f, 3.0f};
-  mc->parentIds[1] = 0;
+  // Model 1: Turret (rotates horizontally/yaw only)
+  mc->models[1] = LoadModelFromMesh(GenMeshCylinder(2.5f, 3.0f, 8));
+  mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GRAY;
+  mc->offsets[1] = (Vector3){0, 5.0f, 0}; // On top of base
+  mc->parentIds[1] = 0;                   // Parented to base
+
+  mc->rotLocks[1][0] = true;
+  mc->rotLocks[1][1] = true;
+  mc->rotLocks[1][2] = false;
+
+  // Model 2: Barrel (rotates vertically/pitch only, parented to turret)
+  mc->models[2] = LoadModel("assets/models/gun1.glb");
+  mc->orientations[2] = (Orientation){0, 0, 0};
+  mc->offsets[2] = (Vector3){0, 3, 3.0f}; // Forward from turret center
+  mc->parentIds[2] = 1;                   // Parented to turret
+
+  mc->rotLocks[2][0] = true;
+  mc->rotLocks[2][1] = true;
+  mc->rotLocks[2][2] = false;
+
+  mc->orientations[0].yaw = 0;
+  mc->orientations[0].pitch = 0;
+  mc->orientations[0].roll = 0;
+
+  // Turret: starts aligned with base
+  mc->orientations[1].yaw = PI;
+  mc->orientations[1].pitch = 0;
+  mc->orientations[1].roll = 0;
 
   // hitbox
   ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
   *hb = InitModelCollection(1);
-  hb->models[0] = LoadModelFromMesh(GenMeshCube(20, 20, 20));
-  hb->offsets[0] = Vector3Zero();
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(10, 10, 10));
+  hb->offsets[0] = (Vector3){0, 5, 0};
   hb->parentIds[0] = -1;
 
   // ray: attach to barrel (model 1) muzzle
@@ -852,7 +888,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.firerate[e][0] = 0.4f;
 
-  entity_t id = MakeEntityID(ET_STATIC, e);
+  entity_t id = MakeEntityID(ET_ACTOR, e);
   return id;
 }
 
@@ -969,11 +1005,15 @@ GameState_t InitGame(Engine_t *eng) {
   gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
   gs->compReg.cid_prevPositions =
       registerComponent(&eng->actors, sizeof(Vector3));
+
   gs->compReg.cid_behavior =
       registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
+
   gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
   gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
   gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
   // END REGISTER COMPONENTS
 
   gs->state = STATE_INLEVEL;
@@ -1007,7 +1047,7 @@ GameState_t InitGame(Engine_t *eng) {
 
   CreateSkybox(eng, (Vector3){0, 0, 0});
 
-  Vector3 tankPos = {100, 0, 100};
+  Vector3 tankPos = {50, 0, 0};
   tankPos.y = GetTerrainHeightAtPosition(&gs->terrain, tankPos.x, tankPos.z);
   CreateTank(eng, gs->compReg, tankPos);
 
