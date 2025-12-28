@@ -57,7 +57,7 @@ void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
   Vector3 listenerPos = *(Vector3 *)getComponent(&eng->actors, gs->playerId,
                                                  gs->compReg.cid_Positions);
 
-  const float REF_DIST = 3.0f; // No extra loudness inside this range
+  const float REF_DIST = 1.0f;
 
   for (int i = 0; i < sys->eventCount; i++) {
 
@@ -74,7 +74,14 @@ void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
     //------------------------------------
     // Distance attenuation with ref dist
     //------------------------------------
-    float atten = (dist <= REF_DIST) ? 1.0f : (REF_DIST / dist);
+    float atten;
+    if (dist <= REF_DIST) {
+      atten = 1.0f;
+    } else {
+      float t = (dist - REF_DIST) / 1000.0f; // 40m falloff range (tweak)
+      t = Clamp(t, 0.0f, 1.0f);
+      atten = 1.0f - t; // linear fade
+    }
 
     //------------------------------------
     // Near-field soften (under 4m)

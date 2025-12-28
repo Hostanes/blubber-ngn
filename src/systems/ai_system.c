@@ -255,7 +255,8 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
   if (!playerPos)
     return;
 
-  (*playerPos).y -= 8.0;
+  // y offset
+  // (*playerPos).y -= 3.0;
 
   Vector3 *playerVel =
       getComponent(&eng->actors, gs->playerId, gs->compReg.cid_velocities);
@@ -371,7 +372,8 @@ void TestBarrelOrientation(Engine_t *eng, int tankId) {
   printf("Test 3: Barrel pitch = 180° (horizontal backward)\n");
 }
 
-void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng, float dt) {
+void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
+                            SoundSystem_t *soundSys, float dt) {
   int emCount = eng->em.count;
 
   Vector3 *playerPos =
@@ -417,13 +419,13 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng, float dt) {
     float maxPitchUp = PI * 0.3f;    // ~54 degrees up
     float maxPitchDown = PI * 0.15f; // ~27 degrees down
 
-    if (targetPitch > maxPitchUp)
-      targetPitch = maxPitchUp;
-    if (targetPitch < -maxPitchDown)
-      targetPitch = -maxPitchDown;
+    // if (targetPitch > maxPitchUp)
+    //   targetPitch = maxPitchUp;
+    // if (targetPitch < -maxPitchDown)
+    //   targetPitch = -maxPitchDown;
 
     // Smooth interpolation for nicer aiming
-    float rotationSpeed = 2.0f; // radians per second
+    float rotationSpeed = 5.0f; // radians per second
     float maxRotation = rotationSpeed * dt;
 
     // --- TURRET (model 1): Yaw rotation only ---
@@ -484,18 +486,55 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng, float dt) {
         Raycast_t *raycast = &eng->actors.raycasts[i][rayIdx];
         if (raycast->parentModelIndex == 2) { // Barrel model
 
-          // Use CURRENT visual orientation, not target vector
-          float turretYawWorld = mc->localRotationOffset[1].yaw;
-          float barrelPitchLocal = mc->localRotationOffset[2].pitch;
+          // We need an aim point. Use your turret aim target if you have it.
+          // (Replace aimTargetPos with your actual variable.)
+          Vector3 aimPos = *aimTarget;
 
-          // printf("barrel pitch local: %f\n", barrelPitchLocal);
+          // Barrel origin in world (where projectile spawns)
+          Vector3 muzzlePos = mc->globalPositions[2];
 
-          float pitchFromHorizontal = barrelPitchLocal;
+          // Weapon params
+          int gunId = 0;
+          float muzzleVel = eng->actors.muzzleVelocities[i][gunId]
+                                ? eng->actors.muzzleVelocities[i][gunId]
+                                : 10.0f;
+          float dropRate = eng->actors.dropRates[i][gunId]
+                               ? eng->actors.dropRates[i][gunId]
+                               : 1.0f;
+
+          // Horizontal distance to aim point (ignore vertical)
+          Vector3 toTarget = Vector3Subtract(aimPos, muzzlePos);
+          float dxz = sqrtf(toTarget.x * toTarget.x + toTarget.z * toTarget.z);
+
+          // Predict drop and aim higher.
+          // (Clamp dxz to avoid division issues when very close)
+          if (dxz < 0.001f)
+            dxz = 0.001f;
+
+          // Approx time of flight using horizontal distance
+          float t = dxz / muzzleVel;
+
+          // Vertical drop over that time (units must match your projectile sim)
+          float drop = 1.2f * dropRate * t * t;
+
+          // Aim ABOVE the target by the expected drop
+          aimPos.y += drop;
+
+          // Now compute yaw/pitch from muzzle to this compensated aim point
+          Vector3 dirToAim =
+              Vector3Normalize(Vector3Subtract(aimPos, muzzlePos));
+
+          float turretYawWorld = atan2f(dirToAim.x, dirToAim.z);
+
+          // If your ForwardFromYawPitch expects pitch-from-horizontal
+          float pitchFromHorizontal =
+              asinf(dirToAim.y); // because dir is normalized
 
           Vector3 barrelDirWorld =
               ForwardFromYawPitch(turretYawWorld, pitchFromHorizontal);
 
-          // printf("barrelPitchLocal=%.3f (%.1f deg), pitchFromHorizontal=%.3f "
+          // printf("barrelPitchLocal=%.3f (%.1f deg), pitchFromHorizontal=%.3f
+          // "
           //        "(%.1f deg)\n",
           //        barrelPitchLocal, barrelPitchLocal * RAD2DEG,
           //        pitchFromHorizontal, pitchFromHorizontal * RAD2DEG);
@@ -579,9 +618,19 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng, float dt) {
       continue;
 
     // FIRE
+    // FIRE
+    Vector3 shooterPos =
+        *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+    QueueSound(soundSys, SOUND_WEAPON_FIRE, shooterPos, 0.4f, 1.0f);
+
     FireProjectile(eng, (entity_t)i, barrelRayIdx);
 
-
+    // Smoke at muzzle: start at barrel ray origin, move a bit forward along
+    // barrel dir
+    const float muzzleOffset = 2.0f; // tweak to match your barrel length
+    Vector3 muzzlePos =
+        Vector3Add(ray.position, Vector3Scale(ray.direction, muzzleOffset));
+    SpawnSmoke(eng, muzzlePos);
 
     // Reset cooldown from firerate (shots per second). If missing, default 1
     // shot/sec.
