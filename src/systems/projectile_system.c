@@ -143,6 +143,7 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
               // existing HP logic
               if (eng->em.masks[idx] & C_HITPOINT_TAG) {
+                printf("decreasing hp\n");
                 eng->actors.hitPoints[idx] -= 10.0f;
                 if (eng->actors.hitPoints[idx] <= 0) {
                   KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
@@ -201,6 +202,9 @@ void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex) {
 
   Vector3 vel = Vector3Scale(dir, muzzleVel);
   printf("spawning projectile\n");
+
+  printf("Fire vel: (%.3f, %.3f, %.3f)\n", vel.x, vel.y, vel.z);
+
   spawnProjectile(eng, origin, vel,
                   10.0f,   // lifetime sec
                   0.5f,    // radius

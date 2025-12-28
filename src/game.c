@@ -295,7 +295,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->em.alive[e] = 1;
   eng->em.masks[e] = C_POSITION | C_VELOCITY | C_MODEL | C_COLLISION |
                      C_HITBOX | C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG |
-                     C_GRAVITY;
+                     C_GRAVITY | C_HITPOINT_TAG;
 
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
   Vector3 vel = {0, 0, 0};
@@ -307,6 +307,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.prevStepCycle[e] = 0;
   eng->actors.stepRate[e] = 2.0f;
   eng->actors.types[e] = ENTITY_PLAYER;
+  eng->actors.hitPoints[e] = 100.0f;
 
   // Model collection: 3 parts (legs, torso/head, gun)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -396,9 +397,9 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   // Hitbox
   ModelCollection_t *hit = &eng->actors.hitboxCollections[e];
   *hit = InitModelCollection(1);
-  Mesh hitbox1 = GenMeshCube(4, 10, 4);
+  Mesh hitbox1 = GenMeshCube(10, 10, 10);
   hit->models[0] = LoadModelFromMesh(hitbox1);
-  hit->offsets[0] = (Vector3){0, 2, 0};
+  hit->offsets[0] = (Vector3){0, 5, 0};
 
   entity_t id = MakeEntityID(ET_STATIC, e);
   return id;
@@ -880,13 +881,17 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // ray: attach to barrel (model 1) muzzle
   eng->actors.rayCounts[e] = 0;
-  AddRayToEntity(eng, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+  AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.cooldowns[e][0] = 0.0f;
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.firerate[e][0] = 0.4f;
+  eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors.muzzleVelocities[e][0] = 1000.0f;
+  eng->actors.dropRates[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors.dropRates[e][0] = 20.0f;
 
   entity_t id = MakeEntityID(ET_ACTOR, e);
   return id;
@@ -1047,8 +1052,9 @@ GameState_t InitGame(Engine_t *eng) {
 
   CreateSkybox(eng, (Vector3){0, 0, 0});
 
-  Vector3 tankPos = {50, 0, 0};
+  Vector3 tankPos = {1000, 0, 500};
   tankPos.y = GetTerrainHeightAtPosition(&gs->terrain, tankPos.x, tankPos.z);
+  tankPos.y += 150.0f;
   CreateTank(eng, gs->compReg, tankPos);
 
   // ----------------------------------------------------

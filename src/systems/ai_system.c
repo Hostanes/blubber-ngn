@@ -1,6 +1,24 @@
+#include "raylib.h"
+#include "raymath.h"
 #include "systems.h"
 #include <math.h>
 #include <stdlib.h>
+
+// Returns true if the ray intersects a sphere around the player within maxDist.
+static bool RayAimsAtPlayer(Ray ray, Vector3 playerPos, float playerRadius,
+                            float maxDist) {
+  RayCollision hit = GetRayCollisionSphere(ray, playerPos, playerRadius);
+  return hit.hit && (hit.distance <= maxDist);
+}
+
+static bool BarrelAimingAtPlayer(Vector3 barrelPos, Vector3 barrelDir,
+                                 Vector3 playerPos, float maxAngleDeg) {
+  Vector3 toPlayer = Vector3Normalize(Vector3Subtract(playerPos, barrelPos));
+  float d = Vector3DotProduct(barrelDir, toPlayer);
+  d = fminf(1.0f, fmaxf(-1.0f, d));
+  float angle = acosf(d) * RAD2DEG;
+  return angle <= maxAngleDeg;
+}
 
 // Helper function to get a random point on a circle around a center position
 // The point will be within 15 degrees of the direction from entity to center
@@ -237,6 +255,8 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
   if (!playerPos)
     return;
 
+  (*playerPos).y -= 8.0;
+
   Vector3 *playerVel =
       getComponent(&eng->actors, gs->playerId, gs->compReg.cid_velocities);
   Vector3 playerVelocity = {0, 0, 0};
@@ -299,6 +319,15 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
   }
 }
 
+static Vector3 ForwardFromYawPitch(float yaw, float pitch) {
+  // yaw around Y, pitch around X (raylib convention)
+  Vector3 f;
+  f.x = sinf(yaw) * cosf(pitch);
+  f.y = sinf(pitch);
+  f.z = cosf(yaw) * cosf(pitch);
+  return Vector3Normalize(f);
+}
+
 // Helper function to get tank's forward direction from its base orientation
 Vector3 GetTankForwardDirection(int tankId, Engine_t *eng) {
   Vector3 forward = {0, 0, 1}; // Default forward (Z axis)
@@ -343,7 +372,14 @@ void TestBarrelOrientation(Engine_t *eng, int tankId) {
 }
 
 void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng, float dt) {
-  for (int i = 0; i < eng->em.count; i++) {
+  int emCount = eng->em.count;
+
+  Vector3 *playerPos =
+      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+  if (!playerPos)
+    return;
+
+  for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
     if (eng->actors.types[i] != ENTITY_TANK)
@@ -387,7 +423,7 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng, float dt) {
       targetPitch = -maxPitchDown;
 
     // Smooth interpolation for nicer aiming
-    float rotationSpeed = 0.5f; // radians per second
+    float rotationSpeed = 2.0f; // radians per second
     float maxRotation = rotationSpeed * dt;
 
     // --- TURRET (model 1): Yaw rotation only ---
@@ -448,44 +484,110 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng, float dt) {
         Raycast_t *raycast = &eng->actors.raycasts[i][rayIdx];
         if (raycast->parentModelIndex == 2) { // Barrel model
 
-          // Calculate final world-space barrel direction
-          // This is complex due to parent-child transforms
-          // For now, use the calculated direction to target
-          Vector3 barrelWorldPos =
-              mc->globalPositions[2]; // Will be set by
-                                      // UpdateModelCollectionWorldTransforms
-          raycast->ray.position = barrelWorldPos;
-          raycast->ray.direction = Vector3Normalize(direction);
+          // Use CURRENT visual orientation, not target vector
+          float turretYawWorld = mc->localRotationOffset[1].yaw;
+          float barrelPitchLocal = mc->localRotationOffset[2].pitch;
 
-          // Update ray orientation
-          raycast->oriOffset.yaw = targetYaw;
-          raycast->oriOffset.pitch = targetPitch;
-          raycast->oriOffset.roll = 0;
+          // printf("barrel pitch local: %f\n", barrelPitchLocal);
 
+          float pitchFromHorizontal = barrelPitchLocal;
+
+          Vector3 barrelDirWorld =
+              ForwardFromYawPitch(turretYawWorld, pitchFromHorizontal);
+
+          // printf("barrelPitchLocal=%.3f (%.1f deg), pitchFromHorizontal=%.3f "
+          //        "(%.1f deg)\n",
+          //        barrelPitchLocal, barrelPitchLocal * RAD2DEG,
+          //        pitchFromHorizontal, pitchFromHorizontal * RAD2DEG);
+
+          // printf("barrelDirWorld: (%.3f, %.3f, %.3f)\n", barrelDirWorld.x,
+          //        barrelDirWorld.y, barrelDirWorld.z);
+
+          raycast->ray.position = mc->globalPositions[2];
+          raycast->ray.direction = barrelDirWorld;
           raycast->active = true;
           break;
         }
       }
     }
 
-    // Debug output - less frequent
-    static int debugCounter = 0;
-    debugCounter++;
-    if (debugCounter % 30 == 0) { // Print every ~3 seconds at 60fps
-      printf("\n=== Tank %d Aiming ===\n", i);
-      printf("Position: (%.1f, %.1f, %.1f)\n", tankPos->x, tankPos->y,
-             tankPos->z);
-      printf("Target: (%.1f, %.1f, %.1f)\n", aimTarget->x, aimTarget->y,
-             aimTarget->z);
-      printf("Distance: %.1f\n", Vector3Distance(*tankPos, *aimTarget));
+    // // Debug output - less frequent
+    // static int debugCounter = 0;
+    // debugCounter++;
+    // if (debugCounter % 30 == 0) { // Print every ~3 seconds at 60fps
+    //   printf("\n=== Tank %d Aiming ===\n", i);
+    //   printf("Position: (%.1f, %.1f, %.1f)\n", tankPos->x, tankPos->y,
+    //          tankPos->z);
+    //   printf("Target: (%.1f, %.1f, %.1f)\n", aimTarget->x, aimTarget->y,
+    //          aimTarget->z);
+    //   printf("Distance: %.1f\n", Vector3Distance(*tankPos, *aimTarget));
 
-      printf("Turret localRotationOffset.yaw: %.1f°\n",
-             mc->localRotationOffset[1].yaw * RAD2DEG);
-      printf("Barrel localRotationOffset.pitch: %.1f° (from vertical)\n",
-             mc->localRotationOffset[2].pitch * RAD2DEG);
-      printf("Target Pitch (from horizontal): %.1f°\n", targetPitch * RAD2DEG);
-      printf("Calculated: %.1f° - %.1f° = %.1f°\n", (PI / 2) * RAD2DEG,
-             targetPitch * RAD2DEG, ((PI / 2) - targetPitch) * RAD2DEG);
+    //   printf("Turret localRotationOffset.yaw: %.1f°\n",
+    //          mc->localRotationOffset[1].yaw * RAD2DEG);
+    //   printf("Barrel localRotationOffset.pitch: %.1f° (from vertical)\n",
+    //          mc->localRotationOffset[2].pitch * RAD2DEG);
+    //   printf("Target Pitch (from horizontal): %.1f°\n", targetPitch *
+    //   RAD2DEG); printf("Calculated: %.1f° - %.1f° = %.1f°\n", (PI / 2) *
+    //   RAD2DEG,
+    //          targetPitch * RAD2DEG, ((PI / 2) - targetPitch) * RAD2DEG);
+    // }
+  }
+
+  for (int i = 0; i < emCount; i++) {
+    if (!eng->em.alive[i])
+      continue;
+    if (eng->actors.types[i] != ENTITY_TANK)
+      continue;
+
+    uint32_t mask = eng->em.masks[i];
+    if (!(mask & C_TURRET_BEHAVIOUR_1))
+      continue;
+
+    float *cooldown = eng->actors.cooldowns[i];
+    float *firerate = eng->actors.firerate[i];
+
+    // If you store cooldown as a single float, make sure it's valid
+    if (!cooldown)
+      continue;
+
+    // Tick cooldown down
+    if (*cooldown > 0.0f) {
+      *cooldown -= dt;
+      continue;
     }
+
+    // Find the barrel ray index (parentModelIndex == 2), same as your aiming
+    // code :contentReference[oaicite:4]{index=4}
+    int barrelRayIdx = -1;
+    for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
+      Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+      if (rc->active && rc->parentModelIndex == 2) {
+        barrelRayIdx = rayIdx;
+        break;
+      }
+    }
+
+    if (barrelRayIdx < 0)
+      continue;
+
+    Ray ray = eng->actors.raycasts[i][barrelRayIdx].ray;
+
+    // Decide when “aiming at player” counts
+    const float playerRadius = 20.0f;   // tweak
+    const float maxShootDist = 2000.0f; // tweak
+    if (!BarrelAimingAtPlayer(ray.position, ray.direction, *playerPos, 10))
+      continue;
+
+    // FIRE
+    FireProjectile(eng, (entity_t)i, barrelRayIdx);
+
+
+
+    // Reset cooldown from firerate (shots per second). If missing, default 1
+    // shot/sec.
+    float shotsPerSec = (firerate) ? firerate[0] : 1.0f;
+    if (shotsPerSec <= 0.0f)
+      shotsPerSec = 1.0f;
+    *cooldown = 1.0f / shotsPerSec;
   }
 }

@@ -15,7 +15,9 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
   case ENTITY_PLAYER:
     printf("PLAYER died!\n");
-    // respawn logic later
+    EnableCursor();
+    TriggerMessage(gs, "You died :C");
+    gs->state = STATE_MAINMENU;
     break;
 
   case ENTITY_TURRET:

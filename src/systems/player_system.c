@@ -134,7 +134,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
   // Movement keys
   if (IsKeyDown(KEY_SPACE)) {
-    vel[pid].y += 50.0f * dt;
+    vel[pid].y += 100.0f * dt;
   }
 
   if (IsKeyDown(KEY_W)) {

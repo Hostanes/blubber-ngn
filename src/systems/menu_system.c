@@ -19,6 +19,7 @@ void MainMenuSystem(GameState_t *gs, Engine_t *eng) {
 
   // Check for click
   if (hovering && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    InitGame(eng);
     gs->state = STATE_INLEVEL;
     TriggerMessage(gs, "Welcome to the Simulator");
     DisableCursor();
