@@ -128,7 +128,8 @@ typedef struct GameState {
 //----------------------------------------
 // Game Initialization
 //----------------------------------------
-GameState_t InitGame(Engine_t *eng);
+GameState_t InitGameSimulator(Engine_t *eng);
+GameState_t InitGameDuel(Engine_t *eng);
 Vector3 ConvertOrientationToVector3(Orientation o);
 
 //----------------------------------------

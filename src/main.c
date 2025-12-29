@@ -27,7 +27,7 @@ int main(void) {
 
       .fov_deg = 60.0f,
       .near_plane = 0.1f,
-      .far_plane = 10000.0f,
+      .far_plane = 50000.0f,
 
       .max_entities = 2048,
       .max_projectiles = 256,
@@ -58,7 +58,7 @@ int main(void) {
 
   SetMasterVolume(0.1f);
 
-  GameState_t gs = InitGame(engine_get());
+  GameState_t gs = InitGameDuel(engine_get());
   SoundSystem_t soundSys = InitSoundSystem();
 
   gs.state = STATE_MAINMENU;

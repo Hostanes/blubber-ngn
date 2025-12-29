@@ -18,6 +18,9 @@
 #define PI 3.14159265358979323846f
 #endif
 
+#define TERRAIN_SIZE 200
+#define TERRAIN_SCALE 10.0f
+
 void TriggerMessage(GameState_t *gs, const char *msg);
 
 // Called when the player is inside the cube
@@ -167,10 +170,11 @@ void AddRayToEntity(Engine_t *eng, entity_t e, int parentModelIndex,
 // -----------------------------------------------
 // Terrain initialization
 // -----------------------------------------------
-void InitTerrain(GameState_t *gs, Engine_t *eng, Texture2D sandTex) {
+void InitTerrain(GameState_t *gs, Engine_t *eng, Texture2D sandTex,
+                 char *terrainModelPath) {
   Terrain_t *terrain = &gs->terrain;
 
-  terrain->model = LoadModel("assets/models/terrain.glb");
+  terrain->model = LoadModel(terrainModelPath);
   terrain->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = sandTex;
   terrain->mesh = terrain->model.meshes[0];
 
@@ -317,7 +321,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   Texture2D mechTex = LoadTexture("assets/textures/legs.png");
   mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
   mc->offsets[0] = (Vector3){0, 0, 0};
-  mc->orientations[0] = (Orientation){0, 0, 0};
+  mc->orientations[0] = (Orientation){-PI/2, 0, 0};
 
   // torso/head as a simple cube model for visualization
   Mesh torsoMesh = GenMeshCube(10.0f, 2.0f, 10.0f);
@@ -325,6 +329,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
   mc->offsets[1] = (Vector3){0, 10.2f, 0};
   mc->parentIds[1] = -1;
+  mc->orientations[1].yaw = PI;
   mc->localRotationOffset[1].yaw = 0;
   mc->rotLocks[1][0] = true;
   mc->rotLocks[1][1] = true;
@@ -369,11 +374,11 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   AddRayToEntity(eng, e, 1,
                  (Vector3){0, 0, 0},     // offset near head/center of torso
                  (Orientation){0, 0, 0}, // forward
-                 1000.0f);               // long aim distance
+                 5000.0f);               // long aim distance
 
   // Gun muzzle ray - still parent to gun (model index 2)
   AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0},
-                 2500.0f);
+                 5000.0f);
 
   // 2 guns
   eng->actors.muzzleVelocities[0] = MemAlloc(sizeof(float) * 2);
@@ -397,7 +402,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   // Hitbox
   ModelCollection_t *hit = &eng->actors.hitboxCollections[e];
   *hit = InitModelCollection(1);
-  Mesh hitbox1 = GenMeshCube(10, 10, 10);
+  Mesh hitbox1 = GenMeshCube(10, 15, 10);
   hit->models[0] = LoadModelFromMesh(hitbox1);
   hit->offsets[0] = (Vector3){0, 5, 0};
 
@@ -888,11 +893,11 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // cooldown & firerate
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.cooldowns[e][0] = 0.0f;
+  eng->actors.cooldowns[e][0] = 0.4f;
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.firerate[e][0] = 0.4f;
   eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
-  eng->actors.muzzleVelocities[e][0] = 1000.0f;
+  eng->actors.muzzleVelocities[e][0] = 2500.0f;
   eng->actors.dropRates[e] = MemAlloc(sizeof(float) * 2);
   eng->actors.dropRates[e][0] = 20.0f;
 
@@ -984,7 +989,8 @@ void PrintGrid(EntityGrid_t *grid) {
 // -----------------------------------------------
 // InitGame: orchestrates initialization
 // -----------------------------------------------
-GameState_t InitGame(Engine_t *eng) {
+
+GameState_t InitGameDuel(Engine_t *eng) {
 
   GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
   memset(gs, 0, sizeof(GameState_t));
@@ -1029,7 +1035,128 @@ GameState_t InitGame(Engine_t *eng) {
 
   // terrain
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-  InitTerrain(gs, eng, sandTex);
+  InitTerrain(gs, eng, sandTex, "assets/models/terrain-duel.glb");
+
+  BuildHeightmap(&gs->terrain);
+
+  CreateSkybox(eng, (Vector3){0, 0, 0});
+
+  float cellSize = GRID_CELL_SIZE;
+  AllocGrid(&gs->grid, &gs->terrain, cellSize);
+
+  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 2500.0f};
+  playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
+                                                playerStartPos.z);
+
+  // create player at origin-ish
+  gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
+
+
+  Vector3 tankStartPos = (Vector3){0,0,-2000};
+  tankStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, tankStartPos.x, tankStartPos.z);
+  CreateTank(eng, gs->compReg, tankStartPos);
+
+  float staticsAreaSideWidth = 400;
+  // create a bunch of simple houses/walls
+  int numStatics = 25;
+  for (int i = 0; i < numStatics; i++) {
+    float width = GetRandomValue(20, 80);
+    float height = GetRandomValue(15, 120);
+    float depth = GetRandomValue(30, 100);
+
+    float x = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
+              TERRAIN_SCALE;
+    float z = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
+                  TERRAIN_SCALE -
+              2200;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255), 255};
+
+    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
+  }
+
+  // ensure rayCounts initialized for any entities that weren't touched
+  for (int i = 0; i < eng->em.count; i++) {
+    if (eng->actors.rayCounts[i] == 0)
+      eng->actors.rayCounts[i] = 0;
+  }
+
+  // Initialize projectile pool
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    eng->projectiles.active[i] = false;
+    eng->projectiles.positions[i] = Vector3Zero();
+    eng->projectiles.velocities[i] = Vector3Zero();
+    eng->projectiles.lifetimes[i] = 0.0f;
+    eng->projectiles.radii[i] = 1.0f; // default bullet size
+    eng->projectiles.owners[i] = -1;
+    eng->projectiles.types[i] = -1;
+  }
+
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    eng->particles.active[i] = false;
+    eng->particles.lifetimes[i] = 0;
+    eng->particles.positions[i] = Vector3Zero();
+    eng->particles.types[i] = -1;
+  }
+
+  PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
+
+  // PrintGrid(&gs->grid);
+
+  return *gs;
+}
+
+// ===========================================
+// simulator level
+GameState_t InitGameSimulator(Engine_t *eng) {
+
+  GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
+  memset(gs, 0, sizeof(GameState_t));
+
+  gs->banner.active = false;
+  gs->banner.state = BANNER_HIDDEN;
+
+  gs->banner.y = -80.0f; // initial off-screen
+  gs->banner.hiddenY = -80.0f;
+  gs->banner.targetY = 0.0f; // slide down to top of screen
+  gs->banner.speed = 200.0f; // pixels/sec
+  gs->banner.visibleTime = 5.0f;
+
+  eng->em.count = 0;
+  memset(eng->em.alive, 0, sizeof(eng->em.alive));
+  memset(eng->em.masks, 0, sizeof(eng->em.masks));
+
+  eng->actors.componentCount = 0;
+  eng->actors.componentStore =
+      malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+  memset(eng->actors.componentStore, 0,
+         sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+
+  // REGISTER COMPONENTS
+  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_prevPositions =
+      registerComponent(&eng->actors, sizeof(Vector3));
+
+  gs->compReg.cid_behavior =
+      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
+
+  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
+  // END REGISTER COMPONENTS
+
+  gs->state = STATE_INLEVEL;
+  gs->pHeadbobTimer = 0.0f;
+
+  // terrain
+  Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
+  InitTerrain(gs, eng, sandTex, "assets/models/terrain.glb");
 
   BuildHeightmap(&gs->terrain);
 

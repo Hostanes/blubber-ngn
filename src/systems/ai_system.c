@@ -609,7 +609,7 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
 
     // Decide when “aiming at player” counts
     const float playerRadius = 20.0f;   // tweak
-    const float maxShootDist = 2000.0f; // tweak
+    const float maxShootDist = 500.0f; // tweak
     if (!BarrelAimingAtPlayer(ray.position, ray.direction, *playerPos, 10))
       continue;
 
