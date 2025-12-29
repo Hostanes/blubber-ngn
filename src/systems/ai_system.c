@@ -199,6 +199,12 @@ void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
       direction.y = 0.0f; // only moving in horizontal plane
       direction.z = moveTarget->z - position->z;
 
+      ModelCollection_t *mc = &eng->actors.modelCollections[i];
+
+      float moveYaw = atan2f(direction.x, direction.z);
+
+      mc->localRotationOffset[0].yaw = moveYaw;
+
       // Normalize the direction (if not zero)
       float distanceSquared =
           direction.x * direction.x + direction.z * direction.z;
@@ -222,10 +228,6 @@ void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
         velocity->z = 0.0f;
       }
       velocity->y = 0.0f;
-    }
-
-    if (mask & C_TURRET_BEHAVIOUR_1) {
-      // Turret velocity logic if needed
     }
   }
 }
@@ -415,15 +417,6 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
         sqrtf(direction.x * direction.x + direction.z * direction.z);
     float targetPitch = -atan2f(direction.y, horizontalDist);
 
-    // CLAMP PITCH to reasonable limits
-    float maxPitchUp = PI * 0.3f;    // ~54 degrees up
-    float maxPitchDown = PI * 0.15f; // ~27 degrees down
-
-    // if (targetPitch > maxPitchUp)
-    //   targetPitch = maxPitchUp;
-    // if (targetPitch < -maxPitchDown)
-    //   targetPitch = -maxPitchDown;
-
     // Smooth interpolation for nicer aiming
     float rotationSpeed = 5.0f; // radians per second
     float maxRotation = rotationSpeed * dt;
@@ -443,7 +436,10 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
 
     // Limit rotation speed
     yawDiff = fminf(fmaxf(yawDiff, -maxRotation), maxRotation);
-    mc->localRotationOffset[1].yaw = currentTurretYaw + yawDiff;
+    float baseYaw = mc->localRotationOffset[0].yaw;
+    float targetYawLocal = targetYaw - baseYaw;
+
+    mc->localRotationOffset[1].yaw = targetYawLocal;
 
     // Turret should have yaw rotation only (no pitch/roll)
     mc->localRotationOffset[1].pitch = 0;
@@ -617,7 +613,6 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     if (!BarrelAimingAtPlayer(ray.position, ray.direction, *playerPos, 10))
       continue;
 
-    // FIRE
     // FIRE
     Vector3 shooterPos =
         *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);

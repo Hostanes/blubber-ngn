@@ -838,26 +838,29 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   *mc = InitModelCollection(3); // Now 3 models!
 
   // Model 0: Tank base (body) - rotates with movement
-  mc->models[0] = LoadModelFromMesh(GenMeshCylinder(3.0f, 6.0f, 8));
-  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = DARKGRAY;
-  mc->offsets[0] = (Vector3){0, 0, 0}; // Center at y=3 (half height)
-  mc->parentIds[0] = -1;               // No parent
+  // mc->models[0] = LoadModelFromMesh(GenMeshCylinder(3.0f, 6.0f, 8));
+  mc->models[0] = LoadModel("assets/models/enemy-1-cyclops-hull.glb");
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
+  mc->offsets[0] = (Vector3){0, -2, 0}; // Center at y=3 (half height)
+  mc->parentIds[0] = -1;                // No parent
 
   // Model 1: Turret (rotates horizontally/yaw only)
-  mc->models[1] = LoadModelFromMesh(GenMeshCylinder(2.5f, 3.0f, 8));
+  // mc->models[1] = LoadModelFromMesh(GenMeshCylinder(2.5f, 3.0f, 8));
+  mc->models[1] = LoadModel("assets/models/enemy-1-cyclops-turret.glb");
   mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GRAY;
-  mc->offsets[1] = (Vector3){0, 5.0f, 0}; // On top of base
-  mc->parentIds[1] = 0;                   // Parented to base
+  mc->offsets[1] = (Vector3){0, 2, 0}; // On top of base
+  mc->parentIds[1] = 0;                // Parented to base
 
   mc->rotLocks[1][0] = true;
   mc->rotLocks[1][1] = true;
-  mc->rotLocks[1][2] = false;
+  mc->rotLocks[1][2] = true;
 
   // Model 2: Barrel (rotates vertically/pitch only, parented to turret)
   mc->models[2] = LoadModel("assets/models/gun1.glb");
+  // mc->models[2] = LoadModel("assets/models/enemy-1-cyclops-gun.glb");
   mc->orientations[2] = (Orientation){0, 0, 0};
-  mc->offsets[2] = (Vector3){0, 3, 3.0f}; // Forward from turret center
-  mc->parentIds[2] = 1;                   // Parented to turret
+  mc->offsets[2] = (Vector3){0, 5, 0}; // Forward from turret center
+  mc->parentIds[2] = 1;                // Parented to turret
 
   mc->rotLocks[2][0] = true;
   mc->rotLocks[2][1] = true;
@@ -875,8 +878,8 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   // hitbox
   ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
   *hb = InitModelCollection(1);
-  hb->models[0] = LoadModelFromMesh(GenMeshCube(10, 10, 10));
-  hb->offsets[0] = (Vector3){0, 5, 0};
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(20, 15, 20));
+  hb->offsets[0] = (Vector3){0, 0, 0};
   hb->parentIds[0] = -1;
 
   // ray: attach to barrel (model 1) muzzle
@@ -1052,7 +1055,7 @@ GameState_t InitGame(Engine_t *eng) {
 
   CreateSkybox(eng, (Vector3){0, 0, 0});
 
-  Vector3 tankPos = {1000, 0, 500};
+  Vector3 tankPos = {0, 0, 0};
   tankPos.y = GetTerrainHeightAtPosition(&gs->terrain, tankPos.x, tankPos.z);
   tankPos.y += 150.0f;
   CreateTank(eng, gs->compReg, tankPos);

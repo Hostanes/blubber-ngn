@@ -34,7 +34,7 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
     spawnParticle(eng, pos, 5, 2);
 
-    QueueSound(soundSys, SOUND_EXPLOSION, pos, 10.0f, 1.0f);
+    QueueSound(soundSys, SOUND_EXPLOSION, pos, 1.0f, 1.0f);
     break;
 
   case ENTITY_WALL:

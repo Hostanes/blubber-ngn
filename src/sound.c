@@ -57,7 +57,7 @@ void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
   Vector3 listenerPos = *(Vector3 *)getComponent(&eng->actors, gs->playerId,
                                                  gs->compReg.cid_Positions);
 
-  const float REF_DIST = 1.0f;
+  const float REF_DIST = 2.0f;
 
   for (int i = 0; i < sys->eventCount; i++) {
 
