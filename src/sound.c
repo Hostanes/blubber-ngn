@@ -28,14 +28,83 @@ SoundSystem_t InitSoundSystem(void) {
       LoadSound("assets/audio/cannon_shot_1.wav");
   sys.assets[SOUND_EXPLOSION].sound = LoadSound("assets/audio/explosion1.wav");
 
-  for (int i = 0; i < 3; i++) {
+  sys.assets[SOUND_AMBIENT_DESERT].sound =
+      LoadSound("assets/audio/desert-ambience-1.wav");
+
+  for (int i = 0; i < SOUND_COUNT; i++) {
     for (int j = 0; j < SOUND_ALIASES; j++) {
       sys.assets[i].alias[j] = LoadSoundAlias(sys.assets[i].sound);
     }
     sys.assets[i].nextAlias = 0;
   }
 
+  sys.ambient.type = SOUND_AMBIENT_DESERT;
+  sys.ambient.pauseTime = 5.0f; // 5 second gap
+  sys.ambient.volume = 0.35f;   // tweak
+  sys.ambient.pitch = 1.0f;
+  sys.ambient.timer = 5.0f; // play immediately (or set to 5.0f to delay)
+  sys.ambient.enabled = true;
+
   return sys;
+}
+
+static float GetSoundLengthSec(Sound s) {
+  unsigned int sr = s.stream.sampleRate;
+  if (sr == 0)
+    return 0.0f;
+  return (float)s.frameCount / (float)sr;
+}
+
+static void UpdateAmbient(SoundSystem_t *sys) {
+  AmbientLoop_t *a = &sys->ambient;
+  if (!a->enabled)
+    return;
+
+  // only if timer elapsed
+  if (a->timer > 0.0f)
+    return;
+
+  // play one instance using your alias system (so it doesn't cut other sounds)
+  SoundAsset_t *asset = &sys->assets[a->type];
+
+  int idx = asset->nextAlias;
+  asset->nextAlias = (asset->nextAlias + 1) % SOUND_ALIASES;
+  Sound *sound = &asset->alias[idx];
+
+  SetSoundVolume(*sound, a->volume);
+  SetSoundPitch(*sound, a->pitch);
+  SetSoundPan(*sound, 0.5f); // centered ambience
+
+  PlaySoundMultiCompat(*sound);
+
+  float len = GetSoundLengthSec(*sound);
+  if (len <= 0.0f)
+    len = 32.0f; // fallback if metadata missing
+  a->timer = len + a->pauseTime;
+}
+
+void UpdateSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs,
+                       float dt) {
+  // 1) process queued positional events (your existing behavior)
+  ProcessSoundSystem(sys, eng, gs);
+
+  // 2) tick ambient timer
+  if (sys->ambient.enabled) {
+    sys->ambient.timer -= dt;
+    if (sys->ambient.timer < 0.0f)
+      sys->ambient.timer = 0.0f;
+  }
+
+  // 3) trigger ambient when ready
+  UpdateAmbient(sys);
+}
+
+void EnableDesertAmbience(SoundSystem_t *sys, bool enabled) {
+  sys->ambient.enabled = enabled;
+  if (enabled && sys->ambient.timer > 1.0f) {
+    // optional: play sooner when enabling
+    sys->ambient.timer = 0.0f;
+  }
 }
 
 void QueueSound(SoundSystem_t *sys, SoundType_t type, Vector3 pos, float vol,

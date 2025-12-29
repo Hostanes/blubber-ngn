@@ -321,7 +321,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   Texture2D mechTex = LoadTexture("assets/textures/legs.png");
   mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = mechTex;
   mc->offsets[0] = (Vector3){0, 0, 0};
-  mc->orientations[0] = (Orientation){-PI/2, 0, 0};
+  mc->orientations[0] = (Orientation){-PI / 2, 0, 0};
 
   // torso/head as a simple cube model for visualization
   Mesh torsoMesh = GenMeshCube(10.0f, 2.0f, 10.0f);
@@ -1028,6 +1028,9 @@ GameState_t InitGameDuel(Engine_t *eng) {
   gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
   gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
   gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
+
+  gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
+
   // END REGISTER COMPONENTS
 
   gs->state = STATE_INLEVEL;
@@ -1051,9 +1054,9 @@ GameState_t InitGameDuel(Engine_t *eng) {
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
 
-
-  Vector3 tankStartPos = (Vector3){0,0,-2000};
-  tankStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, tankStartPos.x, tankStartPos.z);
+  Vector3 tankStartPos = (Vector3){0, 0, 2500};
+  tankStartPos.y =
+      GetTerrainHeightAtPosition(&gs->terrain, tankStartPos.x, tankStartPos.z);
   CreateTank(eng, gs->compReg, tankStartPos);
 
   float staticsAreaSideWidth = 400;

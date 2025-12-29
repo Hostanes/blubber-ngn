@@ -69,7 +69,8 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
     RenderSystem(gs, eng, *camera);
 
-    ProcessSoundSystem(soundSys, eng, gs);
+    UpdateSoundSystem(soundSys, eng, gs, dt);
+
   } else if (gs->state == STATE_MAINMENU) {
     MainMenuSystem(gs, eng);
   }

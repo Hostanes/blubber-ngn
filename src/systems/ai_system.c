@@ -96,68 +96,122 @@ Vector3 GetPointAwayFromPlayer(Vector3 entityPos, Vector3 playerPos,
   return result;
 }
 
+static float DistXZ(Vector3 a, Vector3 b) {
+  float dx = a.x - b.x;
+  float dz = a.z - b.z;
+  return sqrtf(dx * dx + dz * dz);
+}
+
+static bool PlayerInDetectionZone(Vector3 playerPos) {
+  return DistXZ(playerPos, DETECTION_CENTER) <= DETECTION_RADIUS;
+}
+
+// Pick a point on a circle around the player, with a tangential offset
+static Vector3 GetCirclePointAroundPlayer(Vector3 tankPos, Vector3 playerPos,
+                                          float radius) {
+  Vector3 toTank = Vector3Subtract(tankPos, playerPos);
+  toTank.y = 0.0f;
+
+  float len = sqrtf(toTank.x * toTank.x + toTank.z * toTank.z);
+  if (len < 0.001f) {
+    toTank = (Vector3){1, 0, 0};
+    len = 1.0f;
+  }
+  toTank.x /= len;
+  toTank.z /= len;
+
+  // Tangent direction for circling
+  Vector3 tangent = (Vector3){-toTank.z, 0.0f, toTank.x};
+
+  // Bias forward along tangent so it actually circles instead of orbit-stalling
+  float forward = 250.0f; // tweak "orbit speed"
+  Vector3 target = Vector3Add(playerPos, Vector3Scale(toTank, radius));
+  target = Vector3Add(target, Vector3Scale(tangent, forward));
+  target.y = 0.0f;
+  return target;
+}
+
 void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                         float dt) {
   int emCount = eng->em.count;
   Vector3 *playerPos =
       getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+  if (!playerPos)
+    return;
 
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
+    if (eng->actors.types[i] != ENTITY_TANK)
+      continue;
 
-    EntityType_t type = eng->actors.types[i];
-    if (!(type == ENTITY_MECH || type == ENTITY_TURRET || type == ENTITY_TANK))
+    uint32_t mask = eng->em.masks[i];
+    if (!(mask & C_TANK_MOVEMENT))
       continue;
 
     Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+    Vector3 *moveTarget =
+        getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+    int *state =
+        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
 
-    uint32_t mask = eng->em.masks[i];
-    if (mask & C_TANK_MOVEMENT) {
-      float *timer =
-          (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
-      Vector3 *moveTarget =
-          getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
-      int *moveBehaviour =
-          (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+    float *stateTimer =
+        (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
+    // If you add a dedicated ai timer component, use that instead.
 
-      if (*timer <= 0) {
-        *timer = 10.0f; // Reset timer
+    if (!pos || !moveTarget || !state || !stateTimer)
+      continue;
 
-        // Randomly switch behavior with 20% chance each time timer resets
-        if ((rand() % 100) < 50) {
-          *moveBehaviour = (rand() % 3) + 1; // 1, 2, or 3
-          printf("Switched behaviour to %d\n", *moveBehaviour);
-          if (*moveBehaviour > 1) {
-            *timer = 5.0f;
-          }
-        }
+    bool detected = PlayerInDetectionZone(*playerPos);
 
-        // Get new target position based on current behavior
-        switch (*moveBehaviour) {
-        case 1: // Circle around player
-          *moveTarget = GetRandomPointAroundPosition(*pos, *playerPos, 500.0f);
-          break;
-
-        case 2: // Run straight at player
-          *moveTarget = GetPointTowardsPlayer(*pos, *playerPos, 1000.0f);
-          break;
-
-        case 3: // Run away from player
-          *moveTarget = GetPointAwayFromPlayer(*pos, *playerPos, 1000.0f);
-          break;
-
-        default:
-          *moveTarget = GetRandomPointAroundPosition(*pos, *playerPos, 500.0f);
-          break;
-        }
-      } else {
-        *timer -= dt; // Decrement timer
+    // --- state transitions based on detection ---
+    if (!detected) {
+      // go idle
+      // printf("not detected: IDLING\n");
+      *state = TANK_IDLE;
+    } else {
+      if (*state == TANK_IDLE) {
+        // printf("detected: circling\n");
+        *state = TANK_ALERT_CIRCLE;
+        *stateTimer = CHARGE_COOLDOWN; // time until first charge
       }
     }
 
-    if (mask & C_TURRET_BEHAVIOUR_1) {
-      // Turret behavior logic here
+    // printf("state = %d\n", (int)(*state));
+    // --- state behavior ---
+    switch ((TankAIState)(*state)) {
+    case TANK_IDLE: {
+      // move to fixed idle point
+      Vector3 idle = IDLE_POINT;
+      idle.y = 0.0f;
+      *moveTarget = idle;
+
+      // keep timer reset-ish
+      *stateTimer = 0.0f;
+    } break;
+
+    case TANK_ALERT_CIRCLE: {
+
+      *moveTarget = GetCirclePointAroundPlayer(*pos, *playerPos, CIRCLE_RADIUS);
+
+      // countdown to next charge
+      *stateTimer -= dt;
+      if (*stateTimer <= 0.0f) {
+        *state = TANK_ALERT_CHARGE;
+        *stateTimer = CHARGE_DURATION;
+      }
+    } break;
+
+    case TANK_ALERT_CHARGE: {
+      // run straight at player
+      *moveTarget = GetPointTowardsPlayer(*pos, *playerPos, 1000.0f);
+
+      *stateTimer -= dt;
+      if (*stateTimer <= 0.0f) {
+        *state = TANK_ALERT_CIRCLE;
+        *stateTimer = CHARGE_COOLDOWN;
+      }
+    } break;
     }
   }
 }
@@ -210,7 +264,7 @@ void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
           direction.x * direction.x + direction.z * direction.z;
 
       float adjustedMoveSpeed = moveSpeed;
-      if (*moveBehaviour == 2 || *moveBehaviour == 3) {
+      if (*moveBehaviour == TANK_ALERT_CHARGE) {
         adjustedMoveSpeed = moveSpeed * 1.5f; // 50% faster for charge/retreat
       }
 
@@ -247,6 +301,13 @@ Vector3 CalculateAimTarget(Vector3 tankPos, Vector3 playerPos,
   return playerPos;
 }
 
+static Vector3 AimStraightAheadTarget(int tankId, Engine_t *eng,
+                                      Vector3 tankPos) {
+  Vector3 fwd = GetTankForwardDirection(tankId, eng);
+  Vector3 t = Vector3Add(tankPos, Vector3Scale(fwd, 1000.0f)); // far point
+  return t;
+}
+
 void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
                                  SoundSystem_t *soundSys, float dt) {
   int emCount = eng->em.count;
@@ -258,7 +319,7 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
     return;
 
   // y offset
-  // (*playerPos).y -= 3.0;
+  (*playerPos).y -= 3.0;
 
   Vector3 *playerVel =
       getComponent(&eng->actors, gs->playerId, gs->compReg.cid_velocities);
@@ -313,7 +374,14 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
           ((float)rand() / RAND_MAX) * 2.0f * errorAmount - errorAmount;
     }
 
-    // Update the aim target component
+    int *state =
+        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+
+    // if (*state == TANK_IDLE) {
+    //   calculatedTarget = AimStraightAheadTarget(i, eng, *tankPos);
+    //   *aimTarget = calculatedTarget;
+    //   continue;
+    // }
     *aimTarget = calculatedTarget;
 
     // DEBUG: Print the aim target
@@ -351,27 +419,6 @@ Vector3 GetTankForwardDirection(int tankId, Engine_t *eng) {
   forward.y = 0;
 
   return Vector3Normalize(forward);
-}
-
-void TestBarrelOrientation(Engine_t *eng, int tankId) {
-  ModelCollection_t *mc = &eng->actors.modelCollections[tankId];
-
-  printf("\n=== Testing Barrel Orientation ===\n");
-
-  // Test 1: Set barrel to 0° (horizontal/forward)
-  mc->localRotationOffset[2].pitch = 0;
-  printf("Test 1: Barrel pitch = 0° (horizontal forward)\n");
-  // Observe what direction barrel points
-
-  // Wait a frame or two, then...
-
-  // Test 2: Set barrel to 90° (vertical up)
-  mc->localRotationOffset[2].pitch = PI / 2;
-  printf("Test 2: Barrel pitch = 90° (vertical up)\n");
-
-  // Test 3: Set barrel to 180° (horizontal backward)
-  mc->localRotationOffset[2].pitch = PI;
-  printf("Test 3: Barrel pitch = 180° (horizontal backward)\n");
 }
 
 void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
@@ -418,28 +465,34 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     float targetPitch = -atan2f(direction.y, horizontalDist);
 
     // Smooth interpolation for nicer aiming
-    float rotationSpeed = 5.0f; // radians per second
+    float rotationSpeed = 2.5f; // radians per second
     float maxRotation = rotationSpeed * dt;
 
     // --- TURRET (model 1): Yaw rotation only ---
     // For turret, we want independent yaw rotation (not locked to parent)
     // Based on your transformation code, we should set localRotationOffset.yaw
 
-    float currentTurretYaw = mc->localRotationOffset[1].yaw;
-    float yawDiff = targetYaw - currentTurretYaw;
+    float baseYaw = mc->localRotationOffset[0].yaw; // hull yaw (local)
+    float targetYawWorld = atan2f(direction.x, direction.z);
+    float targetYawLocal = targetYawWorld - baseYaw;
 
-    // Handle wrap-around (angles go from -PI to PI)
+    // wrap targetYawLocal into [-PI, PI] if you want
+    while (targetYawLocal > PI)
+      targetYawLocal -= 2 * PI;
+    while (targetYawLocal < -PI)
+      targetYawLocal += 2 * PI;
+
+    // smooth toward targetYawLocal
+    float currentTurretYaw = mc->localRotationOffset[1].yaw;
+    float yawDiff = targetYawLocal - currentTurretYaw;
+
     while (yawDiff > PI)
       yawDiff -= 2 * PI;
     while (yawDiff < -PI)
       yawDiff += 2 * PI;
 
-    // Limit rotation speed
     yawDiff = fminf(fmaxf(yawDiff, -maxRotation), maxRotation);
-    float baseYaw = mc->localRotationOffset[0].yaw;
-    float targetYawLocal = targetYaw - baseYaw;
-
-    mc->localRotationOffset[1].yaw = targetYawLocal;
+    mc->localRotationOffset[1].yaw = currentTurretYaw + yawDiff;
 
     // Turret should have yaw rotation only (no pitch/roll)
     mc->localRotationOffset[1].pitch = 0;
@@ -591,6 +644,11 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
       continue;
     }
 
+    int *state =
+        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+    if (!state || *state == TANK_IDLE)
+      continue; // never shoot in idle
+
     // Find the barrel ray index (parentModelIndex == 2), same as your aiming
     // code :contentReference[oaicite:4]{index=4}
     int barrelRayIdx = -1;
@@ -608,7 +666,7 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     Ray ray = eng->actors.raycasts[i][barrelRayIdx].ray;
 
     // Decide when “aiming at player” counts
-    const float playerRadius = 20.0f;   // tweak
+    const float playerRadius = 20.0f;  // tweak
     const float maxShootDist = 500.0f; // tweak
     if (!BarrelAimingAtPlayer(ray.position, ray.direction, *playerPos, 10))
       continue;
