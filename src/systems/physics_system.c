@@ -75,13 +75,30 @@ void ApplyTerrainCollision(Engine_t *eng, GameState_t *gs, Terrain_t *terrain,
   Vector3 *vel = (Vector3 *)getComponent(&eng->actors, entityId,
                                          gs->compReg.cid_velocities);
 
-  // Apply gravity
-  vel->y -= GRAVITY * dt;
-  if (vel->y < -TERMINAL_VELOCITY)
-    vel->y = -TERMINAL_VELOCITY;
+  if (gs->playerId == entityId) {
 
-  // Move entity
-  pos->y += vel->y * dt;
+    int *pState = (int *)getComponent(&eng->actors, gs->playerId,
+                                      gs->compReg.cid_moveBehaviour);
+    if (*pState != PSTATE_DASH_CHARGE || *pState != PSTATE_DASH_GO) {
+
+      // Apply gravity
+      vel->y -= GRAVITY * dt;
+      if (vel->y < -TERMINAL_VELOCITY)
+        vel->y = -TERMINAL_VELOCITY;
+
+      // Move entity
+      pos->y += vel->y * dt;
+    }
+  } else {
+
+    // Apply gravity
+    vel->y -= GRAVITY * dt;
+    if (vel->y < -TERMINAL_VELOCITY)
+      vel->y = -TERMINAL_VELOCITY;
+
+    // Move entity
+    pos->y += vel->y * dt;
+  }
 
   // Compute terrain height
   float terrainY = GetTerrainHeightAtEntity(eng, gs, terrain, entityId);

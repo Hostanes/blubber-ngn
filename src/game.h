@@ -10,11 +10,11 @@
 #include <stdlib.h>
 
 static const Vector3 DETECTION_CENTER = {0, 0, -2000}; // map point, not tank
-static const float DETECTION_RADIUS = 5000.0f;
+static const float DETECTION_RADIUS = 4000.0f;
 
 static const Vector3 IDLE_POINT = {0, 0, -2000}; // where tank goes in idle
 
-static const float CIRCLE_RADIUS = 2000.0f;
+static const float CIRCLE_RADIUS = 1500.0f;
 static const float CHARGE_DURATION = 2.0f;  // seconds of charging
 static const float CHARGE_COOLDOWN = 15.0f; // time between charges
 
@@ -118,6 +118,13 @@ typedef struct {
 
   // TODO add others
 } ActorComponentRegistry_t;
+
+typedef enum {
+  PSTATE_NORMAL = 0,
+  PSTATE_DASH_CHARGE = 1,
+  PSTATE_DASH_GO = 2,
+  PSTATE_DASH_SLOW = 3
+} PlayerMoveState;
 
 typedef enum {
   TANK_IDLE = 0,

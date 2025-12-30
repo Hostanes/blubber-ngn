@@ -307,6 +307,12 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
                         &vel);
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
                         &pos);
+  int moveBehaviour = PSTATE_NORMAL;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+                        &moveBehaviour);
+  float timer = 0;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+                        &timer);
   eng->actors.stepCycle[e] = 0;
   eng->actors.prevStepCycle[e] = 0;
   eng->actors.stepRate[e] = 2.0f;
@@ -340,7 +346,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   // mc->models[2] = LoadModelFromMesh(gunMesh);
   mc->models[2] = LoadModel("assets/models/gun1.glb");
 
-  mc->offsets[2] = (Vector3){8.0f, -2, 10};
+  mc->offsets[2] = (Vector3){8.0f, -2, 8};
   mc->orientations[2] = (Orientation){0, PI / 2, 0};
   mc->parentIds[2] = 1;
 
@@ -1054,7 +1060,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
 
-  Vector3 tankStartPos = (Vector3){0, 0, 2500};
+  Vector3 tankStartPos = (Vector3){0, 0, -2000};
   tankStartPos.y =
       GetTerrainHeightAtPosition(&gs->terrain, tankStartPos.x, tankStartPos.z);
   CreateTank(eng, gs->compReg, tankStartPos);
