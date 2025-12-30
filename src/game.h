@@ -105,6 +105,8 @@ typedef struct {
   int cid_prevStepCycle;
   int cid_stepRate;
 
+  int cid_weaponCount;
+
   int cid_behavior;
 
   int cid_moveTarget;

@@ -272,34 +272,68 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       vel[pid].x -= forward.x * 100.0f * dt * backwardSpeedMult;
       vel[pid].z -= forward.z * 100.0f * dt * backwardSpeedMult;
     }
-    if (IsKeyDown(KEY_Q)) {
-      vel[pid].x += right.x * -100.0f * dt * strafeSpeedMult;
-      vel[pid].z += right.z * -100.0f * dt * strafeSpeedMult;
-    }
-    if (IsKeyDown(KEY_E)) {
-      vel[pid].x += right.x * 100.0f * dt * strafeSpeedMult;
-      vel[pid].z += right.z * 100.0f * dt * strafeSpeedMult;
-    }
 
+    // -----------------------------
+    // WEAPON 0: Left gun (LMB)  -> ray 1, cooldown slot 0
+    // -----------------------------
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) &&
-        eng->actors.cooldowns[pid][0] <= 0) {
-      printf("firing\n");
+        eng->actors.cooldowns[pid][0] <= 0.0f) {
+
       eng->actors.cooldowns[pid][0] = eng->actors.firerate[pid][0];
       QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.4f, 1.0f);
 
-      ApplyTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, 0.1f,
+      ApplyTorsoRecoil(&eng->actors.modelCollections[pid], 1, 0.1f,
                        (Vector3){-0.2f, 1.0f, 0});
 
-      Ray *ray = &eng->actors.raycasts[gs->playerId][1].ray;
-
-      float muzzleOffset = 15.0f; // tune this value depending on your gun model
-      Vector3 forward = Vector3Normalize(ray->direction);
-
+      Ray *ray = &eng->actors.raycasts[pid][1].ray; // left muzzle
+      float muzzleOffset = 15.0f;
+      Vector3 fwd = Vector3Normalize(ray->direction);
       Vector3 muzzlePos =
-          Vector3Add(ray->position, Vector3Scale(forward, muzzleOffset));
+          Vector3Add(ray->position, Vector3Scale(fwd, muzzleOffset));
 
-      FireProjectile(eng, gs->playerId, 1);
+      FireProjectile(eng, pid, 1, 0, 1); // ray index 1
       SpawnSmoke(eng, muzzlePos);
+    }
+
+    // -----------------------------
+    // WEAPON 1: Right cannon shell (RMB) -> ray 2, cooldown slot 1
+    // -----------------------------
+    if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON) &&
+        eng->actors.cooldowns[pid][1] <= 0.0f) {
+
+      eng->actors.cooldowns[pid][1] = eng->actors.firerate[pid][1];
+      QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.6f,
+                 0.9f); // tweak sound
+
+      ApplyTorsoRecoil(&eng->actors.modelCollections[pid], 1, 0.18f,
+                       (Vector3){-0.15f, 1.0f, 0});
+
+      Ray *ray = &eng->actors.raycasts[pid][2].ray; // right muzzle
+      float muzzleOffset = 18.0f;                   // slightly longer
+      Vector3 fwd = Vector3Normalize(ray->direction);
+      Vector3 muzzlePos =
+          Vector3Add(ray->position, Vector3Scale(fwd, muzzleOffset));
+
+      FireProjectile(eng, pid, 2, 1, 2); // ray index 2 (big shell)
+      SpawnSmoke(eng, muzzlePos);
+    }
+
+    // -----------------------------
+    // WEAPON 2: Shoulder rocket (Q press) -> ray 3, cooldown slot 2
+    // -----------------------------
+    if (IsKeyPressed(KEY_Q) && eng->actors.cooldowns[pid][2] <= 0.0f) {
+
+      eng->actors.cooldowns[pid][2] = eng->actors.firerate[pid][2];
+      QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.5f,
+                 1.1f); // tweak sound
+
+      Ray *ray = &eng->actors.raycasts[pid][3].ray; // shoulder muzzle
+      float muzzleOffset = 20.0f;
+      Vector3 fwd = Vector3Normalize(ray->direction);
+      Vector3 muzzlePos =
+          Vector3Add(ray->position, Vector3Scale(fwd, muzzleOffset));
+
+      FireProjectile(eng, pid, 3, 2, 3); // ray index 3 (rocket)
     }
   }
 
@@ -328,7 +362,10 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       if (curr >= 1.0f)
         curr -= 1.0f;
 
-      // No footstep audio at all (per request), so do NOT QueueSound here.
+      if (prev > curr) { // wrapped around -> stomp
+        QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.2f, 1.0f);
+      }
+
       eng->actors.stepCycle[pid] = curr;
       eng->actors.prevStepCycle[pid] = curr;
     } else {

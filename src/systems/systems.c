@@ -15,7 +15,7 @@ void LoadAssets() {
 
 // ------------- Weapon Cooldowns -------------
 
-void DecrementCooldowns(Engine_t *eng, float dt) {
+void DecrementCooldowns(Engine_t *eng, GameState_t *gs, float dt) {
   for (int i = 0; i < eng->em.count; i++) {
     // Skip dead entities
     if (!eng->em.alive[i])
@@ -23,11 +23,17 @@ void DecrementCooldowns(Engine_t *eng, float dt) {
 
     // Only process entities that have the cooldown component
     if (eng->em.masks[i] & C_COOLDOWN_TAG) {
-      eng->actors.cooldowns[i][0] -= dt;
 
-      // Clamp to zero
-      if (eng->actors.cooldowns[i][0] < 0.0f)
-        eng->actors.cooldowns[i][0] = 0.0f;
+      for (int j = 0; j < *(int *)getComponent(&eng->actors, i,
+                                               gs->compReg.cid_weaponCount);
+           j++) {
+
+        eng->actors.cooldowns[i][j] -= dt;
+
+        // Clamp to zero
+        if (eng->actors.cooldowns[i][j] < 0.0f)
+          eng->actors.cooldowns[i][j] = 0.0f;
+      }
     }
   }
 }
@@ -52,7 +58,7 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     UpdateRayCastToModel(gs, eng, rc, entity, 1);
     UpdateEntityRaycasts(eng, entity);
 
-    DecrementCooldowns(eng, dt);
+    DecrementCooldowns(eng, gs, dt);
 
     UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
 

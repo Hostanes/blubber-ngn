@@ -354,6 +354,17 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->rotLocks[2][1] = true;
   mc->rotLocks[2][2] = false;
 
+  // mc->models[2] = LoadModelFromMesh(gunMesh);
+  mc->models[3] = LoadModel("assets/models/gun1.glb");
+
+  mc->offsets[3] = (Vector3){-8.0f, -2, 8};
+  mc->orientations[3] = (Orientation){0, PI / 2, 0};
+  mc->parentIds[3] = 1;
+
+  mc->rotLocks[3][0] = true;
+  mc->rotLocks[3][1] = true;
+  mc->rotLocks[3][2] = false;
+
   // Mesh cockpitRoof = GenMeshCube(10.0f, 2.0f, 10.0f);
   // mc->models[3] = LoadModelFromMesh(cockpitRoof);
   // mc->models[3].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
@@ -374,6 +385,10 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   // mc->rotLocks[4][1] = true;
   // mc->rotLocks[4][2] = false;
 
+  int weaponCount = 3;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+                        &weaponCount);
+
   // initialize rayCount and add a muzzle ray for the gun (model index 2)
   eng->actors.rayCounts[e] = 0;
   // Main aim ray - parent to torso (model index 1)
@@ -386,17 +401,46 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0},
                  5000.0f);
 
-  // 2 guns
-  eng->actors.muzzleVelocities[0] = MemAlloc(sizeof(float) * 2);
-  eng->actors.muzzleVelocities[0][0] = 2500.0f;
-  eng->actors.dropRates[0] = MemAlloc(sizeof(float) * 2);
-  eng->actors.dropRates[0][0] = 20.0f;
+  // [ray 2] Right-hand cannon muzzle ray - parent to gun (model index 2)
+  AddRayToEntity(eng, e, 3, (Vector3){0, 0, 0}, // mirrored X offset (tweak)
+                 (Orientation){0, 0, 0}, 5000.0f);
 
-  // cooldown & firerate allocations
-  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.cooldowns[e][0] = 0.8;
-  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 0.5f;
+  // [ray 3] Shoulder rocket muzzle ray - parent to torso (model index 1)
+  AddRayToEntity(eng, e, 1, (Vector3){0.0f, 6.0f, 6.0f}, // up + forward (tweak)
+                 (Orientation){0, 0, 0}, 5000.0f);
+
+  // Weapons (3)
+  eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * weaponCount);
+  eng->actors.dropRates[e] = MemAlloc(sizeof(float) * weaponCount);
+
+  // Weapon 0: left-hand gun (fast bullet)
+  eng->actors.muzzleVelocities[e][0] = 2500.0f;
+  eng->actors.dropRates[e][0] = 20.0f;
+
+  // Weapon 1: right-hand cannon (slow heavy shell, long reload)
+  eng->actors.muzzleVelocities[e][1] = 700.0f; // slow
+  eng->actors.dropRates[e][1] = 35.0f;         // heavier drop (tweak)
+
+  // Weapon 2: shoulder rocket (medium speed, no drop)
+  eng->actors.muzzleVelocities[e][2] = 1200.0f; // medium
+  eng->actors.dropRates[e][2] = 0;              // no drop
+
+  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * weaponCount);
+  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * weaponCount);
+
+  // Cooldowns start at 0 (ready)
+  for (int w = 0; w < weaponCount; w++)
+    eng->actors.cooldowns[e][w] = 0.0f;
+
+  // Weapon 0: left-hand gun (shots/sec)
+  eng->actors.firerate[e][0] = 0.5f; // your existing behavior
+
+  // Weapon 1: right-hand cannon (long reload)
+  eng->actors.firerate[e][1] =
+      2.5f; // long reload (seconds between shots in your current usage)
+
+  // Weapon 2: shoulder rocket (medium reload)
+  eng->actors.firerate[e][2] = 1.2f;
 
   // Collision
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
@@ -841,6 +885,10 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
                         &maxAimError);
 
+  int weaponCount = 1;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+                        &weaponCount);
+
   eng->actors.types[e] = ENTITY_TANK;
   eng->actors.hitPoints[e] = 100.0f;
 
@@ -1025,6 +1073,8 @@ GameState_t InitGameDuel(Engine_t *eng) {
   gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
   gs->compReg.cid_prevPositions =
       registerComponent(&eng->actors, sizeof(Vector3));
+
+  gs->compReg.cid_weaponCount = registerComponent(&eng->actors, sizeof(int));
 
   gs->compReg.cid_behavior =
       registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));

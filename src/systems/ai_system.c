@@ -676,7 +676,7 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
         *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
     QueueSound(soundSys, SOUND_WEAPON_FIRE, shooterPos, 0.4f, 1.0f);
 
-    FireProjectile(eng, (entity_t)i, barrelRayIdx);
+    FireProjectile(eng, (entity_t)i, barrelRayIdx, 0, 1);
 
     // Smoke at muzzle: start at barrel ray origin, move a bit forward along
     // barrel dir

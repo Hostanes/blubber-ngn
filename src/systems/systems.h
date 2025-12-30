@@ -28,8 +28,9 @@ bool CheckRaycastCollision(GameState_t *gs, Engine_t *eng, Raycast_t *raycast,
                            entity_t self);
 
 // ---------- Weapon ----------
-void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex);
-void DecrementCooldowns(Engine_t *eng, float dt);
+void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex, int gunId,
+                    int projType);
+void DecrementCooldowns(Engine_t *eng, GameState_t *gs, float dt);
 
 // ---------- Projectiles ----------
 void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,

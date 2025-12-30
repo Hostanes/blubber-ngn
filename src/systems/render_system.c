@@ -142,8 +142,44 @@ void DrawProjectiles(Engine_t *eng) {
     if (!eng->projectiles.active[i])
       continue;
 
-    DrawSphere(eng->projectiles.positions[i], eng->projectiles.radii[i],
-               YELLOW);
+    Vector3 p = eng->projectiles.positions[i];
+    Vector3 v = eng->projectiles.velocities[i];
+    int type = eng->projectiles.types[i];
+
+    if (type == 1) {
+      // Type 1: yellow sphere
+      DrawSphere(p, eng->projectiles.radii[i], YELLOW);
+    } else if (type == 2) {
+      // Type 2: bigger red sphere
+      float r = eng->projectiles.radii[i] * 2.0f;
+      DrawSphere(p, r, RED);
+    } else if (type == 3) {
+      // Type 3: cylinder pointing in movement direction
+
+      // If velocity is near-zero, default forward
+      float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+      Vector3 dir = (speed > 0.001f)
+                        ? (Vector3){v.x / speed, v.y / speed, v.z / speed}
+                        : (Vector3){0, 0, 1};
+
+      // Cylinder dimensions
+      float length = 35.0f;
+      float radius = 0.5f;
+
+      // Raylib cylinder points from start->end
+      Vector3 front = Vector3Add(p, Vector3Scale(dir, length * 0.5f));
+      Vector3 back = Vector3Add(p, Vector3Scale(dir, -length * 0.5f));
+
+      DrawCylinderEx(back, front, radius, radius, 8, ORANGE);
+
+      // Spawn thruster particle (type 2) at the back
+      // Slightly behind the cylinder so it doesn't clip
+      Vector3 thrusterPos = Vector3Add(back, Vector3Scale(dir, -2.0f));
+
+    } else {
+      // Unknown type fallback
+      DrawSphere(p, eng->projectiles.radii[i], WHITE);
+    }
   }
 }
 
@@ -320,7 +356,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     UpdateModelCollectionWorldTransforms(&eng->actors.hitboxCollections[i],
                                          entityPos, camera.target, 0);
 
-    // DrawRaycasts(gs, eng);
+    DrawRaycasts(gs, eng);
 
     // Visual models (solid white)
     DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,

@@ -22,9 +22,43 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     //------------------------------
     Vector3 prevPos = eng->projectiles.positions[i];
 
-    // Gravity drop acceleration
-    eng->projectiles.dropRates[i] += 0.5f;
-    eng->projectiles.velocities[i].y -= eng->projectiles.dropRates[i] * dt;
+    if (eng->projectiles.types[i] == 3) {
+      eng->projectiles.thrusterTimers[i] -= dt;
+      if (eng->projectiles.thrusterTimers[i] <= 0.0f) {
+        eng->projectiles.thrusterTimers[i] = 0.05f; // 20 Hz
+
+        // compute back-of-rocket position from velocity direction
+        Vector3 v = eng->projectiles.velocities[i];
+        float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+        Vector3 dir = (speed > 0.001f)
+                          ? (Vector3){v.x / speed, v.y / speed, v.z / speed}
+                          : (Vector3){0, 0, 1};
+
+        float length = 35.0f;
+        Vector3 back = Vector3Add(eng->projectiles.positions[i],
+                                  Vector3Scale(dir, -length * 0.5f));
+
+        Vector3 thrusterPos = Vector3Add(back, Vector3Scale(dir, -2.0f));
+
+        // small random
+        float randSpread = 1.0f;
+        Vector3 jitter = {
+            ((float)GetRandomValue(-100, 100) / 100.0f) * randSpread,
+            ((float)GetRandomValue(-100, 100) / 100.0f) * randSpread,
+            ((float)GetRandomValue(-100, 100) / 100.0f) * randSpread};
+
+        Vector3 spawnPos = Vector3Add(thrusterPos, jitter);
+
+        float life = 0.4f + ((float)GetRandomValue(0, 1000) / 1000.0f) *
+                                0.4f; // 0.4–0.8s
+        spawnParticle(eng, spawnPos, life, 1);
+      }
+
+    } else {
+      // Gravity drop acceleration
+      eng->projectiles.dropRates[i] += 0.5f;
+      eng->projectiles.velocities[i].y -= eng->projectiles.dropRates[i] * dt;
+    }
 
     // Compute nextPos *before* moving
     Vector3 vel = eng->projectiles.velocities[i];
@@ -176,15 +210,15 @@ void spawnProjectile(Engine_t *eng, Vector3 pos, Vector3 velocity,
     eng->projectiles.owners[i] = owner;
     eng->projectiles.types[i] = type;
     eng->projectiles.dropRates[i] = dropRate;
+    eng->projectiles.thrusterTimers[i] = 0;
     break;
   }
 }
 
-void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex) {
+void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex, int gunId,
+                    int projType) {
   if (!eng->actors.raycasts[shooter][rayIndex].active)
     return;
-
-  int gunId = 0;
 
   Ray *ray = &eng->actors.raycasts[shooter][rayIndex].ray;
 
@@ -206,9 +240,9 @@ void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex) {
   printf("Fire vel: (%.3f, %.3f, %.3f)\n", vel.x, vel.y, vel.z);
 
   spawnProjectile(eng, origin, vel,
-                  10.0f,   // lifetime sec
-                  0.5f,    // radius
-                  drop,    // drop rate
-                  shooter, // owner
-                  1);      // type
+                  10.0f,     // lifetime sec
+                  0.5f,      // radius
+                  drop,      // drop rate
+                  shooter,   // owner
+                  projType); // type
 }

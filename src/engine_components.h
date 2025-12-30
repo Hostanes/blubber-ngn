@@ -177,6 +177,7 @@ typedef struct {
   float radii[MAX_PROJECTILES];
   entity_t owners[MAX_PROJECTILES];
   int types[MAX_PROJECTILES];
+  float thrusterTimers[MAX_PROJECTILES];
 } ProjectilePool_t;
 
 typedef struct {

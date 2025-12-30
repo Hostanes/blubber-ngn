@@ -1,7 +1,11 @@
 #include "systems.h"
 
 void spawnParticle(Engine_t *eng, Vector3 pos, float lifetime, int type) {
+
+  static int cursor = 0;
+
   for (int i = 0; i < MAX_PARTICLES; i++) {
+    // int i = cursor;
     if (eng->particles.active[i])
       continue;
 
@@ -11,7 +15,7 @@ void spawnParticle(Engine_t *eng, Vector3 pos, float lifetime, int type) {
     eng->particles.lifetimes[i] = lifetime;
     eng->particles.startLifetimes[i] = lifetime;
 
-    printf("PARTICLE spawned particle at index %d\n", i);
+    // printf("PARTICLE spawned particle at index %d\n", i);
     break;
   }
 }
