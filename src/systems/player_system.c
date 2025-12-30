@@ -4,6 +4,27 @@
 
 #define BOB_AMOUNT 0.5f
 
+// -----------------------------
+// Tunables
+// -----------------------------
+const float DASH_CHARGE_TIME = 0.18f;
+const float DASH_GO_TIME = 0.12f;
+const float DASH_SLOW_TIME = 0.10f;
+
+const float DASH_SPEED = 1200.0f;
+const float DASH_SLOW_DAMP = 18.0f;
+
+// Torso pitch kick during dash (radians)
+const float DASH_TORSO_KICK = 0.01f;
+
+// FOV bump during dash
+const float DASH_FOV_MULT = 1.06f;
+const float FOV_SPEED = 12.0f;
+
+// Torso kick smoothing (bigger = snappier)
+const float KICK_EASE_IN = 30.0f;
+const float KICK_EASE_OUT = 22.0f;
+
 extern Vector3 recoilOffset;
 
 // ========== GUN ==========
@@ -92,27 +113,6 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
   Orientation *leg = &mc->orientations[0];
   Orientation *torso = &mc->orientations[1];
-
-  // -----------------------------
-  // Tunables
-  // -----------------------------
-  const float DASH_CHARGE_TIME = 0.18f;
-  const float DASH_GO_TIME = 0.12f;
-  const float DASH_SLOW_TIME = 0.10f;
-
-  const float DASH_SPEED = 1200.0f;
-  const float DASH_SLOW_DAMP = 18.0f;
-
-  // Torso pitch kick during dash (radians)
-  const float DASH_TORSO_KICK = 0.01f; // ~8 degrees
-
-  // FOV bump during dash
-  const float DASH_FOV_MULT = 1.06f; // +6%
-  const float FOV_SPEED = 12.0f;
-
-  // Torso kick smoothing (bigger = snappier)
-  const float KICK_EASE_IN = 30.0f;
-  const float KICK_EASE_OUT = 22.0f;
 
   bool isSprinting = IsKeyDown(KEY_LEFT_SHIFT);
 
@@ -302,6 +302,9 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       SpawnSmoke(eng, muzzlePos);
     }
   }
+
+  eng->actors.modelCollections[pid].offsets[2].z =
+      8.0f - *(eng->actors.cooldowns[pid]);
 
   // -----------------------------
   // Headbob + footsteps disabled during dash
