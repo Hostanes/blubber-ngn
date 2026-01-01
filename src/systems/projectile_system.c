@@ -1,6 +1,137 @@
 #include "systems.h"
 #include <raylib.h>
 
+typedef struct ExplosionDef {
+  float radius;
+  float maxDamage; // damage at center
+  float minDamage; // damage at edge (usually 0)
+  float impulse;   // optional (can ignore for now)
+  int particleType;
+  float particleLife;
+  SoundType_t soundType;
+  float soundVol;
+  float soundPitch;
+} ExplosionDef;
+
+static inline ExplosionDef GetExplosionDef(int projectileType) {
+  // Tune these however you want
+  switch (projectileType) {
+  case 2: // big shell
+    return (ExplosionDef){.radius = 150.0f,
+                          .maxDamage = 100.0f,
+                          .minDamage = 0.0f,
+                          .impulse = 0.0f,
+                          .particleType = 5,
+                          .particleLife = 1.2f,
+                          .soundType = SOUND_EXPLOSION,
+                          .soundVol = 1.0f,
+                          .soundPitch = 0.95f};
+  case 3: // rocket
+    return (ExplosionDef){.radius = 80.0f,
+                          .maxDamage = 35.0f,
+                          .minDamage = 0.0f,
+                          .impulse = 0.0f,
+                          .particleType = 8,
+                          .particleLife = 0.5f,
+                          .soundType = SOUND_EXPLOSION,
+                          .soundVol = 1.0f,
+                          .soundPitch = 1.05f};
+  default:
+    // non-explosive
+    return (ExplosionDef){0};
+  }
+}
+
+static inline float DamageFalloffLinear(float dist, float radius, float maxDmg,
+                                        float minDmg) {
+  if (dist >= radius)
+    return 0.0f;
+  float t = 1.0f - (dist / radius); // 1 at center -> 0 at edge
+  float dmg = minDmg + t * (maxDmg - minDmg);
+  return (dmg < 0.0f) ? 0.0f : dmg;
+}
+
+static void SpawnExplosion(GameState_t *gs, Engine_t *eng,
+                           SoundSystem_t *soundSys, Vector3 pos,
+                           int projectileType, entity_t owner) {
+  ExplosionDef def = GetExplosionDef(projectileType);
+  if (def.radius <= 0.0f)
+    return; // not explosive
+
+  // 1) VFX + SFX
+  spawnParticle(eng, pos, def.particleLife, def.particleType);
+  spawnParticle(eng, pos, 1.5, 6);
+  QueueSound(soundSys, def.soundType, pos, def.soundVol, def.soundPitch);
+
+  // 2) Damage nearby actors using grid
+  EntityGrid_t *grid = &gs->grid;
+
+  int minX = (int)((pos.x - def.radius - grid->minX) / grid->cellSize);
+  int maxX = (int)((pos.x + def.radius - grid->minX) / grid->cellSize);
+  int minZ = (int)((pos.z - def.radius - grid->minZ) / grid->cellSize);
+  int maxZ = (int)((pos.z + def.radius - grid->minZ) / grid->cellSize);
+
+  if (minX < 0)
+    minX = 0;
+  if (minZ < 0)
+    minZ = 0;
+  if (maxX >= grid->width)
+    maxX = grid->width - 1;
+  if (maxZ >= grid->length)
+    maxZ = grid->length - 1;
+
+  for (int gx = minX; gx <= maxX; gx++) {
+    for (int gz = minZ; gz <= maxZ; gz++) {
+      GridNode_t *node = &grid->nodes[gx][gz];
+
+      for (int n = 0; n < node->count; n++) {
+        entity_t eid = node->entities[n];
+        if (eid == GRID_EMPTY)
+          continue;
+
+        // Ignore projectiles
+        if (GetEntityCategory(eid) != ET_ACTOR) {
+          printf("Not actor, skipping\n");
+          continue;
+        }
+
+        int idx = GetEntityIndex(eid);
+        if (idx < 0 || idx >= eng->em.count)
+          continue;
+        if (!eng->em.alive[idx])
+          continue;
+
+        // only damage entities with hitpoints
+        if (!(eng->em.masks[idx] & C_HITPOINT_TAG))
+          continue;
+
+        Vector3 *tpos = (Vector3 *)getComponent(&eng->actors, eid,
+                                                gs->compReg.cid_Positions);
+        if (!tpos)
+          continue;
+
+        // distance in 3D or XZ; choose XZ if you want
+        Vector3 d = Vector3Subtract(*tpos, pos);
+        float dist = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+
+        if (dist > def.radius)
+          continue;
+
+        float dmg =
+            DamageFalloffLinear(dist, def.radius, def.maxDamage, def.minDamage);
+        if (dmg <= 0.0f)
+          continue;
+
+        eng->actors.hitPoints[idx] -= dmg;
+
+        if (eng->actors.hitPoints[idx] <= 0) {
+          KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
+        }
+      }
+    }
+  }
+}
+
 void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                        float dt) {
 
@@ -80,8 +211,18 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     float terrainY = GetTerrainHeightAtXZ(&gs->terrain, nextPos.x, nextPos.z);
 
     if (terrainY >= nextPos.y) {
+      int pType = eng->projectiles.types[i];
+      entity_t owner = eng->projectiles.owners[i];
+
+      // Explosive types spawn explosion, otherwise dust
+      ExplosionDef def = GetExplosionDef(pType);
+      if (def.radius > 0.0f) {
+        SpawnExplosion(gs, eng, soundSys, prevPos, pType, owner);
+      } else {
+        SpawnDust(eng, prevPos);
+      }
+
       eng->projectiles.active[i] = false;
-      SpawnDust(eng, prevPos);
       continue;
     }
 
@@ -133,6 +274,9 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
       }
     }
 
+    int pType = eng->projectiles.types[i];
+    entity_t owner = eng->projectiles.owners[i];
+
     // ------------------------------
     // ===== ACTOR COLLISION =====
     // ------------------------------
@@ -149,20 +293,25 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
         for (int n = 0; n < node->count; n++) {
 
           entity_t e = node->entities[n];
+          if (e == GRID_EMPTY)
+            continue;
           if (GetEntityCategory(e) != ET_ACTOR)
             continue;
 
           int idx = GetEntityIndex(e);
 
-          if (!(eng->em.masks[idx] & C_HITBOX))
-            continue;
           if (!eng->em.alive[idx])
             continue;
-          if (idx == eng->projectiles.owners[i])
+
+          // owner compare must be entity_t vs entity_t
+          if (e == owner)
+            continue;
+
+          if (!(eng->em.masks[idx] & C_HITBOX))
             continue;
 
           ModelCollection_t *hb = &eng->actors.hitboxCollections[idx];
-          if (hb->countModels <= 0)
+          if (hb->countModels <= 0 || !hb->isActive)
             continue;
 
           // test EACH hitbox
@@ -173,22 +322,33 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
             if (SegmentIntersectsOBB(prevPos, nextPos, hb, m)) {
               printf("Projectile hit ACTOR %d (hb %d)\n", idx, m);
 
-              spawnParticle(eng, prevPos, 2, 1);
+              // deactivate projectile first
               eng->projectiles.active[i] = false;
 
+              // Explosive types: do explosion ONLY (AoE handles damage)
+              ExplosionDef def = GetExplosionDef(pType);
+              if (def.radius > 0.0f) {
+                SpawnExplosion(gs, eng, soundSys, prevPos, pType, owner);
+
+                goto next_projectile;
+              }
+
+              // ✅ Non-explosive: dust + direct hit damage
+              SpawnDust(eng, prevPos);
+
               if (eng->em.masks[idx] & C_HITPOINT_TAG) {
-                printf("decreasing hp\n");
-                if (!(gs->playerId == e)) {
+                if (e != MakeEntityID(ET_ACTOR, gs->playerId)) {
                   QueueSound(
                       soundSys, SOUND_HITMARKER,
                       *(Vector3 *)getComponent(&eng->actors, gs->playerId,
                                                gs->compReg.cid_Positions),
                       0.4f, 1.0f);
                 }
-                int damageDealt = projectileDamage[eng->projectiles.types[i]];
 
+                int damageDealt = projectileDamage[pType];
                 eng->actors.hitPoints[idx] -= damageDealt;
-                if (eng->actors.hitPoints[idx] <= 0) {
+
+                if (eng->actors.hitPoints[idx] <= 0.0f) {
                   KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
                 }
               }

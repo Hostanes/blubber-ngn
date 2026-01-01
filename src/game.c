@@ -452,7 +452,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.firerate[e][1] = 2.5f;
 
   // Weapon 2: shoulder rocket
-  eng->actors.firerate[e][2] = .7f;
+  eng->actors.firerate[e][2] = 1.5f;
 
   // Collision
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
@@ -1114,11 +1114,6 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
-
-  Vector3 tankStartPos = (Vector3){0, 0, 200};
-  tankStartPos.y =
-      GetTerrainHeightAtPosition(&gs->terrain, tankStartPos.x, tankStartPos.z);
-  // CreateTank(eng, gs->compReg, tankStartPos);
 
   int staticLastID = -1;
 

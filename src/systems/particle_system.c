@@ -120,6 +120,17 @@ void UpdateParticles(Engine_t *eng, float dt) {
       pos->z += ((float)GetRandomValue(-10, 10) / 200.0f);
       break;
 
+    case 5:
+      pos->y += 10.0f * dt;
+      pos->x += ((float)GetRandomValue(-10, 10) / 200.0f);
+      pos->z += ((float)GetRandomValue(-10, 10) / 200.0f);
+      break;
+    case 6:
+      pos->y += 10.0f * dt;
+      pos->x += ((float)GetRandomValue(-10, 10) / 200.0f);
+      pos->z += ((float)GetRandomValue(-10, 10) / 200.0f);
+      break;
+
     } // end switch
   }
 }

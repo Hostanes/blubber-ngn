@@ -195,6 +195,12 @@ float ParticleBaseSize(int type) {
     return 2.0f; //
   case 4:
     return 3.0f; //
+  case 5:
+    return 150.0f; //
+  case 6:
+    return 20.0f; //
+  case 8:
+    return 80.0f; //
   default:
     return 1.0f;
   }
@@ -236,6 +242,12 @@ void DrawParticles(ParticlePool_t *pp) {
 
     case 2: // desert dust
       c = (Color){194, 178, 128, 255};
+      break;
+    case 5:
+      c = (Color){247, 243, 128, 255};
+      break;
+    case 6:
+      c = (Color){30, 13, 9, 255};
       break;
     }
 
