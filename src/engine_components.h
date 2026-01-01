@@ -16,15 +16,11 @@
 #define ENTITY_TYPE_SHIFT 30
 #define ENTITY_INDEX_MASK 0x3FFFFFFF
 
-#define MAX_ENTITIES 256
+#define MAX_ENTITIES 512
 #define MAX_STATICS 2048
 #define MAX_PROJECTILES 1024
 #define MAX_PARTICLES 2048
 #define MAX_RAYS_PER_ENTITY 8
-
-#define GRID_CELL_SIZE 100.0f
-#define MAX_GRID_NODES 32
-#define GRID_EMPTY -1
 
 typedef struct {
   float yaw;

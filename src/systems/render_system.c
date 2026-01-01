@@ -265,6 +265,41 @@ void DrawRaycasts(GameState_t *gs, Engine_t *eng) {
   }
 }
 
+static void DrawValueBar(int x, int y, int w, int h, float value,
+                         float maxValue, Color fillColor, Color backColor,
+                         Color borderColor, Color textColor) {
+  // clamp
+  if (value < 0)
+    value = 0;
+  if (value > maxValue)
+    value = maxValue;
+
+  float t = (maxValue > 0.0f) ? (value / maxValue) : 0.0f;
+  int fillW = (int)((w - 2) * t);
+
+  // background + border
+  DrawRectangle(x, y, w, h, backColor);
+  DrawRectangleLines(x, y, w, h, borderColor);
+
+  // fill
+  DrawRectangle(x + 1, y + 1, fillW, h - 2, fillColor);
+
+  // text centered
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%d/%d", (int)(value + 0.5f),
+           (int)(maxValue + 0.5f));
+
+  int fontSize = h - 6;
+  if (fontSize < 10)
+    fontSize = 10;
+
+  int tw = MeasureText(buf, fontSize);
+  int tx = x + (w - tw) / 2;
+  int ty = y + (h - fontSize) / 2;
+
+  DrawText(buf, tx, ty, fontSize, textColor);
+}
+
 // --- Main Render Function ---
 void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
@@ -363,7 +398,8 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
                         false);
 
     // Movement collision boxes (green wireframe)
-    // DrawModelCollection(&eng->actors.collisionCollections[i], entityPos, GREEN,
+    // DrawModelCollection(&eng->actors.collisionCollections[i], entityPos,
+    // GREEN,
     //                     true);
 
     // Color hitboxColor = RED;
@@ -457,6 +493,45 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   int rotTextWidth = MeasureText(rotText, 20);
   DrawText(rotText, eng->config.window_width - rotTextWidth - 10, 30, 20,
            RAYWHITE);
+
+  float hitpoints = eng->actors.hitPoints[gs->playerId];
+  int playerHeatMeter = gs->heatMeter;
+
+  // --- Bottom HUD bars ---
+  int barW = 320;
+  int barH = 28;
+  int pad = 12;
+  int labelSize = 18;
+
+  int yBottom = eng->config.window_height - pad - barH;
+
+  // ---------------------
+  // HITPOINTS (left)
+  // ---------------------
+  int hpX = pad;
+  int hpLabelY = yBottom - labelSize - 4;
+
+  DrawText("HITPOINTS", hpX, hpLabelY, labelSize, RAYWHITE);
+
+  DrawValueBar(hpX, yBottom, barW, barH, hitpoints, 100.0f,
+               (Color){40, 200, 70, 255},   // fill
+               (Color){20, 20, 20, 180},    // back
+               (Color){255, 255, 255, 180}, // border
+               RAYWHITE);
+
+  // ---------------------
+  // HEAT (right)
+  // ---------------------
+  int heatX = eng->config.window_width - pad - barW;
+  int heatLabelY = yBottom - labelSize - 4;
+
+  DrawText("HEAT", heatX, heatLabelY, labelSize, RAYWHITE);
+
+  DrawValueBar(heatX, yBottom, barW, barH, (float)playerHeatMeter, 100.0f,
+               (Color){220, 80, 60, 255},   // fill
+               (Color){20, 20, 20, 180},    // back
+               (Color){255, 255, 255, 180}, // border
+               RAYWHITE);
 
   float length = 50.0f;
   Vector2 arrowStart = (Vector2){eng->config.window_width * 0.8,

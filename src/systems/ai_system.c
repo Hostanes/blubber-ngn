@@ -4,6 +4,11 @@
 #include <math.h>
 #include <stdlib.h>
 
+static float tankAiAccum = 0.0f;
+
+#define TANK_AI_HZ 15.0f
+#define TANK_AI_DT (1.0f / TANK_AI_HZ)
+
 // Returns true if the ray intersects a sphere around the player within maxDist.
 static bool RayAimsAtPlayer(Ray ray, Vector3 playerPos, float playerRadius,
                             float maxDist) {
@@ -133,6 +138,13 @@ static Vector3 GetCirclePointAroundPlayer(Vector3 tankPos, Vector3 playerPos,
 
 void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                         float dt) {
+
+  tankAiAccum += dt;
+  if (tankAiAccum < TANK_AI_DT)
+    return;
+
+  tankAiAccum -= TANK_AI_DT;
+
   int emCount = eng->em.count;
   Vector3 *playerPos =
       getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
@@ -706,9 +718,6 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
 
     // Reset cooldown from firerate (shots per second). If missing, default 1
     // shot/sec.
-    float shotsPerSec = (firerate) ? firerate[0] : 1.0f;
-    if (shotsPerSec <= 0.0f)
-      shotsPerSec = 1.0f;
-    *cooldown = 1.0f / shotsPerSec;
+    *cooldown = *firerate;
   }
 }

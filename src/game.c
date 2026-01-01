@@ -317,7 +317,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.prevStepCycle[e] = 0;
   eng->actors.stepRate[e] = 2.0f;
   eng->actors.types[e] = ENTITY_PLAYER;
-  eng->actors.hitPoints[e] = 100000.0f;
+  eng->actors.hitPoints[e] = 200.0f;
 
   // Model collection: 3 parts (legs, torso/head, gun)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -899,7 +899,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
                         &weaponCount);
 
   eng->actors.types[e] = ENTITY_TANK;
-  eng->actors.hitPoints[e] = 20.0f;
+  eng->actors.hitPoints[e] = 200.0f;
 
   // visual models (base + turret + barrel)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -957,10 +957,10 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   // cooldown & firerate
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
 
-  float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 0.4f;
-  eng->actors.cooldowns[e][0] = 0.4f + r;
+  float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 5.4f;
+  eng->actors.cooldowns[e][0] = 1.4f + r;
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 0.4f;
+  eng->actors.firerate[e][0] = 5.5f;
   eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
   eng->actors.muzzleVelocities[e][0] = 2500.0f;
   eng->actors.dropRates[e] = MemAlloc(sizeof(float) * 2);
@@ -1034,18 +1034,7 @@ void PrintGrid(EntityGrid_t *grid) {
   for (int z = 0; z < grid->length; z++) {
     for (int x = 0; x < grid->width; x++) {
       GridNode_t *node = &grid->nodes[x][z];
-
-      if (node->count == 0) {
-        printf(" -1 ");
-      } else {
-        // Print first entity in cell for brevity (or all, comma-separated)
-        for (int i = 0; i < node->count; i++) {
-          printf("%d", GetEntityIndex(node->entities[i]));
-          if (i < node->count - 1)
-            printf(",");
-        }
-        printf(" ");
-      }
+      printf("%d ", node->count);
     }
     printf("\n"); // next row
   }
@@ -1059,6 +1048,8 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
   memset(gs, 0, sizeof(GameState_t));
+
+  gs->heatMeter = 30;
 
   gs->banner.active = false;
   gs->banner.state = BANNER_HIDDEN;
@@ -1097,7 +1088,6 @@ GameState_t InitGameDuel(Engine_t *eng) {
   gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
 
   gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
-
   // END REGISTER COMPONENTS
 
   gs->state = STATE_INLEVEL;
@@ -1124,11 +1114,13 @@ GameState_t InitGameDuel(Engine_t *eng) {
   Vector3 tankStartPos = (Vector3){0, 0, 200};
   tankStartPos.y =
       GetTerrainHeightAtPosition(&gs->terrain, tankStartPos.x, tankStartPos.z);
-  CreateTank(eng, gs->compReg, tankStartPos);
+  // CreateTank(eng, gs->compReg, tankStartPos);
 
-  float staticsAreaSideWidth = 400;
+  int staticLastID = -1;
+
+  float staticsAreaSideWidth = 200;
   // create a bunch of simple houses/walls
-  int numStatics = 25;
+  int numStatics = 10;
   for (int i = 0; i < numStatics; i++) {
     float width = GetRandomValue(20, 80);
     float height = GetRandomValue(15, 120);
@@ -1144,9 +1136,30 @@ GameState_t InitGameDuel(Engine_t *eng) {
                       (unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255), 255};
 
+    // CreateTank(eng, gs->compReg, (Vector3){x, y, z});
+    staticLastID = CreateStatic(eng, (Vector3){x, y, z},
+                                (Vector3){width, height, depth}, c);
+  }
+
+  float tanksAreaSideWidth = 300;
+  // create a bunch of simple houses/walls
+  int numTanks = 20;
+  for (int i = 0; i < numTanks; i++) {
+    float width = GetRandomValue(20, 80);
+    float height = GetRandomValue(15, 120);
+    float depth = GetRandomValue(30, 100);
+
+    float x =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float z =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255), 255};
+
     CreateTank(eng, gs->compReg, (Vector3){x, y, z});
-    // CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth},
-    // c);
   }
 
   // ensure rayCounts initialized for any entities that weren't touched
@@ -1175,7 +1188,9 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 
-  // PrintGrid(&gs->grid);
+  PrintGrid(&gs->grid);
+
+  printf("last static ID %d\n", GetEntityIndex(staticLastID));
 
   return *gs;
 }

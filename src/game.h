@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 static const Vector3 DETECTION_CENTER = {0, 0, -2000}; // map point, not tank
@@ -83,7 +84,7 @@ typedef struct {
 // Grid
 //----------------------------------------
 typedef struct {
-  int entities[32];
+  int entities[256];
   int count;
 } GridNode_t;
 
@@ -149,6 +150,9 @@ typedef struct GameState {
   EntityGrid_t grid;
 
   MessageBanner_t banner;
+
+  int heatMeter;
+
 } GameState_t;
 
 //----------------------------------------
@@ -161,6 +165,11 @@ Vector3 ConvertOrientationToVector3(Orientation o);
 //----------------------------------------
 // Grid Initialization
 //----------------------------------------
+
+#define GRID_CELL_SIZE 200.0f
+#define MAX_GRID_NODES 128
+#define GRID_EMPTY -1
+
 static inline void AllocGrid(EntityGrid_t *grid, Terrain_t *terrain,
                              float cellSize) {
   grid->cellSize = cellSize;
@@ -200,17 +209,23 @@ static inline bool IsCellValid(EntityGrid_t *grid, int x, int z) {
   return x >= 0 && x < grid->width && z >= 0 && z < grid->length;
 }
 
-static inline void GridAddEntity(EntityGrid_t *grid, entity_t e, Vector3 pos) {
+static inline bool GridAddEntity(EntityGrid_t *grid, entity_t e, Vector3 pos) {
   int ix = (int)((pos.x - grid->minX) / grid->cellSize);
   int iz = (int)((pos.z - grid->minZ) / grid->cellSize);
 
   if (!IsCellValid(grid, ix, iz))
-    return;
+    return false;
 
   GridNode_t *node = &grid->nodes[ix][iz];
-  if (node->count < MAX_GRID_NODES) {
-    node->entities[node->count++] = e;
+
+  if (node->count >= MAX_GRID_NODES) {
+    // DEBUG: show overflow + who is being dropped
+    printf("[GRID] cell full (%d,%d) dropping entity=%d\n", ix, iz, (int)e);
+    return false;
   }
+
+  node->entities[node->count++] = e;
+  return true;
 }
 
 static inline void GridRemoveEntity(EntityGrid_t *grid, entity_t e,
