@@ -356,23 +356,23 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     UpdateModelCollectionWorldTransforms(&eng->actors.hitboxCollections[i],
                                          entityPos, camera.target, 0);
 
-    DrawRaycasts(gs, eng);
+    // DrawRaycasts(gs, eng);
 
     // Visual models (solid white)
     DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,
                         false);
 
     // Movement collision boxes (green wireframe)
-    DrawModelCollection(&eng->actors.collisionCollections[i], entityPos, GREEN,
-                        true);
+    // DrawModelCollection(&eng->actors.collisionCollections[i], entityPos, GREEN,
+    //                     true);
 
-    Color hitboxColor = RED;
-    if (!eng->em.alive[i]) {
-      hitboxColor = BLACK;
-    }
-    // Hitboxes (red wireframe)
-    DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
-                        hitboxColor, true);
+    // Color hitboxColor = RED;
+    // if (!eng->em.alive[i]) {
+    //   hitboxColor = BLACK;
+    // }
+    // // Hitboxes (red wireframe)
+    // DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
+    //                     hitboxColor, true);
   }
 
   for (int i = 0; i < MAX_STATICS; i++) {

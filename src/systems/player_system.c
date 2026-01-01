@@ -282,7 +282,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       eng->actors.cooldowns[pid][0] = eng->actors.firerate[pid][0];
       QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.4f, 1.0f);
 
-      ApplyTorsoRecoil(&eng->actors.modelCollections[pid], 1, 0.1f,
+      ApplyTorsoRecoil(&eng->actors.modelCollections[pid], 1, 0.01f,
                        (Vector3){-0.2f, 1.0f, 0});
 
       Ray *ray = &eng->actors.raycasts[pid][1].ray; // left muzzle
@@ -324,7 +324,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
     if (IsKeyPressed(KEY_Q) && eng->actors.cooldowns[pid][2] <= 0.0f) {
 
       eng->actors.cooldowns[pid][2] = eng->actors.firerate[pid][2];
-      QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.5f,
+      QueueSound(soundSys, SOUND_ROCKET_FIRE, pos[pid], 1.0f,
                  1.1f); // tweak sound
 
       Ray *ray = &eng->actors.raycasts[pid][3].ray; // shoulder muzzle
@@ -338,7 +338,9 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   }
 
   eng->actors.modelCollections[pid].offsets[2].z =
-      8.0f - *(eng->actors.cooldowns[pid]);
+      8.0f - (eng->actors.cooldowns[0][0]) * 2;
+  eng->actors.modelCollections[pid].offsets[3].z =
+      8.0f - (eng->actors.cooldowns[0][1]) * 2;
 
   // -----------------------------
   // Headbob + footsteps disabled during dash

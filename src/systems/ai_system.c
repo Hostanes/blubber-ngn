@@ -255,9 +255,28 @@ void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
 
       ModelCollection_t *mc = &eng->actors.modelCollections[i];
 
-      float moveYaw = atan2f(direction.x, direction.z);
+      float targetYaw = atan2f(direction.x, direction.z);
+      float currentYaw = mc->localRotationOffset[0].yaw;
 
-      mc->localRotationOffset[0].yaw = moveYaw;
+      // how fast the hull can rotate (radians per second)
+      float turnSpeed = 5.0f; // tweak this
+      float maxTurn = turnSpeed * dt;
+
+      // shortest angle difference [-PI, PI]
+      float yawDiff = targetYaw - currentYaw;
+      while (yawDiff > PI)
+        yawDiff -= 2.0f * PI;
+      while (yawDiff < -PI)
+        yawDiff += 2.0f * PI;
+
+      // clamp rotation amount this frame
+      if (yawDiff > maxTurn)
+        yawDiff = maxTurn;
+      if (yawDiff < -maxTurn)
+        yawDiff = -maxTurn;
+
+      // apply smooth rotation
+      mc->localRotationOffset[0].yaw = currentYaw + yawDiff;
 
       // Normalize the direction (if not zero)
       float distanceSquared =
@@ -674,7 +693,7 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     // FIRE
     Vector3 shooterPos =
         *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
-    QueueSound(soundSys, SOUND_WEAPON_FIRE, shooterPos, 0.4f, 1.0f);
+    QueueSound(soundSys, SOUND_WEAPON_FIRE, shooterPos, 0.2f, 1.0f);
 
     FireProjectile(eng, (entity_t)i, barrelRayIdx, 0, 1);
 

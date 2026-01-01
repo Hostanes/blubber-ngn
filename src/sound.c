@@ -27,6 +27,10 @@ SoundSystem_t InitSoundSystem(void) {
   sys.assets[SOUND_WEAPON_FIRE].sound =
       LoadSound("assets/audio/cannon_shot_1.wav");
   sys.assets[SOUND_EXPLOSION].sound = LoadSound("assets/audio/explosion1.wav");
+  sys.assets[SOUND_HITMARKER].sound =
+      LoadSound("assets/audio/hitmarker-sound-effect-sound.wav");
+  sys.assets[SOUND_ROCKET_FIRE].sound =
+      LoadSound("assets/audio/rocket-launcher.wav");
 
   sys.assets[SOUND_AMBIENT_DESERT].sound =
       LoadSound("assets/audio/desert-ambience-1.wav");
@@ -40,7 +44,7 @@ SoundSystem_t InitSoundSystem(void) {
 
   sys.ambient.type = SOUND_AMBIENT_DESERT;
   sys.ambient.pauseTime = 5.0f; // 5 second gap
-  sys.ambient.volume = 0.35f;   // tweak
+  sys.ambient.volume = 0.15f;   // tweak
   sys.ambient.pitch = 1.0f;
   sys.ambient.timer = 5.0f; // play immediately (or set to 5.0f to delay)
   sys.ambient.enabled = true;
@@ -147,7 +151,7 @@ void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
     if (dist <= REF_DIST) {
       atten = 1.0f;
     } else {
-      float t = (dist - REF_DIST) / 1000.0f; // 40m falloff range (tweak)
+      float t = (dist - REF_DIST) / 2000.0f; // falloff range (tweak)
       t = Clamp(t, 0.0f, 1.0f);
       atten = 1.0f - t; // linear fade
     }
@@ -169,12 +173,49 @@ void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
     float pitchFactor = 1.0f - 0.1f * fmaxf(0.0f, (4.0f - dist) / 4.0f);
     SetSoundPitch(*sound, event.pitch * pitchFactor);
 
-    //------------------------------------
-    // Tiny stereo diffusion for near sounds
-    //------------------------------------
-    float pan = 0.5f;
-    if (dist < 4.0f)
+    // ------------------------------------
+    // Stereo pan based on player aim yaw (torso yaw)
+    // ------------------------------------
+    float aimYaw =
+        eng->actors.modelCollections[gs->playerId].orientations[1].yaw - PI / 2;
+
+    // Build right vector from yaw (XZ only)
+    // forward = (cos(yaw), 0, sin(yaw))  => right = (-sin(yaw), 0, cos(yaw))
+    Vector3 right = (Vector3){-sinf(aimYaw), 0.0f, cosf(aimYaw)};
+
+    // Direction from listener to sound (XZ only)
+    Vector3 toSrc = Vector3Subtract(event.position, listenerPos);
+    toSrc.y = 0.0f;
+
+    float len = sqrtf(toSrc.x * toSrc.x + toSrc.z * toSrc.z);
+    if (len > 0.001f) {
+      toSrc.x /= len;
+      toSrc.z /= len;
+    } else {
+      toSrc = (Vector3){0, 0, 0};
+    }
+
+    // Dot with right gives [-1..1] (left/right)
+    float lr = toSrc.x * right.x + toSrc.z * right.z;
+
+    // Scale pan amount. Reduce with distance so far sounds are less extreme.
+    float panStrength = 0.6f; // max stereo width (tweak)
+    float distFade =
+        1.0f - Clamp(dist / 2000.0f, 0.0f, 1.0f); // less pan when far
+    panStrength *= (0.3f + 0.7f * distFade);      // keep some pan always
+
+    float pan = 0.5f + lr * panStrength;
+    pan = Clamp(pan, 0.0f, 1.0f);
+
+    // Optional: keep your tiny diffusion ONLY for near sounds
+    if (dist < 4.0f) {
       pan += GetRandomValue(-30, 30) / 1000.0f; // ±0.03
+      pan = Clamp(pan, 0.0f, 1.0f);
+    }
+
+    if (dist < 10.0f) {
+      pan = 0.5f;
+    }
 
     SetSoundPan(*sound, pan);
 

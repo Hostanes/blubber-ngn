@@ -178,6 +178,13 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
               // existing HP logic
               if (eng->em.masks[idx] & C_HITPOINT_TAG) {
                 printf("decreasing hp\n");
+                if (!(gs->playerId == e)) {
+                  QueueSound(
+                      soundSys, SOUND_HITMARKER,
+                      *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+                                               gs->compReg.cid_Positions),
+                      0.4f, 1.0f);
+                }
                 eng->actors.hitPoints[idx] -= 10.0f;
                 if (eng->actors.hitPoints[idx] <= 0) {
                   KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));

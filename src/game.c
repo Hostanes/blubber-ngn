@@ -317,7 +317,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.prevStepCycle[e] = 0;
   eng->actors.stepRate[e] = 2.0f;
   eng->actors.types[e] = ENTITY_PLAYER;
-  eng->actors.hitPoints[e] = 100.0f;
+  eng->actors.hitPoints[e] = 100000.0f;
 
   // Model collection: 3 parts (legs, torso/head, gun)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -344,9 +344,9 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   // gun as primitive model
   Mesh gunMesh = GenMeshCube(2.0f, 2.0f, 10.0f);
   // mc->models[2] = LoadModelFromMesh(gunMesh);
-  mc->models[2] = LoadModel("assets/models/gun1.glb");
+  mc->models[2] = LoadModel("assets/models/gun-autocannon.glb");
 
-  mc->offsets[2] = (Vector3){8.0f, -2, 8};
+  mc->offsets[2] = (Vector3){8.0f, -4, 8};
   mc->orientations[2] = (Orientation){0, PI / 2, 0};
   mc->parentIds[2] = 1;
 
@@ -355,15 +355,25 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->rotLocks[2][2] = false;
 
   // mc->models[2] = LoadModelFromMesh(gunMesh);
-  mc->models[3] = LoadModel("assets/models/gun1.glb");
+  mc->models[3] = LoadModel("assets/models/gun2.glb");
 
-  mc->offsets[3] = (Vector3){-8.0f, -2, 8};
+  mc->offsets[3] = (Vector3){-8.0f, -4, 8};
   mc->orientations[3] = (Orientation){0, PI / 2, 0};
   mc->parentIds[3] = 1;
 
   mc->rotLocks[3][0] = true;
   mc->rotLocks[3][1] = true;
   mc->rotLocks[3][2] = false;
+
+  // mc->models[2] = LoadModelFromMesh(gunMesh);
+  mc->models[4] = LoadModel("assets/models/gun3-rocketlauncher.glb");
+  mc->offsets[4] = (Vector3){8.0f, 6, 8};
+  mc->orientations[4] = (Orientation){0, PI / 2, 0};
+  mc->parentIds[4] = 1;
+
+  mc->rotLocks[4][0] = true;
+  mc->rotLocks[4][1] = true;
+  mc->rotLocks[4][2] = false;
 
   // Mesh cockpitRoof = GenMeshCube(10.0f, 2.0f, 10.0f);
   // mc->models[3] = LoadModelFromMesh(cockpitRoof);
@@ -406,7 +416,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
                  (Orientation){0, 0, 0}, 5000.0f);
 
   // [ray 3] Shoulder rocket muzzle ray - parent to torso (model index 1)
-  AddRayToEntity(eng, e, 1, (Vector3){0.0f, 6.0f, 6.0f}, // up + forward (tweak)
+  AddRayToEntity(eng, e, 4, (Vector3){0.0f, 0.0f, 0.0f}, // up + forward (tweak)
                  (Orientation){0, 0, 0}, 5000.0f);
 
   // Weapons (3)
@@ -430,17 +440,16 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // Cooldowns start at 0 (ready)
   for (int w = 0; w < weaponCount; w++)
-    eng->actors.cooldowns[e][w] = 0.0f;
+    eng->actors.cooldowns[e][w] = 0.2f;
 
   // Weapon 0: left-hand gun (shots/sec)
   eng->actors.firerate[e][0] = 0.5f; // your existing behavior
 
   // Weapon 1: right-hand cannon (long reload)
-  eng->actors.firerate[e][1] =
-      2.5f; // long reload (seconds between shots in your current usage)
+  eng->actors.firerate[e][1] = 2.5f;
 
-  // Weapon 2: shoulder rocket (medium reload)
-  eng->actors.firerate[e][2] = 1.2f;
+  // Weapon 2: shoulder rocket
+  eng->actors.firerate[e][2] = .7f;
 
   // Collision
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
@@ -890,7 +899,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
                         &weaponCount);
 
   eng->actors.types[e] = ENTITY_TANK;
-  eng->actors.hitPoints[e] = 100.0f;
+  eng->actors.hitPoints[e] = 20.0f;
 
   // visual models (base + turret + barrel)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -898,16 +907,16 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // Model 0: Tank base (body) - rotates with movement
   // mc->models[0] = LoadModelFromMesh(GenMeshCylinder(3.0f, 6.0f, 8));
-  mc->models[0] = LoadModel("assets/models/enemy-1-cyclops-hull.glb");
+  mc->models[0] = LoadModel("assets/models/enemy1-hull.glb");
   mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
-  mc->offsets[0] = (Vector3){0, -2, 0}; // Center at y=3 (half height)
+  mc->offsets[0] = (Vector3){0, -8, 0}; // Center at y=3 (half height)
   mc->parentIds[0] = -1;                // No parent
 
   // Model 1: Turret (rotates horizontally/yaw only)
   // mc->models[1] = LoadModelFromMesh(GenMeshCylinder(2.5f, 3.0f, 8));
-  mc->models[1] = LoadModel("assets/models/enemy-1-cyclops-turret.glb");
+  mc->models[1] = LoadModel("assets/models/enemy1-turret.glb");
   mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GRAY;
-  mc->offsets[1] = (Vector3){0, 2, 0}; // On top of base
+  mc->offsets[1] = (Vector3){0, 0, 0}; // On top of base
   mc->parentIds[1] = 0;                // Parented to base
 
   mc->rotLocks[1][0] = true;
@@ -915,11 +924,11 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->rotLocks[1][2] = true;
 
   // Model 2: Barrel (rotates vertically/pitch only, parented to turret)
-  mc->models[2] = LoadModel("assets/models/gun1.glb");
+  mc->models[2] = LoadModel("assets/models/enemy1-gun.glb");
   // mc->models[2] = LoadModel("assets/models/enemy-1-cyclops-gun.glb");
   mc->orientations[2] = (Orientation){0, 0, 0};
-  mc->offsets[2] = (Vector3){0, 5, 0}; // Forward from turret center
-  mc->parentIds[2] = 1;                // Parented to turret
+  mc->offsets[2] = (Vector3){0, 15, 3}; // Forward from turret center
+  mc->parentIds[2] = 1;                 // Parented to turret
 
   mc->rotLocks[2][0] = true;
   mc->rotLocks[2][1] = true;
@@ -937,7 +946,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   // hitbox
   ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
   *hb = InitModelCollection(1);
-  hb->models[0] = LoadModelFromMesh(GenMeshCube(20, 15, 20));
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(25, 20, 25));
   hb->offsets[0] = (Vector3){0, 0, 0};
   hb->parentIds[0] = -1;
 
@@ -947,7 +956,9 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // cooldown & firerate
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.cooldowns[e][0] = 0.4f;
+
+  float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 0.4f;
+  eng->actors.cooldowns[e][0] = 0.4f + r;
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
   eng->actors.firerate[e][0] = 0.4f;
   eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
@@ -1094,7 +1105,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   // terrain
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-  InitTerrain(gs, eng, sandTex, "assets/models/terrain-duel.glb");
+  InitTerrain(gs, eng, sandTex, "assets/models/terrain-waves.glb");
 
   BuildHeightmap(&gs->terrain);
 
@@ -1103,14 +1114,14 @@ GameState_t InitGameDuel(Engine_t *eng) {
   float cellSize = GRID_CELL_SIZE;
   AllocGrid(&gs->grid, &gs->terrain, cellSize);
 
-  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 2500.0f};
+  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 0.0f};
   playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
                                                 playerStartPos.z);
 
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
 
-  Vector3 tankStartPos = (Vector3){0, 0, -2000};
+  Vector3 tankStartPos = (Vector3){0, 0, 200};
   tankStartPos.y =
       GetTerrainHeightAtPosition(&gs->terrain, tankStartPos.x, tankStartPos.z);
   CreateTank(eng, gs->compReg, tankStartPos);
@@ -1126,15 +1137,16 @@ GameState_t InitGameDuel(Engine_t *eng) {
     float x = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
               TERRAIN_SCALE;
     float z = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
-                  TERRAIN_SCALE -
-              2200;
+              TERRAIN_SCALE;
     float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
 
     Color c = (Color){(unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255), 255};
 
-    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
+    CreateTank(eng, gs->compReg, (Vector3){x, y, z});
+    // CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth},
+    // c);
   }
 
   // ensure rayCounts initialized for any entities that weren't touched
