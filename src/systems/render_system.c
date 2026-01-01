@@ -1,5 +1,6 @@
 
 #include "systems.h"
+#include <raylib.h>
 
 #define BOB_AMOUNT 0.5f
 
@@ -60,13 +61,33 @@ static void UpdateModelCollectionWorldTransforms(ModelCollection_t *mc,
 // Uses precomputed globalPositions/globalOrientations if available.
 // Otherwise, computes the same local->world transform as before.
 static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
-                                Color tint, bool wireframe) {
+                                Color tint, bool wireframe, bool drawOutline,
+                                Shader outlineShader, float outlineSize,
+                                Color outlineColor) {
   int numModels = mc->countModels;
+
+  // shader uniform locations (cached static)
+  static int locOutlineSize = -1;
+  static int locOutlineColor = -1;
+  static Shader cachedShader = {0};
+
+  if (drawOutline) {
+    // cache uniform locations once per shader instance
+    if (cachedShader.id != outlineShader.id) {
+      cachedShader = outlineShader;
+      locOutlineSize = GetShaderLocation(outlineShader, "outlineSize");
+      locOutlineColor = GetShaderLocation(outlineShader, "outlineColor");
+    }
+  }
+
   for (int m = 0; m < numModels; m++) {
+    if (!mc->isActive[m])
+      continue;
+
     Vector3 drawPos;
     float yaw, pitch, roll;
 
-    // If the caller has provided precomputed global transforms, use them.
+    // If caller provided global transforms, use them.
     if (mc->globalPositions != NULL && mc->globalOrientations != NULL) {
       drawPos = mc->globalPositions[m];
       Orientation g = mc->globalOrientations[m];
@@ -74,7 +95,7 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
       pitch = -g.pitch;
       roll = g.roll;
     } else {
-      // Fallback: compute world transform exactly like previous code.
+      // Fallback: compute world transform
       Vector3 localOffset = mc->offsets[m];
       Orientation localRot = mc->orientations[m];
       int parentId = mc->parentIds[m];
@@ -84,7 +105,6 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
       pitch = localRot.pitch;
       roll = localRot.roll;
 
-      // --- Parent transform inheritance (same rules as before) ---
       if (parentId != -1 && parentId < m) {
         Orientation parentRot = mc->orientations[parentId];
         float parentYaw = parentRot.yaw * -1.0f;
@@ -103,36 +123,72 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
         localOffset = Vector3Transform(localOffset, MatrixRotateY(parentYaw));
       } else {
         parentWorldPos = entityPos;
-        // yaw *= -1.0f;
       }
 
-      // --- Final world position ---
       drawPos = Vector3Add(parentWorldPos, localOffset);
     }
 
-    // --- Build rotation matrix (same order as before) ---
+    // Build rotation matrix
     Matrix rotMat = MatrixRotateY(yaw);
     rotMat = MatrixMultiply(MatrixRotateX(pitch), rotMat);
     rotMat = MatrixMultiply(MatrixRotateZ(roll), rotMat);
 
-    if (!mc->isActive[m]) {
-      continue;
-    }
-
-    // --- Draw model using world transform ---
     rlPushMatrix();
     rlTranslatef(drawPos.x, drawPos.y, drawPos.z);
     rlMultMatrixf(MatrixToFloat(rotMat));
 
+    // ---------------------------
+    // OUTLINE PASS (inverse hull)
+    // ---------------------------
+    if (drawOutline && outlineShader.id > 0 && !wireframe) {
+      float s = outlineSize;
+      Vector4 col = (Vector4){
+          outlineColor.r / 255.0f,
+          outlineColor.g / 255.0f,
+          outlineColor.b / 255.0f,
+          outlineColor.a / 255.0f,
+      };
+
+      if (locOutlineSize >= 0)
+        SetShaderValue(outlineShader, locOutlineSize, &s, SHADER_UNIFORM_FLOAT);
+      if (locOutlineColor >= 0)
+        SetShaderValue(outlineShader, locOutlineColor, &col,
+                       SHADER_UNIFORM_VEC4);
+
+      // Save original shaders per material
+      int matCount = mc->models[m].materialCount;
+      Shader saved[16]; // if you have more than 16 mats, bump this or malloc
+      if (matCount > 16)
+        matCount = 16;
+
+      for (int k = 0; k < matCount; k++) {
+        saved[k] = mc->models[m].materials[k].shader;
+        mc->models[m].materials[k].shader = outlineShader;
+      }
+
+      // Inverse-hull: draw ONLY backfaces of the expanded mesh
+      rlEnableBackfaceCulling();
+      rlSetCullFace(RL_CULL_FACE_FRONT); // <-- key line: cull front faces
+      DrawModel(mc->models[m], (Vector3){0, 0, 0}, 1.0f, WHITE);
+      rlSetCullFace(RL_CULL_FACE_BACK); // restore default
+
+      // Restore original shaders
+      for (int k = 0; k < matCount; k++) {
+        mc->models[m].materials[k].shader = saved[k];
+      }
+    }
+
+    // ---------------------------
+    // NORMAL / WIREFRAME PASS
+    // ---------------------------
     if (wireframe) {
-      rlPushMatrix();
-      rlSetLineWidth(1.0f); // make lines 3px thick
+      rlSetLineWidth(1.0f);
       DrawModelWires(mc->models[m], (Vector3){0, 0, 0}, 1.0f, tint);
-      rlSetLineWidth(1.0f); // reset after drawing
-      rlPopMatrix();
+      rlSetLineWidth(1.0f);
     } else {
       DrawModel(mc->models[m], (Vector3){0, 0, 0}, 1.0f, tint);
     }
+
     rlPopMatrix();
   }
 }
@@ -405,9 +461,18 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
     // DrawRaycasts(gs, eng);
 
+    bool drawOutline = false;
+    if (i == gs->playerId) {
+      drawOutline = false;
+    } else {
+      drawOutline = true;
+    }
+
+    Color outlineRed = {173, 7, 1, 255};
     // Visual models (solid white)
     DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,
-                        false);
+                        false, drawOutline, gs->outlineShader, 0.15f,
+                        outlineRed);
 
     // Movement collision boxes (green wireframe)
     // DrawModelCollection(&eng->actors.collisionCollections[i], entityPos,
@@ -440,16 +505,16 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
     // Visual models (solid white)
     DrawModelCollection(&eng->statics.modelCollections[i], entityPos, WHITE,
-                        false);
+                        false, true, gs->outlineShader, 0.6f, BLACK);
 
     // Movement collision boxes (green wireframe)
     DrawModelCollection(&eng->statics.collisionCollections[i], entityPos, GREEN,
-                        true);
+                        true, false, gs->outlineShader, 0.0f, BLACK);
 
     Color hitboxColor = RED;
     // Hitboxes (red wireframe)
     DrawModelCollection(&eng->statics.hitboxCollections[i], entityPos,
-                        hitboxColor, true);
+                        hitboxColor, true, false, gs->outlineShader, 0, BLACK);
   }
 
   EndMode3D();

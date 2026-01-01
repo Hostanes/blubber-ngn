@@ -910,16 +910,16 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // Model 0: Tank base (body) - rotates with movement
   // mc->models[0] = LoadModelFromMesh(GenMeshCylinder(3.0f, 6.0f, 8));
-  mc->models[0] = LoadModel("assets/models/enemy1-hull.glb");
+  mc->models[0] = LoadModel("assets/models/enemy1-tank-hull.glb");
   mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
-  mc->offsets[0] = (Vector3){0, -8, 0}; // Center at y=3 (half height)
+  mc->offsets[0] = (Vector3){0, -4, 0}; // Center at y=3 (half height)
   mc->parentIds[0] = -1;                // No parent
 
   // Model 1: Turret (rotates horizontally/yaw only)
   // mc->models[1] = LoadModelFromMesh(GenMeshCylinder(2.5f, 3.0f, 8));
-  mc->models[1] = LoadModel("assets/models/enemy1-turret.glb");
+  mc->models[1] = LoadModel("assets/models/enemy1-tank-turret.glb");
   mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GRAY;
-  mc->offsets[1] = (Vector3){0, 0, 0}; // On top of base
+  mc->offsets[1] = (Vector3){0, 8, 0}; // On top of base
   mc->parentIds[1] = 0;                // Parented to base
 
   mc->rotLocks[1][0] = true;
@@ -930,7 +930,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->models[2] = LoadModel("assets/models/enemy1-gun.glb");
   // mc->models[2] = LoadModel("assets/models/enemy-1-cyclops-gun.glb");
   mc->orientations[2] = (Orientation){0, 0, 0};
-  mc->offsets[2] = (Vector3){0, 15, 3}; // Forward from turret center
+  mc->offsets[2] = (Vector3){0, 1, 3}; // Forward from turret center
   mc->parentIds[2] = 1;                 // Parented to turret
 
   mc->rotLocks[2][0] = true;
@@ -1051,6 +1051,8 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
   memset(gs, 0, sizeof(GameState_t));
+
+  gs->outlineShader = LoadShader("src/outline.vs", "src/outline.fs");
 
   gs->heatMeter = 30;
 

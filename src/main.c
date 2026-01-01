@@ -2,12 +2,12 @@
 // Entry point for the refactored Mech Arena demo.
 // Depends on: game.h, sound.h, systems.h, raylib, raymath
 
-#include "game.h"
-#include "time.h"
 #include "engine.h"
+#include "game.h"
 #include "raylib.h"
 #include "sound.h"
 #include "systems/systems.h"
+#include "time.h"
 #include <raymath.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,8 +22,8 @@ int main(void) {
   // ENGINE CONFIG
   // --------------------------------------------
   EngineConfig_t cfg = {
-      .window_width = 1280*1.2,
-      .window_height = 720*1.2,
+      .window_width = 1280 * 1.2,
+      .window_height = 720 * 1.2,
 
       .fov_deg = 60.0f,
       .near_plane = 0.1f,
@@ -45,6 +45,7 @@ int main(void) {
   SetTargetFPS(60);
 
   LoadAssets();
+
 
   // --------------------------------------------
   // CAMERA SETUP (still here for now)

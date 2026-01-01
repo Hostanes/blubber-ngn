@@ -154,6 +154,8 @@ typedef struct GameState {
 
   float heatMeter;
 
+  Shader outlineShader;
+
 } GameState_t;
 
 //----------------------------------------
