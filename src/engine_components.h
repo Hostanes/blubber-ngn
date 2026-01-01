@@ -22,6 +22,9 @@
 #define MAX_PARTICLES 2048
 #define MAX_RAYS_PER_ENTITY 8
 
+// damage each projectile does by type
+static int projectileDamage[] = {0, 5, 20, 15};
+
 typedef struct {
   float yaw;
   float pitch;
@@ -166,13 +169,19 @@ typedef struct {
 
 typedef struct {
   bool active[MAX_PROJECTILES];
+
   Vector3 positions[MAX_PROJECTILES];
   Vector3 velocities[MAX_PROJECTILES];
+
   float dropRates[MAX_PROJECTILES];
   float lifetimes[MAX_PROJECTILES];
+
   float radii[MAX_PROJECTILES];
+
   entity_t owners[MAX_PROJECTILES];
+
   int types[MAX_PROJECTILES];
+
   float thrusterTimers[MAX_PROJECTILES];
 } ProjectilePool_t;
 

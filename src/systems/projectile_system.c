@@ -3,6 +3,7 @@
 
 void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                        float dt) {
+
   for (int i = 0; i < MAX_PROJECTILES; i++) {
 
     if (!eng->projectiles.active[i])
@@ -175,7 +176,6 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
               spawnParticle(eng, prevPos, 2, 1);
               eng->projectiles.active[i] = false;
 
-              // existing HP logic
               if (eng->em.masks[idx] & C_HITPOINT_TAG) {
                 printf("decreasing hp\n");
                 if (!(gs->playerId == e)) {
@@ -185,7 +185,9 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                                                gs->compReg.cid_Positions),
                       0.4f, 1.0f);
                 }
-                eng->actors.hitPoints[idx] -= 10.0f;
+                int damageDealt = projectileDamage[eng->projectiles.types[i]];
+
+                eng->actors.hitPoints[idx] -= damageDealt;
                 if (eng->actors.hitPoints[idx] <= 0) {
                   KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
                 }

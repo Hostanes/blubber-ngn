@@ -513,7 +513,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
   DrawText("HITPOINTS", hpX, hpLabelY, labelSize, RAYWHITE);
 
-  DrawValueBar(hpX, yBottom, barW, barH, hitpoints, 100.0f,
+  DrawValueBar(hpX, yBottom, barW, barH, hitpoints, 200.0f,
                (Color){40, 200, 70, 255},   // fill
                (Color){20, 20, 20, 180},    // back
                (Color){255, 255, 255, 180}, // border

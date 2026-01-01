@@ -70,7 +70,7 @@ void DrawMessageBanner(GameState_t *gs) {
                 (Color){20, 20, 20, 220});
 
   // Text centering
-  int fontSize = 32;
+  int fontSize = 22;
   int textWidth = MeasureText(b->text, fontSize);
   int textX = bannerX + (bannerWidth - textWidth) / 2;
   int textY = bannerY + (bannerHeight - fontSize) / 2;

@@ -25,7 +25,65 @@ const float FOV_SPEED = 12.0f;
 const float KICK_EASE_IN = 30.0f;
 const float KICK_EASE_OUT = 22.0f;
 
+static float HEAT_MAX = 100.0f;
+static float HEAT_COOL_PER_SEC = 15.0f; // heat/sec cooldown (tweak)
+
+// Heat costs (tweak)
+static float HEAT_COST_DASH = 25.0f;   // on dash start
+static float HEAT_COST_LMB = 3.0f;     // per shot
+static float HEAT_COST_RMB = 12.0f;    // per shot
+static float HEAT_COST_ROCKET = 18.0f; // per rocket
+
 extern Vector3 recoilOffset;
+
+static inline float HeatClamp(float h) {
+  if (h < 0.0f)
+    return 0.0f;
+  if (h > 100.0f)
+    return 100.0f;
+  return h;
+}
+
+static inline float HeatGet(const GameState_t *gs) {
+  return (float)gs->heatMeter;
+}
+
+static inline void HeatSet(GameState_t *gs, float heat) {
+  gs->heatMeter = (HeatClamp(heat));
+}
+
+// returns true if allowed (wont exceed 100)
+static inline bool HeatCanSpend(const GameState_t *gs, float cost) {
+  return (HeatGet(gs) + cost) <= 100.0f;
+}
+
+// adds heat (clamped)
+static inline void HeatSpend(GameState_t *gs, float cost) {
+  HeatSet(gs, HeatGet(gs) + cost);
+}
+
+// cools heat over time (clamped)
+static inline void HeatCool(GameState_t *gs, float dt, float coolPerSec) {
+  HeatSet(gs, HeatGet(gs) - coolPerSec * dt);
+  printf("cooled mech, heat at %f\n", HeatGet(gs));
+}
+
+// Try to perform an action that costs heat. If not enough budget, action is
+// blocked. Returns true if action is allowed (heat spent), false if blocked.
+static inline bool HeatTryAction(GameState_t *gs, float cost) {
+  if (!HeatCanSpend(gs, cost))
+    return false;
+  HeatSpend(gs, cost);
+  return true;
+}
+
+// Same, but for continuous costs (per second). Returns true if allowed this
+// frame.
+static inline bool HeatTryActionPerSec(GameState_t *gs, float dt,
+                                       float costPerSec) {
+  float cost = costPerSec * dt;
+  return HeatTryAction(gs, cost);
+}
 
 // ========== GUN ==========
 
@@ -120,6 +178,11 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   // Dash trigger
   // -----------------------------
   if (IsKeyPressed(KEY_SPACE) && *pState == PSTATE_NORMAL) {
+    // if (HeatTryAction(gs, HEAT_COST_DASH)) {
+    // *pState = PSTATE_DASH_CHARGE;
+    // *pTimer = DASH_CHARGE_TIME;
+    // }
+
     *pState = PSTATE_DASH_CHARGE;
     *pTimer = DASH_CHARGE_TIME;
   }
@@ -189,6 +252,8 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   }
 
   if (!controlsLocked) {
+    HeatCool(gs, dt, HEAT_COOL_PER_SEC);
+
     if (IsKeyDown(KEY_A))
       leg->yaw -= 1.5f * dt * turnRate;
     if (IsKeyDown(KEY_D))
@@ -263,6 +328,8 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
     float forwardSpeedMult = 5.0f * totalSpeedMult;
     float backwardSpeedMult = 5.0f * totalSpeedMult;
     float strafeSpeedMult = 2.0f * totalSpeedMult;
+
+    bool wantsMove = IsKeyDown(KEY_W) || IsKeyDown(KEY_S);
 
     if (IsKeyDown(KEY_W)) {
       vel[pid].x += forward.x * 100.0f * dt * forwardSpeedMult;

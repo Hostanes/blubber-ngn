@@ -107,6 +107,7 @@ typedef struct {
   int cid_stepRate;
 
   int cid_weaponCount;
+  int cid_weaponDamage;
 
   int cid_behavior;
 
@@ -151,7 +152,7 @@ typedef struct GameState {
 
   MessageBanner_t banner;
 
-  int heatMeter;
+  float heatMeter;
 
 } GameState_t;
 

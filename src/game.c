@@ -398,6 +398,9 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   int weaponCount = 3;
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
                         &weaponCount);
+  int weaponDamage[] = {10, 20, 20};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponDamage,
+                        &weaponDamage);
 
   // initialize rayCount and add a muzzle ray for the gun (model index 2)
   eng->actors.rayCounts[e] = 0;
@@ -890,7 +893,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
                         &moveBehaviour);
 
-  float maxAimError = 0.1f; // Aim error radius in radians
+  float maxAimError = 0.5f; // Aim error radius in radians
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
                         &maxAimError);
 
@@ -899,7 +902,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
                         &weaponCount);
 
   eng->actors.types[e] = ENTITY_TANK;
-  eng->actors.hitPoints[e] = 200.0f;
+  eng->actors.hitPoints[e] = 20.0f;
 
   // visual models (base + turret + barrel)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -1077,6 +1080,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
       registerComponent(&eng->actors, sizeof(Vector3));
 
   gs->compReg.cid_weaponCount = registerComponent(&eng->actors, sizeof(int));
+  gs->compReg.cid_weaponDamage = registerComponent(&eng->actors, sizeof(int *));
 
   gs->compReg.cid_behavior =
       registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
@@ -1188,179 +1192,8 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 
-  PrintGrid(&gs->grid);
-
-  printf("last static ID %d\n", GetEntityIndex(staticLastID));
-
-  return *gs;
-}
-
-// ===========================================
-// simulator level
-GameState_t InitGameSimulator(Engine_t *eng) {
-
-  GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));
-  memset(gs, 0, sizeof(GameState_t));
-
-  gs->banner.active = false;
-  gs->banner.state = BANNER_HIDDEN;
-
-  gs->banner.y = -80.0f; // initial off-screen
-  gs->banner.hiddenY = -80.0f;
-  gs->banner.targetY = 0.0f; // slide down to top of screen
-  gs->banner.speed = 200.0f; // pixels/sec
-  gs->banner.visibleTime = 5.0f;
-
-  eng->em.count = 0;
-  memset(eng->em.alive, 0, sizeof(eng->em.alive));
-  memset(eng->em.masks, 0, sizeof(eng->em.masks));
-
-  eng->actors.componentCount = 0;
-  eng->actors.componentStore =
-      malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
-  memset(eng->actors.componentStore, 0,
-         sizeof(ComponentStorage_t) * MAX_COMPONENTS);
-
-  // REGISTER COMPONENTS
-  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_prevPositions =
-      registerComponent(&eng->actors, sizeof(Vector3));
-
-  gs->compReg.cid_behavior =
-      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
-
-  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
-  // END REGISTER COMPONENTS
-
-  gs->state = STATE_INLEVEL;
-  gs->pHeadbobTimer = 0.0f;
-
-  // terrain
-  Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-  InitTerrain(gs, eng, sandTex, "assets/models/terrain.glb");
-
-  BuildHeightmap(&gs->terrain);
-
-  float cellSize = GRID_CELL_SIZE;
-  AllocGrid(&gs->grid, &gs->terrain, cellSize);
-
-  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, -200.0f};
-  playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
-                                                playerStartPos.z);
-
-  // create player at origin-ish
-  gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
-
-  CreateDestructible(
-      eng, gs->compReg,
-      (Vector3){200, GetTerrainHeightAtPosition(&gs->terrain, 20, 200), 20}, 20,
-      "assets/models/fuel-tank1.glb", LIGHTGRAY);
-
-  CreateColorSwitchCube(
-      eng, gs,
-      (Vector3){200, GetTerrainHeightAtPosition(&gs->terrain, 200, -250), -250},
-      (Vector3){100, 100, 100});
-
-  CreateSkybox(eng, (Vector3){0, 0, 0});
-
-  Vector3 tankPos = {0, 0, 0};
-  tankPos.y = GetTerrainHeightAtPosition(&gs->terrain, tankPos.x, tankPos.z);
-  tankPos.y += 150.0f;
-  CreateTank(eng, gs->compReg, tankPos);
-
-  // ----------------------------------------------------
-  // SHOOTING RANGE MARKERS
-  // ----------------------------------------------------
-
-  Vector3 rangeStart = (Vector3){-100, 0, 100}; // starting 50 units ahead
-  rangeStart.y =
-      GetTerrainHeightAtPosition(&gs->terrain, rangeStart.x, rangeStart.z);
-
-  rangeStart.x += 100;
-  CreateStaticModel(eng, rangeStart, "assets/models/sandbags.glb", WHITE);
-
-  // CreateTargetActor(eng, gs->compReg, (Vector3){0, -100, 0},
-  //                   "assets/models/small-target.glb", 10, WHITE);
-
-  // Distance markers every 500 units up to 5000 units
-  int maxRange = 3000;
-
-  for (int dist = 500; dist <= maxRange; dist += 500) {
-
-    float x = rangeStart.x - dist / 20.0f + 100;
-    float z = rangeStart.z + dist;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z) + 20;
-
-    bool isBig = (dist % 1000 == 0);
-
-    Vector3 size;
-    Color color;
-
-    if (isBig) {
-
-      CreateTargetActor(eng, gs->compReg, (Vector3){x, y, z},
-                        "assets/models/small-target.glb", 10, WHITE);
-      continue;
-    } else {
-      size = (Vector3){40, 10, 40}; // small markers every 500
-      y -= 20;
-      color = GREEN;
-    }
-
-    CreateStatic(eng, (Vector3){x, y, z}, size, color);
-  }
-
-  // create a bunch of simple houses/walls
-  int numStatics = 100;
-  for (int i = 0; i < numStatics; i++) {
-    float width = GetRandomValue(10, 40);
-    float height = GetRandomValue(15, 55);
-    float depth = GetRandomValue(10, 40);
-
-    float x = GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE;
-    float z =
-        GetRandomValue(-TERRAIN_SIZE, TERRAIN_SIZE) * TERRAIN_SCALE - 2200;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
-
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
-
-    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
-  }
-
-  // ensure rayCounts initialized for any entities that weren't touched
-  for (int i = 0; i < eng->em.count; i++) {
-    if (eng->actors.rayCounts[i] == 0)
-      eng->actors.rayCounts[i] = 0;
-  }
-
-  // Initialize projectile pool
-  for (int i = 0; i < MAX_PROJECTILES; i++) {
-    eng->projectiles.active[i] = false;
-    eng->projectiles.positions[i] = Vector3Zero();
-    eng->projectiles.velocities[i] = Vector3Zero();
-    eng->projectiles.lifetimes[i] = 0.0f;
-    eng->projectiles.radii[i] = 1.0f; // default bullet size
-    eng->projectiles.owners[i] = -1;
-    eng->projectiles.types[i] = -1;
-  }
-
-  for (int i = 0; i < MAX_PARTICLES; i++) {
-    eng->particles.active[i] = false;
-    eng->particles.lifetimes[i] = 0;
-    eng->particles.positions[i] = Vector3Zero();
-    eng->particles.types[i] = -1;
-  }
-
-  PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
-
   // PrintGrid(&gs->grid);
+  // printf("last static ID %d\n", GetEntityIndex(staticLastID));
 
   return *gs;
 }
