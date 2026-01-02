@@ -232,6 +232,9 @@ void DrawProjectiles(Engine_t *eng) {
       // Slightly behind the cylinder so it doesn't clip
       Vector3 thrusterPos = Vector3Add(back, Vector3Scale(dir, -2.0f));
 
+    } else if (type == 5) {
+      float r = eng->projectiles.radii[i] * 0.5f;
+      DrawSphere(p, r, GRAY);
     } else {
       // Unknown type fallback
       DrawSphere(p, eng->projectiles.radii[i], WHITE);
@@ -257,6 +260,8 @@ float ParticleBaseSize(int type) {
     return 20.0f; //
   case 8:
     return 80.0f; //
+  case 9:
+    return 25.0f; //
   default:
     return 1.0f;
   }
@@ -304,6 +309,15 @@ void DrawParticles(ParticlePool_t *pp) {
       break;
     case 6:
       c = (Color){30, 13, 9, 255};
+      break;
+    case 7:
+      c = (Color){30, 13, 9, 255};
+      break;
+    case 8:
+      c = (Color){30, 13, 9, 255};
+      break;
+    case 9:
+      c = (Color){15, 6, 6, 255};
       break;
     }
 

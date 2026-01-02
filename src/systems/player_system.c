@@ -406,6 +406,62 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       FireProjectile(eng, pid, 3, 2, 3);
       spawnParticle(eng, muzzlePos, 0.1, 0);
     }
+
+    // Weapon 3: BLUNDERBUSS
+    if (IsKeyPressed(KEY_E) && eng->actors.cooldowns[pid][3] <= 0.0f &&
+        HeatTryAction(gs, HEAT_COST_LMB)) {
+
+      eng->actors.cooldowns[pid][3] = eng->actors.firerate[pid][2];
+      QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 1.0f, 1.1f);
+
+      Ray *ray = &eng->actors.raycasts[pid][4].ray;
+
+      float muzzleOffset = 20.0f;
+      Vector3 baseDir = Vector3Normalize(ray->direction);
+      Vector3 muzzlePos =
+          Vector3Add(ray->position, Vector3Scale(baseDir, muzzleOffset));
+
+      // --- blunderbuss params ---
+      const int pelletCount = 15;    // number of pellets
+      const float spreadDeg = 2.0f; // cone half-angle (degrees)
+      const float spreadRad = spreadDeg * DEG2RAD;
+
+      // Build an orthonormal basis around baseDir (right/up)
+      Vector3 worldUp = (Vector3){0, 1, 0};
+      Vector3 right = Vector3CrossProduct(worldUp, baseDir);
+      if (Vector3Length(right) < 0.001f) {
+        // if aiming almost straight up/down, choose another axis
+        worldUp = (Vector3){1, 0, 0};
+        right = Vector3CrossProduct(worldUp, baseDir);
+      }
+      right = Vector3Normalize(right);
+      Vector3 up = Vector3Normalize(Vector3CrossProduct(baseDir, right));
+
+      // Save original ray direction so we can restore it
+      Vector3 originalDir = ray->direction;
+
+      for (int i = 0; i < pelletCount; i++) {
+        // Random offsets in [-spreadRad, +spreadRad]
+        float rx = ((float)GetRandomValue(-1000, 1000) / 1000.0f) * spreadRad;
+        float ry = ((float)GetRandomValue(-1000, 1000) / 1000.0f) * spreadRad;
+
+        Vector3 pelletDir = Vector3Add(
+            baseDir, Vector3Add(Vector3Scale(right, rx), Vector3Scale(up, ry)));
+        pelletDir = Vector3Normalize(pelletDir);
+
+        // Temporarily aim the ray this way so FireProjectile uses it
+        ray->direction = pelletDir;
+
+        // FireProjectile(eng, owner, weapon?, projectileType?, damage?)
+        FireProjectile(eng, pid, 4, 3, 5);
+      }
+
+      // Restore aim ray
+      ray->direction = originalDir;
+
+      // One muzzle particle (not per pellet)
+      spawnParticle(eng, muzzlePos, 0.1, 0);
+    }
   }
 
   // -----------------------------
@@ -438,7 +494,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
         curr -= 1.0f;
 
       if (prev > curr) {
-        QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.2f, 1.0f);
+        QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.1f, 1.0f);
       }
 
       eng->actors.stepCycle[pid] = curr;

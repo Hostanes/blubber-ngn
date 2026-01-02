@@ -20,6 +20,8 @@ static const float CIRCLE_RADIUS = 1500.0f;
 static const float CHARGE_DURATION = 2.0f;  // seconds of charging
 static const float CHARGE_COOLDOWN = 15.0f; // time between charges
 
+static const Vector3 PARK_POS = {999999.0f, -10000.0f, 999999.0f};
+
 // Forward declare GameState_t so callbacks can reference it
 typedef struct GameState GameState_t;
 
@@ -137,6 +139,43 @@ typedef enum {
   TANK_ALERT_CHARGE = 2
 } TankAIState;
 
+// Wave system defs
+
+typedef enum {
+  WAVE_WAITING = 0,  // waiting for next wave
+  WAVE_SPAWNING = 1, // just triggered wave start function
+  WAVE_ACTIVE = 2,   // enemies alive, fighting
+  WAVE_COMPLETE = 3, // cleared, about to start break timer
+  WAVE_FINISHED = 4  // all waves done
+} WaveState;
+
+#define MAX_WAVES 16
+#define MAX_POOL_TANKS 32
+#define MAX_POOL_HARASSERS 64
+#define MAX_POOL_ALPHA 8
+
+typedef struct {
+  WaveState state;
+
+  int waveIndex;
+  int totalWaves;
+
+  float betweenWaveTimer; // countdown
+  float betweenWaveDelay; // per-wave delay (or global)
+
+  int enemiesAliveThisWave; // decremented on death (best), or recomputed
+
+  // pools
+  entity_t tankPool[MAX_POOL_TANKS];
+  bool tankUsed[MAX_POOL_TANKS];
+
+  entity_t harasserPool[MAX_POOL_HARASSERS];
+  bool harasserUsed[MAX_POOL_HARASSERS];
+
+  entity_t alphaPool[MAX_POOL_ALPHA];
+  bool alphaUsed[MAX_POOL_ALPHA];
+} WaveSystem_t;
+
 //----------------------------------------
 // Game State
 //----------------------------------------
@@ -157,10 +196,11 @@ typedef struct GameState {
 
   Shader outlineShader;
 
+  WaveSystem_t waves;
 } GameState_t;
 
 // damage each projectile does by type
-static int projectileDamage[] = {0, 5, 20, 15, 30};
+static int projectileDamage[] = {0, 5, 20, 15, 30, 2};
 
 typedef enum {
   P_BULLET = 1,
@@ -178,6 +218,9 @@ Vector3 ConvertOrientationToVector3(Orientation o);
 void StartGameDuel(GameState_t *gs, Engine_t *eng);
 void ResetGameDuel(GameState_t *gs, Engine_t *eng);
 static void FreeActorDynamicData(Engine_t *eng);
+
+void Wave1Start(GameState_t *gs, Engine_t *eng);
+void Wave2Start(GameState_t *gs, Engine_t *eng);
 
 //----------------------------------------
 // Grid Initialization
@@ -292,7 +335,7 @@ static inline void UpdateEntityInGrid(GameState_t *gs, Engine_t *eng,
 
   GridAddEntity(&gs->grid, e, *currPos);
 
-  prevPos = currPos;
+  *prevPos = *currPos;
 }
 
 static void ClearGrid(EntityGrid_t *grid) {
@@ -306,4 +349,84 @@ static void ClearGrid(EntityGrid_t *grid) {
       }
     }
   }
+}
+
+//
+//
+
+static void ReleaseTank(GameState_t *gs, entity_t e) {
+  for (int i = 0; i < MAX_POOL_TANKS; i++) {
+    if (gs->waves.tankPool[i] == e) {
+      gs->waves.tankUsed[i] = false;
+      return;
+    }
+  }
+}
+
+static void ReleaseHarasser(GameState_t *gs, entity_t e) {
+  for (int i = 0; i < MAX_POOL_HARASSERS; i++) {
+    if (gs->waves.harasserPool[i] == e) {
+      gs->waves.harasserUsed[i] = false;
+      return;
+    }
+  }
+}
+
+static void ReleaseAlphaTank(GameState_t *gs, entity_t e) {
+  for (int i = 0; i < MAX_POOL_ALPHA; i++) {
+    if (gs->waves.alphaPool[i] == e) {
+      gs->waves.alphaUsed[i] = false;
+      return;
+    }
+  }
+}
+
+static inline void DeactivateEntity(GameState_t *gs, Engine_t *eng,
+                                    entity_t e) {
+  int idx = GetEntityIndex(e);
+
+  // remove from grid first (if it was in)
+  Vector3 *pos =
+      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_Positions);
+  if (pos)
+    GridRemoveEntity(&gs->grid, e, *pos);
+
+  // park it
+  if (pos)
+    *pos = PARK_POS;
+
+  Vector3 *prev =
+      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_prevPositions);
+  if (prev)
+    *prev = PARK_POS;
+
+  // set ECS alive flag off
+  eng->em.alive[idx] = 0;
+}
+
+static inline void ActivateEntityAt(GameState_t *gs, Engine_t *eng, entity_t e,
+                                    Vector3 worldPos) {
+  int idx = GetEntityIndex(e);
+
+  // mark alive
+  eng->em.alive[idx] = 1;
+
+  // set position + prev position
+  Vector3 *pos =
+      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_Positions);
+  Vector3 *prev =
+      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_prevPositions);
+  if (pos)
+    *pos = worldPos;
+  if (prev)
+    *prev = worldPos;
+
+  // insert into grid
+  if (pos)
+    GridAddEntity(&gs->grid, e, *pos);
+
+  float *aiTimer =
+      (float *)getComponent(&eng->actors, e, gs->compReg.cid_aiTimer);
+  if (aiTimer)
+    *aiTimer = 0.0f;
 }

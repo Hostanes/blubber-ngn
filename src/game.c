@@ -321,7 +321,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // Model collection: 3 parts (legs, torso/head, gun)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
-  *mc = InitModelCollection(5);
+  *mc = InitModelCollection(6);
 
   mc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
   Texture2D mechTex = LoadTexture("assets/textures/legs.png");
@@ -375,30 +375,20 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->rotLocks[4][1] = true;
   mc->rotLocks[4][2] = false;
 
-  // Mesh cockpitRoof = GenMeshCube(10.0f, 2.0f, 10.0f);
-  // mc->models[3] = LoadModelFromMesh(cockpitRoof);
-  // mc->models[3].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
-  // mc->offsets[3] = (Vector3){0, 4, 0};
-  // mc->parentIds[3] = 1;
+  // mc->models[2] = LoadModelFromMesh(gunMesh);
+  mc->models[5] = LoadModel("assets/models/gun4-blunderbus.glb");
+  mc->offsets[5] = (Vector3){-8.0f, 6, 8};
+  mc->orientations[5] = (Orientation){0, PI / 2, 0};
+  mc->parentIds[5] = 1;
 
-  // mc->rotLocks[3][0] = true;
-  // mc->rotLocks[3][1] = true;
-  // mc->rotLocks[3][2] = false;
+  mc->rotLocks[5][0] = true;
+  mc->rotLocks[5][1] = true;
+  mc->rotLocks[5][2] = false;
 
-  // Mesh cockpitFloor = GenMeshCube(10.0f, 2.0f, 10.0f);
-  // mc->models[4] = LoadModelFromMesh(cockpitFloor);
-  // mc->models[4].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
-  // mc->offsets[4] = (Vector3){0, -3.5, 0};
-  // mc->parentIds[4] = 1;
-
-  // mc->rotLocks[4][0] = true;
-  // mc->rotLocks[4][1] = true;
-  // mc->rotLocks[4][2] = false;
-
-  int weaponCount = 3;
+  int weaponCount = 4;
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
                         &weaponCount);
-  int weaponDamage[] = {10, 20, 20};
+  int weaponDamage[] = {10, 20, 20, 3};
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponDamage,
                         &weaponDamage);
 
@@ -422,6 +412,10 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   AddRayToEntity(eng, e, 4, (Vector3){0.0f, 0.0f, 0.0f}, // up + forward (tweak)
                  (Orientation){0, 0, 0}, 5000.0f);
 
+  // [ray 4] Blunder bus
+  AddRayToEntity(eng, e, 5, (Vector3){0.0f, 0.0f, 0.0f}, // up + forward (tweak)
+                 (Orientation){0, 0, 0}, 5000.0f);
+
   // Weapons (3)
   eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * weaponCount);
   eng->actors.dropRates[e] = MemAlloc(sizeof(float) * weaponCount);
@@ -438,6 +432,10 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->actors.muzzleVelocities[e][2] = 1200.0f; // medium
   eng->actors.dropRates[e][2] = 0;              // no drop
 
+  // Weapon 4: Blunder bus
+  eng->actors.muzzleVelocities[e][3] = 3500.0f; // medium
+  eng->actors.dropRates[e][3] = 15.0f;          // no drop
+
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * weaponCount);
   eng->actors.firerate[e] = (float *)malloc(sizeof(float) * weaponCount);
 
@@ -453,6 +451,9 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   // Weapon 2: shoulder rocket
   eng->actors.firerate[e][2] = 1.5f;
+
+  // Weapon 3: BLUNDERBUSS!!
+  eng->actors.firerate[e][3] = 1.5f;
 
   // Collision
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
@@ -1119,7 +1120,7 @@ static entity_t CreateHarasser(Engine_t *eng, ActorComponentRegistry_t compReg,
                         &weaponCount);
 
   eng->actors.types[e] = ENTITY_HARASSER;
-  eng->actors.hitPoints[e] = 20.0f;
+  eng->actors.hitPoints[e] = 6.0f;
 
   // visual models (base + turret + barrel)
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -1364,6 +1365,145 @@ void ResetGameDuel(GameState_t *gs, Engine_t *eng) {
   ClearGrid(&gs->grid);
 }
 
+static entity_t AcquireTank(GameState_t *gs) {
+  for (int i = 0; i < MAX_POOL_TANKS; i++) {
+    if (!gs->waves.tankUsed[i]) {
+      gs->waves.tankUsed[i] = true;
+      return gs->waves.tankPool[i];
+    }
+  }
+  return (entity_t)0; // or some invalid
+}
+
+static entity_t AcquireHarasser(GameState_t *gs) {
+  for (int i = 0; i < MAX_POOL_HARASSERS; i++) {
+    if (!gs->waves.harasserUsed[i]) {
+      gs->waves.harasserUsed[i] = true;
+      return gs->waves.harasserPool[i];
+    }
+  }
+
+  return (entity_t)0;
+}
+
+static entity_t AcquireAlphaTank(GameState_t *gs) {
+  for (int i = 0; i < MAX_POOL_ALPHA; i++) {
+    if (!gs->waves.alphaUsed[i]) {
+      gs->waves.alphaUsed[i] = true;
+      return gs->waves.alphaPool[i];
+    }
+  }
+
+  return (entity_t)0;
+}
+
+static Vector3 PickSpawnAroundPlayer(GameState_t *gs, Engine_t *eng,
+                                     float radiusMin, float radiusMax) {
+  Vector3 *pPos = (Vector3 *)getComponent(&eng->actors, (entity_t)gs->playerId,
+                                          gs->compReg.cid_Positions);
+  Vector3 center = pPos ? *pPos : (Vector3){0, 0, 0};
+
+  float a = (float)GetRandomValue(0, 359) * (PI / 180.0f);
+  float r = (float)GetRandomValue((int)radiusMin, (int)radiusMax);
+
+  float x = center.x + cosf(a) * r;
+  float z = center.z + sinf(a) * r;
+  float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+  return (Vector3){x, y, z};
+}
+
+void Wave1Start(GameState_t *gs, Engine_t *eng) {
+  int spawnCount = 5;
+  gs->waves.enemiesAliveThisWave = 0;
+
+  TriggerMessage(gs, "WAVE 1 message");
+
+  for (int i = 0; i < spawnCount; i++) {
+    entity_t e = AcquireTank(gs);
+    if (!e)
+      break;
+
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 1500.0f, 2500.0f);
+    ActivateEntityAt(gs, eng, e, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+
+  // ShowBanner(gs, "Wave 1", 2.0f);
+}
+
+void Wave2Start(GameState_t *gs, Engine_t *eng) {
+  gs->waves.enemiesAliveThisWave = 0;
+
+  for (int i = 0; i < 6; i++) {
+    entity_t e = AcquireHarasser(gs);
+    if (!e)
+      break;
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 900.0f, 1600.0f);
+    ActivateEntityAt(gs, eng, e, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+
+  // plus a tank
+  entity_t t = AcquireTank(gs);
+  if (t) {
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 1100.0f, 1800.0f);
+    ActivateEntityAt(gs, eng, t, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+}
+
+static void InitWavePools(GameState_t *gs, Engine_t *eng) {
+  // reset bookkeeping
+  memset(&gs->waves, 0, sizeof(gs->waves));
+  gs->waves.state = WAVE_WAITING;
+  gs->waves.waveIndex = 0;
+  gs->waves.totalWaves = 5;           // whatever
+  gs->waves.betweenWaveDelay = 15.0f; // seconds between waves
+  gs->waves.betweenWaveTimer = 7.0f;  // first wave delay (optional)
+
+  // spawn tanks
+  for (int i = 0; i < MAX_POOL_TANKS; i++) {
+    entity_t e = CreateTank(eng, gs->compReg, PARK_POS);
+    gs->waves.tankPool[i] = e;
+    gs->waves.tankUsed[i] = false;
+    DeactivateEntity(gs, eng, e);
+  }
+
+  // spawn harassers
+  for (int i = 0; i < MAX_POOL_HARASSERS; i++) {
+    entity_t e = CreateHarasser(eng, gs->compReg, PARK_POS);
+    gs->waves.harasserPool[i] = e;
+    gs->waves.harasserUsed[i] = false;
+    DeactivateEntity(gs, eng, e);
+  }
+
+  // spawn alphas
+  for (int i = 0; i < MAX_POOL_ALPHA; i++) {
+    entity_t e = CreateTankAlpha(eng, gs->compReg, PARK_POS);
+    gs->waves.alphaPool[i] = e;
+    gs->waves.alphaUsed[i] = false;
+    DeactivateEntity(gs, eng, e);
+  }
+}
+
+static void WaveSystemDefaults(WaveSystem_t *ws) {
+  memset(ws, 0, sizeof(*ws));
+
+  ws->state = WAVE_WAITING;
+  ws->waveIndex = 0;
+
+  ws->totalWaves = 5;          // change as needed
+  ws->betweenWaveDelay = 5.0f; // seconds between waves
+  ws->betweenWaveTimer = 2.0f; // delay before wave 1 starts (optional)
+
+  ws->enemiesAliveThisWave = 0;
+
+  // pools arrays are zeroed by memset:
+  // tankPool/harasserPool/alphaPool = 0
+  // tankUsed/harasserUsed/alphaUsed = false
+}
+
 void StartGameDuel(GameState_t *gs, Engine_t *eng) {
   // re-register components (same as your InitGameDuel)
   eng->actors.componentStore =
@@ -1396,68 +1536,6 @@ void StartGameDuel(GameState_t *gs, Engine_t *eng) {
                                                 playerStartPos.z);
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
 
-  float staticsAreaSideWidth = 200;
-  // create a bunch of simple houses/walls
-  int numStatics = 10;
-  for (int i = 0; i < numStatics; i++) {
-    float width = GetRandomValue(20, 80);
-    float height = GetRandomValue(15, 120);
-    float depth = GetRandomValue(30, 100);
-
-    float x = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
-              TERRAIN_SCALE;
-    float z = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
-              TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
-
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
-
-    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
-  }
-
-  float tanksAreaSideWidth = 300;
-  // create a bunch of simple houses/walls
-  int numTanks = 0;
-  for (int i = 0; i < numTanks; i++) {
-    float width = GetRandomValue(20, 80);
-    float height = GetRandomValue(15, 120);
-    float depth = GetRandomValue(30, 100);
-
-    float x =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float z =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
-
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
-
-    CreateTank(eng, gs->compReg, (Vector3){x, y, z});
-  }
-
-  int numHarassers = 1;
-  for (int i = 0; i < numHarassers; i++) {
-    float width = GetRandomValue(20, 80);
-    float height = GetRandomValue(15, 120);
-    float depth = GetRandomValue(30, 100);
-
-    float x =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float z =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
-
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
-
-    // CreateHarasser(eng, gs->compReg, (Vector3){x, y, z});
-    CreateTankAlpha(eng, gs->compReg, (Vector3){x, y, z});
-  }
-
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
     if (eng->actors.rayCounts[i] == 0)
@@ -1481,6 +1559,10 @@ void StartGameDuel(GameState_t *gs, Engine_t *eng) {
     eng->particles.positions[i] = Vector3Zero();
     eng->particles.types[i] = -1;
   }
+
+  WaveSystemDefaults(&gs->waves);
+
+  InitWavePools(gs, eng);
 
   PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 }
@@ -1558,72 +1640,6 @@ GameState_t InitGameDuel(Engine_t *eng) {
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
 
-  // playerStartPos.y += 10;
-  // playerStartPos.x -= 100;
-  // CreateHarasser(eng, gs->compReg, playerStartPos);
-
-  float staticsAreaSideWidth = 200;
-  // create a bunch of simple houses/walls
-  int numStatics = 10;
-  for (int i = 0; i < numStatics; i++) {
-    float width = GetRandomValue(20, 80);
-    float height = GetRandomValue(15, 120);
-    float depth = GetRandomValue(30, 100);
-
-    float x = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
-              TERRAIN_SCALE;
-    float z = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
-              TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
-
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
-
-    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
-  }
-
-  float tanksAreaSideWidth = 300;
-  // create a bunch of simple houses/walls
-  int numTanks = 0;
-  for (int i = 0; i < numTanks; i++) {
-    float width = GetRandomValue(20, 80);
-    float height = GetRandomValue(15, 120);
-    float depth = GetRandomValue(30, 100);
-
-    float x =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float z =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
-
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
-
-    CreateTank(eng, gs->compReg, (Vector3){x, y, z});
-  }
-
-  int numHarassers = 1;
-  for (int i = 0; i < numHarassers; i++) {
-    float width = GetRandomValue(20, 80);
-    float height = GetRandomValue(15, 120);
-    float depth = GetRandomValue(30, 100);
-
-    float x =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float z =
-        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
-    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
-
-    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255),
-                      (unsigned char)GetRandomValue(100, 255), 255};
-
-    // CreateHarasser(eng, gs->compReg, (Vector3){x, y, z});
-    CreateTankAlpha(eng, gs->compReg, (Vector3){x, y, z});
-  }
-
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
     if (eng->actors.rayCounts[i] == 0)
@@ -1647,6 +1663,10 @@ GameState_t InitGameDuel(Engine_t *eng) {
     eng->particles.positions[i] = Vector3Zero();
     eng->particles.types[i] = -1;
   }
+
+  WaveSystemDefaults(&gs->waves);
+
+  InitWavePools(gs, eng);
 
   PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 

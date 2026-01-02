@@ -9,6 +9,8 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
   eng->em.alive[idx] = 0;
 
+  Vector3 pos =
+      *(Vector3 *)getComponent(&eng->actors, idx, gs->compReg.cid_Positions);
   EntityType_t type = eng->actors.types[idx];
 
   switch (type) {
@@ -27,8 +29,6 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
   case ENTITY_DESTRUCT:
     printf("Destructible object destroyed\n");
-    Vector3 pos =
-        *(Vector3 *)getComponent(&eng->actors, idx, gs->compReg.cid_Positions);
     eng->actors.modelCollections[idx].isActive[0] = false;
     eng->actors.modelCollections[idx].isActive[1] = true;
 
@@ -43,15 +43,38 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     break;
 
   case ENTITY_TANK:
-    printf("Tank object destroyed\n");
-    // SpawnExplosion(eng, eng->actors.positions[idx]);
+    printf("Tank destroyed\n");
+    ReleaseTank(gs, idx);
+    DeactivateEntity(gs, eng, idx);
+    if (gs->waves.state == WAVE_ACTIVE && gs->waves.enemiesAliveThisWave > 0) {
+      gs->waves.enemiesAliveThisWave--;
+    }
+    spawnParticle(eng, pos, 5, 9);
+    printf("[WAVES] Alive now: %d\n", gs->waves.enemiesAliveThisWave);
     break;
 
   case ENTITY_TANK_ALPHA:
     printf("Alpha object destroyed\n");
-    // SpawnExplosion(eng, eng->actors.positions[idx]);
+    ReleaseAlphaTank(gs, idx);
+    DeactivateEntity(gs, eng, idx);
+
+    if (gs->waves.state == WAVE_ACTIVE && gs->waves.enemiesAliveThisWave > 0) {
+      gs->waves.enemiesAliveThisWave--;
+      printf("[WAVES] Alive now: %d\n", gs->waves.enemiesAliveThisWave);
+    } // SpawnExplosion(eng, eng->actors.positions[idx]);
     break;
 
+  case ENTITY_HARASSER:
+    printf("Mech object destroyed\n");
+    ReleaseHarasser(gs, idx);
+    DeactivateEntity(gs, eng, idx);
+
+    if (gs->waves.state == WAVE_ACTIVE && gs->waves.enemiesAliveThisWave > 0) {
+      gs->waves.enemiesAliveThisWave--;
+      printf("[WAVES] Alive now: %d\n", gs->waves.enemiesAliveThisWave);
+    }
+    // SpawnExplosion(eng, eng->actors.positions[idx]);
+    break;
   case ENTITY_MECH:
     printf("Mech object destroyed\n");
     // SpawnExplosion(eng, eng->actors.positions[idx]);

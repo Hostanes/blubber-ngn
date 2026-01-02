@@ -101,7 +101,7 @@ static void SpawnExplosion(GameState_t *gs, Engine_t *eng,
 
         // Ignore projectiles
         if (GetEntityCategory(eid) != ET_ACTOR) {
-          printf("Not actor, skipping\n");
+          // printf("Not actor, skipping\n");
           continue;
         }
 
@@ -262,8 +262,7 @@ static bool CheckActorHit(GameState_t *gs, Engine_t *eng,
               return true;
             }
 
-            // Non-explosive: dust + direct hit damage
-            SpawnDust(eng, prevPos);
+            SpawnSmoke(eng, prevPos);
 
             if (eng->em.masks[idx] & C_HITPOINT_TAG) {
               if (e != MakeEntityID(ET_ACTOR, gs->playerId)) {
@@ -271,6 +270,11 @@ static bool CheckActorHit(GameState_t *gs, Engine_t *eng,
                            *(Vector3 *)getComponent(&eng->actors, gs->playerId,
                                                     gs->compReg.cid_Positions),
                            0.4f, 1.0f);
+              } else {
+                QueueSound(soundSys, SOUND_HITMARKER,
+                           *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+                                                    gs->compReg.cid_Positions),
+                           0.1f, 1.0f);
               }
 
               int damageDealt = projectileDamage[pType];
@@ -480,7 +484,7 @@ void spawnProjectile(Engine_t *eng, Vector3 pos, Vector3 velocity,
     eng->projectiles.thrusterTimers[i] = 0;
 
     if (type == P_MISSILE) {
-      eng->projectiles.homingDelays[i] = 0.01f;    // goes straight up for 0.6s
+      eng->projectiles.homingDelays[i] = 0.01f;   // goes straight up for 0.6s
       eng->projectiles.homingTurnRates[i] = 2.4f; // rad/sec, tune
     }
     break;
@@ -514,9 +518,9 @@ void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex, int gunId,
     drop = 0.0f;
 
   Vector3 vel = Vector3Scale(dir, muzzleVel);
-  printf("spawning projectile\n");
+  // printf("spawning projectile\n");
 
-  printf("Fire vel: (%.3f, %.3f, %.3f)\n", vel.x, vel.y, vel.z);
+  // printf("Fire vel: (%.3f, %.3f, %.3f)\n", vel.x, vel.y, vel.z);
 
   spawnProjectile(eng, origin, vel,
                   10.0f,     // lifetime sec
