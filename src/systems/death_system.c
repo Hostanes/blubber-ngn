@@ -43,12 +43,17 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     break;
 
   case ENTITY_TANK:
-    printf("Actor object destroyed\n");
+    printf("Tank object destroyed\n");
+    // SpawnExplosion(eng, eng->actors.positions[idx]);
+    break;
+
+  case ENTITY_TANK_ALPHA:
+    printf("Alpha object destroyed\n");
     // SpawnExplosion(eng, eng->actors.positions[idx]);
     break;
 
   case ENTITY_MECH:
-    printf("Mech destroyed\n");
+    printf("Mech object destroyed\n");
     // SpawnExplosion(eng, eng->actors.positions[idx]);
     break;
 

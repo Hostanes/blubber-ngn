@@ -22,9 +22,6 @@
 #define MAX_PARTICLES 2048
 #define MAX_RAYS_PER_ENTITY 8
 
-// damage each projectile does by type
-static int projectileDamage[] = {0, 5, 20, 15};
-
 typedef struct {
   float yaw;
   float pitch;
@@ -87,7 +84,8 @@ typedef enum {
   ENTITY_WALL,
   ENTITY_DESTRUCT,
   ENTITY_TURRET,
-  ENTITY_TRIGGER
+  ENTITY_TRIGGER,
+  ENTITY_TANK_ALPHA
 } EntityType_t;
 
 typedef struct {
@@ -185,6 +183,9 @@ typedef struct {
   int types[MAX_PROJECTILES];
 
   float thrusterTimers[MAX_PROJECTILES];
+  Vector3 targets[MAX_PROJECTILES];
+  float homingDelays[MAX_PROJECTILES];
+  float homingTurnRates[MAX_PROJECTILES];
 } ProjectilePool_t;
 
 typedef struct {
@@ -201,6 +202,7 @@ typedef struct {
   float lifetimes[MAX_PARTICLES];
   float startLifetimes[MAX_PARTICLES];
 } ParticlePool_t;
+
 // Inline category ID helpers
 static inline entity_t MakeEntityID(EntityCategory_t cat, int index) {
   return ((uint32_t)cat << ENTITY_TYPE_SHIFT) | (index & ENTITY_INDEX_MASK);

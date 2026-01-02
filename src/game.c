@@ -870,6 +870,112 @@ entity_t CreateColorSwitchCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
   return MakeEntityID(ET_ACTOR, e);
 }
 
+static entity_t CreateTankAlpha(Engine_t *eng, ActorComponentRegistry_t compReg,
+                                Vector3 pos) {
+  entity_t e = eng->em.count++;
+  eng->em.alive[e] = 1;
+  eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
+                     C_TURRET_BEHAVIOUR_1 | C_TANK_MOVEMENT | C_COOLDOWN_TAG |
+                     C_RAYCAST | C_GRAVITY;
+
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+                        &pos);
+
+  Vector3 vel = {0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+                        &vel);
+
+  Vector3 moveTarget = {0, 0, 0};
+  Vector3 aimTarget = {0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimTarget,
+                        &aimTarget);
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTarget,
+                        &moveTarget);
+
+  float timer = 0.0f;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+                        &timer);
+
+  int moveBehaviour = 1;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+                        &moveBehaviour);
+
+  float maxAimError = 0.5f;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
+                        &maxAimError);
+
+  int weaponCount = 2;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+                        &weaponCount);
+
+  eng->actors.types[e] = ENTITY_TANK_ALPHA;
+  eng->actors.hitPoints[e] = 150.0f;
+
+  // ----- models (same as CreateTank) -----
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  *mc = InitModelCollection(3);
+
+  mc->models[0] = LoadModel("assets/models/enemy-alpha-hull.glb");
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
+  mc->offsets[0] = (Vector3){0, 0, 0};
+  mc->parentIds[0] = -1;
+
+  mc->models[1] = LoadModel("assets/models/enemy-alpha-turret.glb");
+  mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GRAY;
+  mc->offsets[1] = (Vector3){0, 15, 5};
+  mc->parentIds[1] = 0;
+
+  mc->rotLocks[1][0] = true;
+  mc->rotLocks[1][1] = true;
+  mc->rotLocks[1][2] = true;
+
+  mc->models[2] = LoadModel("assets/models/enemy-alpha-gun.glb");
+  mc->orientations[2] = (Orientation){0, 0, 0};
+  mc->offsets[2] = (Vector3){0, 1, 5};
+  mc->parentIds[2] = 1;
+
+  mc->rotLocks[2][0] = true;
+  mc->rotLocks[2][1] = true;
+  mc->rotLocks[2][2] = false;
+
+  mc->orientations[0] = (Orientation){0, 0, 0};
+  mc->orientations[1] = (Orientation){PI, 0, 0};
+
+  // ----- hitbox -----
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  *hb = InitModelCollection(1);
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(25, 20, 25));
+  hb->offsets[0] = (Vector3){0, 0, 0};
+  hb->parentIds[0] = -1;
+
+  // ----- ray (same barrel) -----
+  eng->actors.rayCounts[e] = 0;
+  AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+
+  // ----- weapon arrays (size 2) -----
+  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 2);
+  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 2);
+
+  eng->actors.muzzleVelocities[e] = (float *)MemAlloc(sizeof(float) * 2);
+  eng->actors.dropRates[e] = (float *)MemAlloc(sizeof(float) * 2);
+
+  // weapon 0: current gun (bullets)
+  float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 5.4f;
+  eng->actors.cooldowns[e][0] = 1.4f + r;
+  eng->actors.firerate[e][0] = 0.5f;
+  eng->actors.muzzleVelocities[e][0] = 2500.0f;
+  eng->actors.dropRates[e][0] = 20.0f;
+
+  // weapon 1: missile launcher (P_MISSILE)
+  eng->actors.cooldowns[e][1] = 3.0f;          // initial delay
+  eng->actors.firerate[e][1] = 2.0f;           // one missile every 8s (tune)
+  eng->actors.muzzleVelocities[e][1] = 700.0f; // missile speed (used at spawn)
+  eng->actors.dropRates[e][1] = 0.0f;          // no gravity for missile
+
+  return MakeEntityID(ET_ACTOR, e);
+}
+
 static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
                            Vector3 pos) {
   entity_t e = eng->em.count++;
@@ -1219,7 +1325,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   // playerStartPos.y += 10;
   // playerStartPos.x -= 100;
-  CreateHarasser(eng, gs->compReg, playerStartPos);
+  // CreateHarasser(eng, gs->compReg, playerStartPos);
 
   float staticsAreaSideWidth = 200;
   // create a bunch of simple houses/walls
@@ -1244,7 +1350,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   float tanksAreaSideWidth = 300;
   // create a bunch of simple houses/walls
-  int numTanks = 10;
+  int numTanks = 0;
   for (int i = 0; i < numTanks; i++) {
     float width = GetRandomValue(20, 80);
     float height = GetRandomValue(15, 120);
@@ -1263,7 +1369,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
     CreateTank(eng, gs->compReg, (Vector3){x, y, z});
   }
 
-  int numHarassers = 2;
+  int numHarassers = 1;
   for (int i = 0; i < numHarassers; i++) {
     float width = GetRandomValue(20, 80);
     float height = GetRandomValue(15, 120);
@@ -1279,7 +1385,8 @@ GameState_t InitGameDuel(Engine_t *eng) {
                       (unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255), 255};
 
-    CreateHarasser(eng, gs->compReg, (Vector3){x, y, z});
+    // CreateHarasser(eng, gs->compReg, (Vector3){x, y, z});
+    CreateTankAlpha(eng, gs->compReg, (Vector3){x, y, z});
   }
 
   // ensure rayCounts initialized for any entities that weren't touched
@@ -1308,7 +1415,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 
-  PrintGrid(&gs->grid);
+  // PrintGrid(&gs->grid);
 
   return *gs;
 }

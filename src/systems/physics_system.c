@@ -161,7 +161,7 @@ static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
 
     EntityType_t typeI = eng->actors.types[i];
     if (!(typeI == ENTITY_PLAYER || typeI == ENTITY_MECH ||
-          typeI == ENTITY_TANK))
+          typeI == ENTITY_TANK || typeI == ENTITY_TANK_ALPHA))
       continue;
 
     // grid cell coordinates
@@ -218,7 +218,8 @@ static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
       continue;
 
     EntityType_t type = eng->actors.types[i];
-    if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
+    if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK ||
+          type == ENTITY_TANK_ALPHA))
       continue;
 
     // grid cell coordinates
@@ -332,7 +333,7 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
     EntityType_t type = eng->actors.types[i];
     if (!(type == ENTITY_PLAYER || type == ENTITY_HARASSER ||
-          type == ENTITY_TANK))
+          type == ENTITY_TANK || type == ENTITY_TANK_ALPHA))
       continue;
 
     UpdateActorPosition(eng, gs, i, dt);

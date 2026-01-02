@@ -89,6 +89,8 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
 Vector3 GetTankForwardDirection(int tankId, Engine_t *eng);
 void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
                                      SoundSystem_t *soundSys, float dt);
+void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
+                                            SoundSystem_t *soundSys, float dt);
 
 // ---------- Rendering ----------
 void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera);

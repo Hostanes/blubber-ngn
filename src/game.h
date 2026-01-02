@@ -159,6 +159,16 @@ typedef struct GameState {
 
 } GameState_t;
 
+// damage each projectile does by type
+static int projectileDamage[] = {0, 5, 20, 15, 30};
+
+typedef enum {
+  P_BULLET = 1,
+  P_PLASMA = 2,
+  P_ROCKET = 3,
+  P_MISSILE = 4
+} ProjectileType;
+
 //----------------------------------------
 // Game Initialization
 //----------------------------------------
@@ -265,7 +275,8 @@ static inline void UpdateEntityInGrid(GameState_t *gs, Engine_t *eng,
   int idx = GetEntityIndex(e);
   EntityType_t type = eng->actors.types[idx];
 
-  if (type != ENTITY_PLAYER && type != ENTITY_HARASSER && type != ENTITY_TANK)
+  if (type != ENTITY_PLAYER && type != ENTITY_HARASSER && type != ENTITY_TANK &&
+      type != ENTITY_TANK_ALPHA)
     return;
 
   Vector3 *prevPos =

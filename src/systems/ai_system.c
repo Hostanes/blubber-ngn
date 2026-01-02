@@ -29,6 +29,18 @@ typedef enum {
 
 #define AIRH_B2_WAIT 2.0f // waits in B2 before going back to B1 (shoot later)
 
+typedef enum {
+  ALPHA_SENTRY = 1,
+  ALPHA_DASH = 2,
+} AlphaAIState;
+
+#define ALPHA_SENTRY_TIME 3.0f
+#define ALPHA_DASH_TIME 1.2f
+
+#define ALPHA_DASH_MIN_R 250.0f
+#define ALPHA_DASH_MAX_R 600.0f
+#define ALPHA_DASH_SPEED_MULT 2.4f // faster than normal tank
+
 static float Rand01(void) { return (float)rand() / (float)RAND_MAX; }
 
 static Vector3 GetRandomPointNearPlayer(Vector3 playerPos, float minR,
@@ -299,6 +311,66 @@ static void UpdateHarasserTargetsForEntity(GameState_t *gs, Engine_t *eng,
   //        moveTarget->z);
 }
 
+static void UpdateAlphaTankTargetsForEntity(GameState_t *gs, Engine_t *eng,
+                                            int i, Vector3 playerPos,
+                                            float dt) {
+  uint32_t mask = eng->em.masks[i];
+  if (!(mask & C_TANK_MOVEMENT))
+    return;
+
+  Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *moveTarget =
+      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+  Vector3 *aimTarget = getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+  int *state =
+      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+  float *stateTimer =
+      (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
+
+  if (!pos || !moveTarget || !aimTarget || !state || !stateTimer)
+    return;
+
+  // Always aim at player (turret system uses aimTarget)
+  *aimTarget = playerPos;
+
+  // Initialize
+  if (*state != ALPHA_SENTRY && *state != ALPHA_DASH) {
+    *state = ALPHA_SENTRY;
+    *stateTimer = ALPHA_SENTRY_TIME;
+  }
+
+  switch ((AlphaAIState)(*state)) {
+  case ALPHA_SENTRY: {
+    // stand still: keep target at current pos
+    *moveTarget = (Vector3){pos->x, 0.0f, pos->z};
+
+    *stateTimer -= dt;
+    if (*stateTimer <= 0.0f) {
+      *state = ALPHA_DASH;
+      *stateTimer = ALPHA_DASH_TIME;
+
+      Vector3 t = GetRandomPointNearPlayer(playerPos, ALPHA_DASH_MIN_R,
+                                           ALPHA_DASH_MAX_R);
+      t.y = 0.0f;
+      *moveTarget = t;
+    }
+  } break;
+
+  case ALPHA_DASH: {
+    // keep moveTarget as the chosen dash point
+
+    *stateTimer -= dt;
+    if (*stateTimer <= 0.0f) {
+      *state = ALPHA_SENTRY;
+      *stateTimer = ALPHA_SENTRY_TIME;
+
+      // stop moving
+      *moveTarget = (Vector3){pos->x, 0.0f, pos->z};
+    }
+  } break;
+  }
+}
+
 void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                         float dt) {
   tankAiAccum += dt;
@@ -324,6 +396,10 @@ void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     case ENTITY_HARASSER:
       // printf("updating harasser targets\n");
       UpdateHarasserTargetsForEntity(gs, eng, i, *playerPos, dt);
+      break;
+
+    case ENTITY_TANK_ALPHA:
+      UpdateAlphaTankTargetsForEntity(gs, eng, i, *playerPos, dt);
       break;
 
     default:
@@ -490,6 +566,76 @@ static void UpdateHarasserVelocityForEntity(GameState_t *gs, Engine_t *eng,
   }
 }
 
+static void UpdateAlphaTankVelocityForEntity(GameState_t *gs, Engine_t *eng,
+                                             int i, float dt) {
+  uint32_t mask = eng->em.masks[i];
+  if (!(mask & C_TANK_MOVEMENT))
+    return;
+
+  Vector3 *position = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *velocity = getComponent(&eng->actors, i, gs->compReg.cid_velocities);
+  Vector3 *moveTarget =
+      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+  int *state =
+      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+
+  if (!position || !velocity || !moveTarget || !state)
+    return;
+
+  position->y = GetTerrainHeightAtXZ(&gs->terrain, position->x, position->z);
+
+  // Stop in sentry mode
+  if (*state == ALPHA_SENTRY) {
+    velocity->x = 0.0f;
+    velocity->y = 0.0f;
+    velocity->z = 0.0f;
+    return;
+  }
+
+  // Dash mode movement (tank-like)
+  Vector3 direction = {moveTarget->x - position->x, 0.0f,
+                       moveTarget->z - position->z};
+
+  ModelCollection_t *mc = &eng->actors.modelCollections[i];
+
+  float targetYaw = atan2f(direction.x, direction.z);
+  float currentYaw = mc->localRotationOffset[0].yaw;
+
+  float turnSpeed = 7.0f; // alpha turns faster than normal tank
+  float maxTurn = turnSpeed * dt;
+
+  float yawDiff = targetYaw - currentYaw;
+  while (yawDiff > PI)
+    yawDiff -= 2.0f * PI;
+  while (yawDiff < -PI)
+    yawDiff += 2.0f * PI;
+
+  if (yawDiff > maxTurn)
+    yawDiff = maxTurn;
+  if (yawDiff < -maxTurn)
+    yawDiff = -maxTurn;
+
+  mc->localRotationOffset[0].yaw = currentYaw + yawDiff;
+
+  float dist2 = direction.x * direction.x + direction.z * direction.z;
+  if (dist2 > 1.0f) {
+    float dist = sqrtf(dist2);
+    direction.x /= dist;
+    direction.z /= dist;
+
+    float baseSpeed = 50.0f; // same as tank
+    float speed = baseSpeed * ALPHA_DASH_SPEED_MULT;
+
+    velocity->x = direction.x * speed;
+    velocity->y = 0.0f;
+    velocity->z = direction.z * speed;
+  } else {
+    velocity->x = 0.0f;
+    velocity->y = 0.0f;
+    velocity->z = 0.0f;
+  }
+}
+
 void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
                            SoundSystem_t *soundSys, float dt) {
   int emCount = eng->em.count;
@@ -509,6 +655,10 @@ void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
     case ENTITY_HARASSER:
       if (playerPos)
         UpdateHarasserVelocityForEntity(gs, eng, i, *playerPos, dt);
+      break;
+
+    case ENTITY_TANK_ALPHA:
+      UpdateAlphaTankVelocityForEntity(gs, eng, i, dt);
       break;
 
     case ENTITY_MECH:
@@ -1127,5 +1277,225 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     // Reset cooldown from firerate (shots per second). If missing, default 1
     // shot/sec.
     *cooldown = *firerate;
+  }
+}
+
+static inline float ClampF(float v, float lo, float hi) {
+  return (v < lo) ? lo : (v > hi) ? hi : v;
+}
+
+void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
+                                            SoundSystem_t *soundSys, float dt) {
+  int emCount = eng->em.count;
+
+  Vector3 *playerPos =
+      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+  if (!playerPos)
+    return;
+
+  // -----------------------------
+  // PASS 1: turret + barrel aiming + ray update
+  // -----------------------------
+  for (int i = 0; i < emCount; i++) {
+    if (!eng->em.alive[i])
+      continue;
+    if (eng->actors.types[i] != ENTITY_TANK_ALPHA)
+      continue;
+
+    Vector3 *tankPos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+    Vector3 *aimTarget =
+        getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+    if (!tankPos || !aimTarget)
+      continue;
+
+    ModelCollection_t *mc = &eng->actors.modelCollections[i];
+    if (!mc || mc->countModels < 3)
+      continue;
+    if (!mc->localRotationOffset)
+      continue;
+
+    // direction from tank to aim target
+    Vector3 direction = Vector3Subtract(*aimTarget, *tankPos);
+
+    float horizontalDist =
+        sqrtf(direction.x * direction.x + direction.z * direction.z);
+    float targetPitch = -atan2f(direction.y, horizontalDist);
+
+    float rotationSpeed = 2.5f;
+    float maxRotation = rotationSpeed * dt;
+
+    // --- TURRET yaw ---
+    float baseYaw = mc->localRotationOffset[0].yaw;
+    float targetYawWorld = atan2f(direction.x, direction.z);
+    float targetYawLocal = targetYawWorld - baseYaw;
+
+    while (targetYawLocal > PI)
+      targetYawLocal -= 2.0f * PI;
+    while (targetYawLocal < -PI)
+      targetYawLocal += 2.0f * PI;
+
+    float currentTurretYaw = mc->localRotationOffset[1].yaw;
+    float yawDiff = targetYawLocal - currentTurretYaw;
+    while (yawDiff > PI)
+      yawDiff -= 2.0f * PI;
+    while (yawDiff < -PI)
+      yawDiff += 2.0f * PI;
+
+    yawDiff = ClampF(yawDiff, -maxRotation, maxRotation);
+    mc->localRotationOffset[1].yaw = currentTurretYaw + yawDiff;
+    mc->localRotationOffset[1].pitch = 0.0f;
+    mc->localRotationOffset[1].roll = 0.0f;
+
+    // --- BARREL pitch ---
+    float currentBarrelPitch = mc->localRotationOffset[2].pitch;
+    float targetBarrelPitch = -targetPitch;
+
+    float pitchDiff = targetBarrelPitch - currentBarrelPitch;
+    pitchDiff = ClampF(pitchDiff, -maxRotation, maxRotation);
+    mc->localRotationOffset[2].pitch = currentBarrelPitch + pitchDiff;
+    mc->localRotationOffset[2].yaw = 0.0f;
+    mc->localRotationOffset[2].roll = 0.0f;
+
+    // sync orientations if used elsewhere
+    if (mc->orientations) {
+      mc->orientations[1].yaw = mc->localRotationOffset[1].yaw;
+      mc->orientations[1].pitch = 0.0f;
+      mc->orientations[1].roll = 0.0f;
+
+      mc->orientations[2].yaw = 0.0f;
+      mc->orientations[2].pitch = mc->localRotationOffset[2].pitch;
+      mc->orientations[2].roll = 0.0f;
+    }
+
+    // Update barrel ray (parentModelIndex == 2)
+    if (eng->actors.rayCounts[i] > 0) {
+      for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
+        Raycast_t *raycast = &eng->actors.raycasts[i][rayIdx];
+        if (raycast->parentModelIndex != 2)
+          continue;
+
+        Vector3 aimPos = *aimTarget;
+        Vector3 muzzlePos = mc->globalPositions[2];
+
+        // Weapon params: use gun 0 ballistics for aiming compensation
+        int gunId = 0;
+        float muzzleVel = (eng->actors.muzzleVelocities[i] &&
+                           eng->actors.muzzleVelocities[i][gunId] > 0.0f)
+                              ? eng->actors.muzzleVelocities[i][gunId]
+                              : 10.0f;
+        float dropRate =
+            (eng->actors.dropRates[i] && eng->actors.dropRates[i][gunId] > 0.0f)
+                ? eng->actors.dropRates[i][gunId]
+                : 1.0f;
+
+        Vector3 toTarget = Vector3Subtract(aimPos, muzzlePos);
+        float dxz = sqrtf(toTarget.x * toTarget.x + toTarget.z * toTarget.z);
+        if (dxz < 0.001f)
+          dxz = 0.001f;
+
+        float t = dxz / muzzleVel;
+        float drop = 1.2f * dropRate * t * t;
+        aimPos.y += drop;
+
+        Vector3 dirToAim = Vector3Normalize(Vector3Subtract(aimPos, muzzlePos));
+
+        float turretYawWorld2 = atan2f(dirToAim.x, dirToAim.z);
+        float pitchFromHorizontal = asinf(dirToAim.y);
+
+        Vector3 barrelDirWorld =
+            ForwardFromYawPitch(turretYawWorld2, pitchFromHorizontal);
+
+        raycast->ray.position = muzzlePos;
+        raycast->ray.direction = barrelDirWorld;
+        raycast->active = true;
+        break;
+      }
+    }
+  }
+
+  // -----------------------------
+  // PASS 2: shooting (bullets in sentry, missiles in dash)
+  // -----------------------------
+  for (int i = 0; i < emCount; i++) {
+    if (!eng->em.alive[i])
+      continue;
+    if (eng->actors.types[i] != ENTITY_TANK_ALPHA)
+      continue;
+
+    uint32_t mask = eng->em.masks[i];
+    if (!(mask & C_TURRET_BEHAVIOUR_1))
+      continue;
+
+    int *state =
+        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+    if (!state)
+      continue;
+
+    // Find barrel ray index (parentModelIndex == 2)
+    int barrelRayIdx = -1;
+    for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
+      Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+      if (rc->active && rc->parentModelIndex == 2) {
+        barrelRayIdx = rayIdx;
+        break;
+      }
+    }
+    if (barrelRayIdx < 0)
+      continue;
+
+    Ray ray = eng->actors.raycasts[i][barrelRayIdx].ray;
+
+    // Need 2-weapon arrays
+    float *cooldowns = eng->actors.cooldowns[i];
+    float *firerate = eng->actors.firerate[i];
+    if (!cooldowns || !firerate)
+      continue;
+
+    // Choose weapon based on alpha state
+    int gunId;
+    int projType;
+
+    if (*state == ALPHA_DASH) {
+      gunId = 1;
+      projType = P_MISSILE; // homing missile
+    } else {
+      gunId = 0;
+      projType = P_BULLET;
+    }
+
+    // Tick this weapon's cooldown
+    if (cooldowns[gunId] > 0.0f) {
+      cooldowns[gunId] -= dt;
+      continue;
+    }
+
+    // Gate firing:
+    // - bullets: require aiming at player
+    // - missiles: allow more lenient (since they home anyway)
+    if (projType == P_BULLET) {
+      if (!BarrelAimingAtPlayer(ray.position, ray.direction, *playerPos, 10.0f))
+        continue;
+    } else {
+      // optional mild gate so missiles don't fire backwards
+      if (!BarrelAimingAtPlayer(ray.position, ray.direction, *playerPos, 35.0f))
+        continue;
+    }
+
+    // FIRE
+    Vector3 shooterPos =
+        *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+    SoundType_t soundType =
+        projType == P_BULLET ? SOUND_WEAPON_FIRE : SOUND_ROCKET_FIRE;
+    QueueSound(soundSys, soundType, shooterPos, 0.2f, 1.0f);
+
+    FireProjectile(eng, (entity_t)i, barrelRayIdx, gunId, projType);
+
+    const float muzzleOffset = 50;
+    Vector3 muzzlePos =
+        Vector3Add(ray.position, Vector3Scale(ray.direction, muzzleOffset));
+    SpawnSmoke(eng, muzzlePos);
+
+    // Reset cooldown from firerate[gunId]
+    cooldowns[gunId] = firerate[gunId];
   }
 }
