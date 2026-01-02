@@ -175,6 +175,9 @@ typedef enum {
 GameState_t InitGameSimulator(Engine_t *eng);
 GameState_t InitGameDuel(Engine_t *eng);
 Vector3 ConvertOrientationToVector3(Orientation o);
+void StartGameDuel(GameState_t *gs, Engine_t *eng);
+void ResetGameDuel(GameState_t *gs, Engine_t *eng);
+static void FreeActorDynamicData(Engine_t *eng);
 
 //----------------------------------------
 // Grid Initialization
@@ -290,4 +293,17 @@ static inline void UpdateEntityInGrid(GameState_t *gs, Engine_t *eng,
   GridAddEntity(&gs->grid, e, *currPos);
 
   prevPos = currPos;
+}
+
+static void ClearGrid(EntityGrid_t *grid) {
+  if (!grid || !grid->nodes)
+    return;
+  for (int x = 0; x < grid->width; x++) {
+    for (int z = 0; z < grid->length; z++) {
+      grid->nodes[x][z].count = 0;
+      for (int i = 0; i < MAX_GRID_NODES; i++) {
+        grid->nodes[x][z].entities[i] = GRID_EMPTY;
+      }
+    }
+  }
 }

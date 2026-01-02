@@ -483,14 +483,14 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     // GREEN,
     //                     true);
 
-    // Color hitboxColor = RED;
-    // if (!eng->em.alive[i]) {
-    //   hitboxColor = BLACK;
-    // }
-    // // Hitboxes (red wireframe)
-    // DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
-    //                     hitboxColor, true, drawOutline, gs->outlineShader, 0,
-    //                     BLACK, i);
+    Color hitboxColor = RED;
+    if (!eng->em.alive[i]) {
+      hitboxColor = BLACK;
+    }
+    // Hitboxes (red wireframe)
+    DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
+                        hitboxColor, true, drawOutline, gs->outlineShader, 0,
+                        BLACK, i);
   }
 
   for (int i = 0; i < MAX_STATICS; i++) {

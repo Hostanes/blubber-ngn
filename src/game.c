@@ -945,7 +945,7 @@ static entity_t CreateTankAlpha(Engine_t *eng, ActorComponentRegistry_t compReg,
   // ----- hitbox -----
   ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
   *hb = InitModelCollection(1);
-  hb->models[0] = LoadModelFromMesh(GenMeshCube(25, 20, 25));
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(50, 40, 50));
   hb->offsets[0] = (Vector3){0, 0, 0};
   hb->parentIds[0] = -1;
 
@@ -1249,10 +1249,245 @@ void PrintGrid(EntityGrid_t *grid) {
   }
 }
 
+static void FreeActorDynamicData(Engine_t *eng) {
+  // free per-entity weapon arrays
+  for (int i = 0; i < MAX_ENTITIES; i++) {
+    if (eng->actors.cooldowns[i]) {
+      free(eng->actors.cooldowns[i]);
+      eng->actors.cooldowns[i] = NULL;
+    }
+    if (eng->actors.firerate[i]) {
+      free(eng->actors.firerate[i]);
+      eng->actors.firerate[i] = NULL;
+    }
+
+    if (eng->actors.muzzleVelocities[i]) {
+      MemFree(eng->actors.muzzleVelocities[i]);
+      eng->actors.muzzleVelocities[i] = NULL;
+    }
+    if (eng->actors.dropRates[i]) {
+      MemFree(eng->actors.dropRates[i]);
+      eng->actors.dropRates[i] = NULL;
+    }
+
+    // If you allocate other per-entity pointers later, free them here too.
+  }
+
+  // free component store blocks (whatever registerComponent allocated)
+  if (eng->actors.componentStore) {
+    for (int c = 0; c < eng->actors.componentCount; c++) {
+      if (eng->actors.componentStore[c].data) {
+        free(eng->actors.componentStore[c].data);
+        eng->actors.componentStore[c].data = NULL;
+      }
+      if (eng->actors.componentStore[c].occupied) {
+        free(eng->actors.componentStore[c].occupied);
+        eng->actors.componentStore[c].occupied = NULL;
+      }
+      eng->actors.componentStore[c].count = 0;
+    }
+
+    free(eng->actors.componentStore);
+    eng->actors.componentStore = NULL;
+  }
+
+  eng->actors.componentCount = 0;
+}
+
+void ResetGameDuel(GameState_t *gs, Engine_t *eng) {
+  // -------------------------
+  // Reset gameplay state
+  // -------------------------
+  gs->heatMeter = 30;
+
+  gs->banner.active = false;
+  gs->banner.state = BANNER_HIDDEN;
+  gs->banner.y = -80.0f;
+  gs->banner.hiddenY = -80.0f;
+  gs->banner.targetY = 0.0f;
+  gs->banner.speed = 200.0f;
+  gs->banner.visibleTime = 5.0f;
+
+  gs->pHeadbobTimer = 0.0f;
+
+  // -------------------------
+  // Clear pools (projectiles/particles)
+  // -------------------------
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    eng->projectiles.active[i] = false;
+    eng->projectiles.positions[i] = Vector3Zero();
+    eng->projectiles.velocities[i] = Vector3Zero();
+    eng->projectiles.lifetimes[i] = 0.0f;
+    eng->projectiles.radii[i] = 1.0f;
+    eng->projectiles.owners[i] = -1;
+    eng->projectiles.types[i] = -1;
+
+    eng->projectiles.thrusterTimers[i] = 0.0f;
+    // if you added missile homing arrays, reset them too:
+    // eng->projectiles.homingDelay[i] = 0.0f;
+    // eng->projectiles.homingTurnRate[i] = 0.0f;
+  }
+
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    eng->particles.active[i] = false;
+    eng->particles.lifetimes[i] = 0.0f;
+    eng->particles.positions[i] = Vector3Zero();
+    eng->particles.types[i] = -1;
+  }
+
+  // -------------------------
+  // Reset statics pool (mark as unused)
+  // -------------------------
+  for (int i = 0; i < MAX_STATICS; i++) {
+    eng->statics.positions[i] = Vector3Zero();
+
+    // mark as empty; if you have an UnloadModelCollection, call it
+    eng->statics.modelCollections[i].countModels = 0;
+    eng->statics.collisionCollections[i].countModels = 0;
+    eng->statics.hitboxCollections[i].countModels = 0;
+  }
+
+  // -------------------------
+  // Reset ECS entities
+  // -------------------------
+  eng->em.count = 0;
+  memset(eng->em.alive, 0, sizeof(eng->em.alive));
+  memset(eng->em.masks, 0, sizeof(eng->em.masks));
+
+  // free + recreate component store (since you register components in
+  // InitGameDuel)
+  FreeActorDynamicData(eng);
+
+  // -------------------------
+  // Clear grid contents (keep allocation)
+  // -------------------------
+  ClearGrid(&gs->grid);
+}
+
+void StartGameDuel(GameState_t *gs, Engine_t *eng) {
+  // re-register components (same as your InitGameDuel)
+  eng->actors.componentStore =
+      malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+  memset(eng->actors.componentStore, 0,
+         sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+
+  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_prevPositions =
+      registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_weaponCount = registerComponent(&eng->actors, sizeof(int));
+  gs->compReg.cid_weaponDamage = registerComponent(&eng->actors, sizeof(int *));
+  gs->compReg.cid_behavior =
+      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
+  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
+  gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
+
+  float cellSize = GRID_CELL_SIZE;
+  ClearGrid(&gs->grid);
+
+  CreateSkybox(eng, (Vector3){0, 0, 0});
+
+  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 0.0f};
+  playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
+                                                playerStartPos.z);
+  gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
+
+  float staticsAreaSideWidth = 200;
+  // create a bunch of simple houses/walls
+  int numStatics = 10;
+  for (int i = 0; i < numStatics; i++) {
+    float width = GetRandomValue(20, 80);
+    float height = GetRandomValue(15, 120);
+    float depth = GetRandomValue(30, 100);
+
+    float x = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
+              TERRAIN_SCALE;
+    float z = GetRandomValue(-staticsAreaSideWidth, staticsAreaSideWidth) *
+              TERRAIN_SCALE;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255), 255};
+
+    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
+  }
+
+  float tanksAreaSideWidth = 300;
+  // create a bunch of simple houses/walls
+  int numTanks = 0;
+  for (int i = 0; i < numTanks; i++) {
+    float width = GetRandomValue(20, 80);
+    float height = GetRandomValue(15, 120);
+    float depth = GetRandomValue(30, 100);
+
+    float x =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float z =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255), 255};
+
+    CreateTank(eng, gs->compReg, (Vector3){x, y, z});
+  }
+
+  int numHarassers = 1;
+  for (int i = 0; i < numHarassers; i++) {
+    float width = GetRandomValue(20, 80);
+    float height = GetRandomValue(15, 120);
+    float depth = GetRandomValue(30, 100);
+
+    float x =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float z =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255), 255};
+
+    // CreateHarasser(eng, gs->compReg, (Vector3){x, y, z});
+    CreateTankAlpha(eng, gs->compReg, (Vector3){x, y, z});
+  }
+
+  // ensure rayCounts initialized for any entities that weren't touched
+  for (int i = 0; i < eng->em.count; i++) {
+    if (eng->actors.rayCounts[i] == 0)
+      eng->actors.rayCounts[i] = 0;
+  }
+
+  // Initialize projectile pool
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    eng->projectiles.active[i] = false;
+    eng->projectiles.positions[i] = Vector3Zero();
+    eng->projectiles.velocities[i] = Vector3Zero();
+    eng->projectiles.lifetimes[i] = 0.0f;
+    eng->projectiles.radii[i] = 1.0f; // default bullet size
+    eng->projectiles.owners[i] = -1;
+    eng->projectiles.types[i] = -1;
+  }
+
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    eng->particles.active[i] = false;
+    eng->particles.lifetimes[i] = 0;
+    eng->particles.positions[i] = Vector3Zero();
+    eng->particles.types[i] = -1;
+  }
+
+  PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
+}
+
 // -----------------------------------------------
 // InitGame: orchestrates initialization
 // -----------------------------------------------
-
 GameState_t InitGameDuel(Engine_t *eng) {
 
   GameState_t *gs = (GameState_t *)malloc(sizeof(GameState_t));

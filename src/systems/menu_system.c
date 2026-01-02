@@ -19,11 +19,12 @@ void MainMenuSystem(GameState_t *gs, Engine_t *eng) {
 
   // Check for click
   if (hovering && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-    InitGameDuel(eng);
-    gs->state = STATE_INLEVEL;
+    ResetGameDuel(gs, eng);
+    StartGameDuel(gs, eng);
     TriggerMessage(
         gs, "Welcome to the survival mode\nsurvive as many waves as possible");
     DisableCursor();
+    gs->state = STATE_INLEVEL;
   }
 
   EndDrawing();
