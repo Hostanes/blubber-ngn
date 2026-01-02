@@ -327,7 +327,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   // Movement keys (NOT heat-gated)
   // -----------------------------
   if (!controlsLocked) {
-    float totalSpeedMult = isSprinting ? 1.5f : 1.0f;
+    float totalSpeedMult = isSprinting ? 2.5f : 1.0f;
     float forwardSpeedMult = 5.0f * totalSpeedMult;
     float backwardSpeedMult = 5.0f * totalSpeedMult;
 

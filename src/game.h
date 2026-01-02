@@ -3,6 +3,7 @@
 
 #pragma once
 #include "engine.h"
+#include "engine_components.h"
 #include "raylib.h"
 #include <math.h>
 #include <stdbool.h>
@@ -264,7 +265,7 @@ static inline void UpdateEntityInGrid(GameState_t *gs, Engine_t *eng,
   int idx = GetEntityIndex(e);
   EntityType_t type = eng->actors.types[idx];
 
-  if (type != ENTITY_PLAYER && type != ENTITY_MECH && type != ENTITY_TANK)
+  if (type != ENTITY_PLAYER && type != ENTITY_HARASSER && type != ENTITY_TANK)
     return;
 
   Vector3 *prevPos =
@@ -279,11 +280,3 @@ static inline void UpdateEntityInGrid(GameState_t *gs, Engine_t *eng,
 
   prevPos = currPos;
 }
-
-//----------------------------------------
-// Iterate over entities in a cell
-//----------------------------------------
-#define FOR_EACH_ENTITY_IN_CELL(cell, entityVar)                               \
-  for (int _i = 0;                                                             \
-       _i < (cell)->count && (((entityVar) = (cell)->entities[_i]) || 1);      \
-       _i++)

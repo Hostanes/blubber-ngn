@@ -209,23 +209,6 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     // TERRAIN COLLISION (swept)
     //------------------------------
     float terrainY = GetTerrainHeightAtXZ(&gs->terrain, nextPos.x, nextPos.z);
-
-    if (terrainY >= nextPos.y) {
-      int pType = eng->projectiles.types[i];
-      entity_t owner = eng->projectiles.owners[i];
-
-      // Explosive types spawn explosion, otherwise dust
-      ExplosionDef def = GetExplosionDef(pType);
-      if (def.radius > 0.0f) {
-        SpawnExplosion(gs, eng, soundSys, prevPos, pType, owner);
-      } else {
-        SpawnDust(eng, prevPos);
-      }
-
-      eng->projectiles.active[i] = false;
-      continue;
-    }
-
     //------------------------------
     // GRID CELL COORDS
     //------------------------------
@@ -358,6 +341,22 @@ void UpdateProjectiles(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
           }
         }
       }
+    }
+
+    if (terrainY >= nextPos.y) {
+      int pType = eng->projectiles.types[i];
+      entity_t owner = eng->projectiles.owners[i];
+
+      // Explosive types spawn explosion, otherwise dust
+      ExplosionDef def = GetExplosionDef(pType);
+      if (def.radius > 0.0f) {
+        SpawnExplosion(gs, eng, soundSys, prevPos, pType, owner);
+      } else {
+        SpawnDust(eng, prevPos);
+      }
+
+      eng->projectiles.active[i] = false;
+      continue;
     }
 
   next_projectile:;

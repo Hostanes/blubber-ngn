@@ -114,33 +114,32 @@ void ApplyTerrainCollision(Engine_t *eng, GameState_t *gs, Terrain_t *terrain,
 //----------------------------------------
 // Update actor position with gravity, damping
 //----------------------------------------
+
 static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int entityId,
                                 float dt) {
-  // --- Lookup dynamic components ---
   Vector3 *pos = (Vector3 *)getComponent(&eng->actors, entityId,
                                          gs->compReg.cid_Positions);
   Vector3 *vel = (Vector3 *)getComponent(&eng->actors, entityId,
                                          gs->compReg.cid_velocities);
   Vector3 *prev = (Vector3 *)getComponent(&eng->actors, entityId,
                                           gs->compReg.cid_prevPositions);
-
-  // Safety (during migration) — skip if not yet migrated
   if (!pos || !vel || !prev)
     return;
 
-  // --- Store previous position ---
   *prev = *pos;
 
-  // --- Apply gravity if the entity has the C_GRAVITY flag ---
-  if (eng->em.masks[entityId] & C_GRAVITY) {
-    // pos += vel * dt
-    *pos = Vector3Add(*pos, Vector3Scale(*vel, dt));
+  // integrate horizontal motion
+  pos->x += vel->x * dt;
+  pos->z += vel->z * dt;
 
-    // Clamp to terrain and apply vertical collision
+  if (eng->em.masks[entityId] & C_GRAVITY) {
+    pos->y += vel->y * dt;
     ApplyTerrainCollision(eng, gs, &gs->terrain, entityId, dt);
+  } else {
+    pos->y += vel->y * dt;
   }
 
-  // --- Horizontal damping ---
+  // Damping
   vel->x *= 0.65f;
   vel->z *= 0.65f;
 }
@@ -326,16 +325,14 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                    float dt) {
   int emCount = eng->em.count;
 
-  // ===== Update projectiles =====
-  UpdateProjectiles(gs, eng, soundSys, dt);
-
   // ===== Update actors =====
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
 
     EntityType_t type = eng->actors.types[i];
-    if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK))
+    if (!(type == ENTITY_PLAYER || type == ENTITY_HARASSER ||
+          type == ENTITY_TANK))
       continue;
 
     UpdateActorPosition(eng, gs, i, dt);
@@ -346,10 +343,13 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                        (*(Vector3 *)getComponent(&eng->actors, i,
                                                  gs->compReg.cid_Positions)))) {
       // printf("updating entity position\n");
+      // printf("grid update for %d\n", i);
       UpdateEntityInGrid(gs, eng, MakeEntityID(ET_ACTOR, i));
     }
   }
 
+  // ===== Update projectiles =====
+  UpdateProjectiles(gs, eng, soundSys, dt);
   // ===== Resolve collisions =====
   ResolveActorCollisions(gs, eng);
   ResolveActorStaticCollisions(gs, eng);

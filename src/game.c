@@ -446,7 +446,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
     eng->actors.cooldowns[e][w] = 0.2f;
 
   // Weapon 0: left-hand gun (shots/sec)
-  eng->actors.firerate[e][0] = 0.5f; // your existing behavior
+  eng->actors.firerate[e][0] = 0.2f;
 
   // Weapon 1: right-hand cannon (long reload)
   eng->actors.firerate[e][1] = 2.5f;
@@ -496,18 +496,18 @@ static int CreateSkybox(Engine_t *eng, Vector3 pos) {
 }
 
 static int CreateStatic(Engine_t *eng, Vector3 pos, Vector3 size, Color c) {
-  // find open slot
   int i = 0;
-  while (i < MAX_ENTITIES && eng->statics.modelCollections[i].countModels != 0)
+  while (i < MAX_STATICS && eng->statics.modelCollections[i].countModels != 0)
     i++;
 
-  if (i >= MAX_ENTITIES)
+  if (i >= MAX_STATICS)
     return -1; // no room
 
   eng->statics.positions[i] = pos;
 
   ModelCollection_t *mc = &eng->statics.modelCollections[i];
   *mc = InitModelCollection(1);
+  mc->isActive[0] = true;
 
   Mesh cube = GenMeshCube(size.x, size.y, size.z);
   mc->models[0] = LoadModelFromMesh(cube);
@@ -519,6 +519,8 @@ static int CreateStatic(Engine_t *eng, Vector3 pos, Vector3 size, Color c) {
   // collision too
   ModelCollection_t *col = &eng->statics.collisionCollections[i];
   *col = InitModelCollection(1);
+  col->isActive[0] = true;
+
   col->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
   col->offsets[0] = Vector3Zero();
   col->parentIds[0] = -1;
@@ -526,6 +528,8 @@ static int CreateStatic(Engine_t *eng, Vector3 pos, Vector3 size, Color c) {
   // hitbox too
   ModelCollection_t *hb = &eng->statics.hitboxCollections[i];
   *hb = InitModelCollection(1);
+  hb->isActive[0] = true;
+
   hb->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
@@ -931,7 +935,7 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   // mc->models[2] = LoadModel("assets/models/enemy-1-cyclops-gun.glb");
   mc->orientations[2] = (Orientation){0, 0, 0};
   mc->offsets[2] = (Vector3){0, 1, 3}; // Forward from turret center
-  mc->parentIds[2] = 1;                 // Parented to turret
+  mc->parentIds[2] = 1;                // Parented to turret
 
   mc->rotLocks[2][0] = true;
   mc->rotLocks[2][1] = true;
@@ -956,6 +960,102 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   // ray: attach to barrel (model 1) muzzle
   eng->actors.rayCounts[e] = 0;
   AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
+
+  // cooldown & firerate
+  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+
+  float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 5.4f;
+  eng->actors.cooldowns[e][0] = 1.4f + r;
+  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors.firerate[e][0] = 5.5f;
+  eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors.muzzleVelocities[e][0] = 2500.0f;
+  eng->actors.dropRates[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors.dropRates[e][0] = 20.0f;
+
+  entity_t id = MakeEntityID(ET_ACTOR, e);
+  return id;
+}
+
+static entity_t CreateHarasser(Engine_t *eng, ActorComponentRegistry_t compReg,
+                               Vector3 pos) {
+  entity_t e = eng->em.count++;
+  eng->em.alive[e] = 1;
+  eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
+                     C_AIRHARASSER_MOVEMENT | C_COOLDOWN_TAG | C_RAYCAST;
+
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+                        &pos);
+  Vector3 vel = {0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+                        &vel);
+
+  Vector3 moveTarget = {0, 0, 0};
+  Vector3 aimTarget = {0, 0, 0};
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimTarget,
+                        &aimTarget);
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTarget,
+                        &moveTarget);
+  float timer = 0;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+                        &timer);
+  int moveBehaviour = 1;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+                        &moveBehaviour);
+
+  float maxAimError = 0.5f; // Aim error radius in radians
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
+                        &maxAimError);
+
+  int weaponCount = 1;
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+                        &weaponCount);
+
+  eng->actors.types[e] = ENTITY_HARASSER;
+  eng->actors.hitPoints[e] = 20.0f;
+
+  // visual models (base + turret + barrel)
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  *mc = InitModelCollection(2); // Now 3 models!
+
+  // Model 0: Tank base (body) - rotates with movement
+  // mc->models[0] = LoadModelFromMesh(GenMeshCylinder(3.0f, 6.0f, 8));
+  mc->models[0] = LoadModel("assets/models/enemy1-barrel-fuselage.glb");
+  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLACK;
+  mc->offsets[0] = (Vector3){0, -4, 0}; // Center at y=3 (half height)
+  mc->parentIds[0] = -1;                // No parent
+
+  // Model 1: Turret (rotates horizontally/yaw only)
+  // mc->models[1] = LoadModelFromMesh(GenMeshCylinder(2.5f, 3.0f, 8));
+  mc->models[1] = LoadModel("assets/models/enemy1-barrel-gun.glb");
+  mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = GRAY;
+  mc->offsets[1] = (Vector3){0, -1.5, 15};
+  mc->parentIds[1] = 0; // Parented to base
+
+  mc->rotLocks[1][0] = true;
+  mc->rotLocks[1][1] = true;
+  mc->rotLocks[1][2] = true;
+
+  mc->orientations[0].yaw = 0;
+  mc->orientations[0].pitch = 0;
+  mc->orientations[0].roll = 0;
+
+  // Turret: starts aligned with base
+  mc->orientations[1].yaw = PI;
+  mc->orientations[1].pitch = 0;
+  mc->orientations[1].roll = 0;
+
+  // hitbox
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  *hb = InitModelCollection(1);
+  hb->models[0] = LoadModelFromMesh(GenMeshCube(25, 20, 25));
+  hb->offsets[0] = (Vector3){0, 0, 0};
+  hb->parentIds[0] = -1;
+
+  // ray: attach to barrel (model 1) muzzle
+  eng->actors.rayCounts[e] = 0;
+  AddRayToEntity(eng, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
   eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
@@ -1117,7 +1217,9 @@ GameState_t InitGameDuel(Engine_t *eng) {
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
 
-  int staticLastID = -1;
+  // playerStartPos.y += 10;
+  // playerStartPos.x -= 100;
+  CreateHarasser(eng, gs->compReg, playerStartPos);
 
   float staticsAreaSideWidth = 200;
   // create a bunch of simple houses/walls
@@ -1137,14 +1239,12 @@ GameState_t InitGameDuel(Engine_t *eng) {
                       (unsigned char)GetRandomValue(100, 255),
                       (unsigned char)GetRandomValue(100, 255), 255};
 
-    // CreateTank(eng, gs->compReg, (Vector3){x, y, z});
-    staticLastID = CreateStatic(eng, (Vector3){x, y, z},
-                                (Vector3){width, height, depth}, c);
+    CreateStatic(eng, (Vector3){x, y, z}, (Vector3){width, height, depth}, c);
   }
 
   float tanksAreaSideWidth = 300;
   // create a bunch of simple houses/walls
-  int numTanks = 20;
+  int numTanks = 10;
   for (int i = 0; i < numTanks; i++) {
     float width = GetRandomValue(20, 80);
     float height = GetRandomValue(15, 120);
@@ -1161,6 +1261,25 @@ GameState_t InitGameDuel(Engine_t *eng) {
                       (unsigned char)GetRandomValue(100, 255), 255};
 
     CreateTank(eng, gs->compReg, (Vector3){x, y, z});
+  }
+
+  int numHarassers = 2;
+  for (int i = 0; i < numHarassers; i++) {
+    float width = GetRandomValue(20, 80);
+    float height = GetRandomValue(15, 120);
+    float depth = GetRandomValue(30, 100);
+
+    float x =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float z =
+        GetRandomValue(-tanksAreaSideWidth, tanksAreaSideWidth) * TERRAIN_SCALE;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+    Color c = (Color){(unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255),
+                      (unsigned char)GetRandomValue(100, 255), 255};
+
+    CreateHarasser(eng, gs->compReg, (Vector3){x, y, z});
   }
 
   // ensure rayCounts initialized for any entities that weren't touched
@@ -1189,8 +1308,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
 
-  // PrintGrid(&gs->grid);
-  // printf("last static ID %d\n", GetEntityIndex(staticLastID));
+  PrintGrid(&gs->grid);
 
   return *gs;
 }

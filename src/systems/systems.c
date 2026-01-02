@@ -67,6 +67,7 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
     UpdateTankAimingAndShooting(gs, eng, soundSys, dt);
     UpdateTankTurretAiming(gs, eng, soundSys, dt);
+    UpdateHarasserAimingAndShooting(gs, eng, soundSys, dt);
 
     PhysicsSystem(gs, eng, soundSys, dt);
     UpdateParticles(eng, dt);

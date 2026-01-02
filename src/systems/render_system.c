@@ -63,7 +63,7 @@ static void UpdateModelCollectionWorldTransforms(ModelCollection_t *mc,
 static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
                                 Color tint, bool wireframe, bool drawOutline,
                                 Shader outlineShader, float outlineSize,
-                                Color outlineColor) {
+                                Color outlineColor, int entityId) {
   int numModels = mc->countModels;
 
   // shader uniform locations (cached static)
@@ -140,7 +140,10 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
     // ---------------------------
     // OUTLINE PASS (inverse hull)
     // ---------------------------
-    if (drawOutline && outlineShader.id > 0 && !wireframe) {
+    if (drawOutline &&
+        (entityId != 0 || m != 1) && // skip only when entityId==0 AND m==1
+        outlineShader.id > 0 && !wireframe) {
+
       float s = outlineSize;
       Vector4 col = (Vector4){
           outlineColor.r / 255.0f,
@@ -155,9 +158,8 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
         SetShaderValue(outlineShader, locOutlineColor, &col,
                        SHADER_UNIFORM_VEC4);
 
-      // Save original shaders per material
       int matCount = mc->models[m].materialCount;
-      Shader saved[16]; // if you have more than 16 mats, bump this or malloc
+      Shader saved[16];
       if (matCount > 16)
         matCount = 16;
 
@@ -166,13 +168,11 @@ static void DrawModelCollection(ModelCollection_t *mc, Vector3 entityPos,
         mc->models[m].materials[k].shader = outlineShader;
       }
 
-      // Inverse-hull: draw ONLY backfaces of the expanded mesh
       rlEnableBackfaceCulling();
-      rlSetCullFace(RL_CULL_FACE_FRONT); // <-- key line: cull front faces
+      rlSetCullFace(RL_CULL_FACE_FRONT);
       DrawModel(mc->models[m], (Vector3){0, 0, 0}, 1.0f, WHITE);
-      rlSetCullFace(RL_CULL_FACE_BACK); // restore default
+      rlSetCullFace(RL_CULL_FACE_BACK);
 
-      // Restore original shaders
       for (int k = 0; k < matCount; k++) {
         mc->models[m].materials[k].shader = saved[k];
       }
@@ -461,18 +461,22 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
     // DrawRaycasts(gs, eng);
 
-    bool drawOutline = false;
-    if (i == gs->playerId) {
-      drawOutline = false;
+    Color outlineColor = {173, 7, 1, 255};
+    bool drawOutline = true;
+    float outlineThickness = 0.15;
+    if (eng->em.alive[i]) {
+      outlineColor = (Color){173, 7, 1, 255};
     } else {
-      drawOutline = true;
+      outlineColor = (Color){1, 1, 1, 255};
     }
-
-    Color outlineRed = {173, 7, 1, 255};
+    if (i == gs->playerId) {
+      outlineThickness = 0.05f;
+      outlineColor = (Color){1, 1, 1, 255};
+    }
     // Visual models (solid white)
     DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,
-                        false, drawOutline, gs->outlineShader, 0.15f,
-                        outlineRed);
+                        false, drawOutline, gs->outlineShader, outlineThickness,
+                        outlineColor, i);
 
     // Movement collision boxes (green wireframe)
     // DrawModelCollection(&eng->actors.collisionCollections[i], entityPos,
@@ -485,7 +489,8 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     // }
     // // Hitboxes (red wireframe)
     // DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
-    //                     hitboxColor, true);
+    //                     hitboxColor, true, drawOutline, gs->outlineShader, 0,
+    //                     BLACK, i);
   }
 
   for (int i = 0; i < MAX_STATICS; i++) {
@@ -505,16 +510,18 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
     // Visual models (solid white)
     DrawModelCollection(&eng->statics.modelCollections[i], entityPos, WHITE,
-                        false, true, gs->outlineShader, 0.6f, BLACK);
+                        false, true, gs->outlineShader, 0.6f, BLACK, i);
 
     // Movement collision boxes (green wireframe)
-    DrawModelCollection(&eng->statics.collisionCollections[i], entityPos, GREEN,
-                        true, false, gs->outlineShader, 0.0f, BLACK);
+    DrawModelCollection(&eng->statics.collisionCollections[i], entityPos,
+    GREEN,
+                        true, false, gs->outlineShader, 0.0f, BLACK, -1);
 
     Color hitboxColor = RED;
     // Hitboxes (red wireframe)
     DrawModelCollection(&eng->statics.hitboxCollections[i], entityPos,
-                        hitboxColor, true, false, gs->outlineShader, 0, BLACK);
+                        hitboxColor, true, false, gs->outlineShader, 0,
+                        BLACK, -1);
   }
 
   EndMode3D();

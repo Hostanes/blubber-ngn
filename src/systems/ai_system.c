@@ -9,6 +9,35 @@ static float tankAiAccum = 0.0f;
 #define TANK_AI_HZ 15.0f
 #define TANK_AI_DT (1.0f / TANK_AI_HZ)
 
+typedef enum {
+  AIRH_B1 = 1, // fly to random point near player
+  AIRH_B2 = 2  // pause/aim/wait (shooting later)
+} HarasserAIState;
+
+#define AIRH_MIN_RADIUS 600.0f
+#define AIRH_MAX_RADIUS 1200.0f
+#define AIRH_REACHED_DIST 80.0f
+#define AIRH_B2_DELAY 0.5f
+#define AIRH_B2_COOLDOWN 0.5f
+
+#define AIRH_BURST_SHOTS 6
+#define AIRH_BURST_SPACING 0.12f
+#define AIRH_MOVE_SPEED 500.0f
+#define AIRH_FLY_HEIGHT 200.0f
+
+#define AIRH_REACHED_DIST 80.0f
+
+#define AIRH_B2_WAIT 2.0f // waits in B2 before going back to B1 (shoot later)
+
+static float Rand01(void) { return (float)rand() / (float)RAND_MAX; }
+
+static Vector3 GetRandomPointNearPlayer(Vector3 playerPos, float minR,
+                                        float maxR) {
+  float a = Rand01() * 2.0f * PI;
+  float r = minR + Rand01() * (maxR - minR);
+  return (Vector3){playerPos.x + cosf(a) * r, 0.0f, playerPos.z + sinf(a) * r};
+}
+
 // Returns true if the ray intersects a sphere around the player within maxDist.
 static bool RayAimsAtPlayer(Ray ray, Vector3 playerPos, float playerRadius,
                             float maxDist) {
@@ -136,13 +165,145 @@ static Vector3 GetCirclePointAroundPlayer(Vector3 tankPos, Vector3 playerPos,
   return target;
 }
 
+static void UpdateTankTargetsForEntity(GameState_t *gs, Engine_t *eng, int i,
+                                       Vector3 playerPos, float dt) {
+  uint32_t mask = eng->em.masks[i];
+  if (!(mask & C_TANK_MOVEMENT))
+    return;
+
+  Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *moveTarget =
+      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+  int *state =
+      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+  float *stateTimer =
+      (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
+
+  if (!pos || !moveTarget || !state || !stateTimer)
+    return;
+
+  bool detected = PlayerInDetectionZone(playerPos);
+
+  if (!detected) {
+    *state = TANK_IDLE;
+  } else {
+    if (*state == TANK_IDLE) {
+      *state = TANK_ALERT_CIRCLE;
+      *stateTimer = CHARGE_COOLDOWN;
+    }
+  }
+
+  switch ((TankAIState)(*state)) {
+  case TANK_IDLE: {
+    Vector3 idle = IDLE_POINT;
+    idle.y = 0.0f;
+    *moveTarget = idle;
+    *stateTimer = 0.0f;
+  } break;
+
+  case TANK_ALERT_CIRCLE: {
+    *moveTarget = GetCirclePointAroundPlayer(*pos, playerPos, CIRCLE_RADIUS);
+
+    *stateTimer -= dt;
+    if (*stateTimer <= 0.0f) {
+      *state = TANK_ALERT_CHARGE;
+      *stateTimer = CHARGE_DURATION;
+    }
+  } break;
+
+  case TANK_ALERT_CHARGE: {
+    *moveTarget = GetPointTowardsPlayer(*pos, playerPos, 1000.0f);
+
+    *stateTimer -= dt;
+    if (*stateTimer <= 0.0f) {
+      *state = TANK_ALERT_CIRCLE;
+      *stateTimer = CHARGE_COOLDOWN;
+    }
+  } break;
+  }
+}
+
+static void UpdateHarasserTargetsForEntity(GameState_t *gs, Engine_t *eng,
+                                           int i, Vector3 playerPos, float dt) {
+  uint32_t mask = eng->em.masks[i];
+  if (!(mask & C_AIRHARASSER_MOVEMENT))
+    return;
+
+  Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *moveTarget =
+      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+  Vector3 *aimTarget = getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+  int *state =
+      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+  float *stateTimer =
+      (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
+
+  if (!pos || !moveTarget || !aimTarget || !state || !stateTimer)
+    return;
+
+  // Ensure we stay at flight height (your actual movement system can also
+  // enforce this)
+  pos->y = AIRH_FLY_HEIGHT + playerPos.y;
+
+  // Initialize state if needed
+  if (*state != AIRH_B1 && *state != AIRH_B2) {
+    *state = AIRH_B1;
+    *stateTimer = 0.0f;
+  }
+
+  switch ((HarasserAIState)(*state)) {
+  case AIRH_B1: {
+    bool targetUnset =
+        (fabsf(moveTarget->x) < 0.001f && fabsf(moveTarget->z) < 0.001f);
+
+    float d = DistXZ(*pos, *moveTarget);
+
+    if (targetUnset) {
+      Vector3 t =
+          GetRandomPointNearPlayer(playerPos, AIRH_MIN_RADIUS, AIRH_MAX_RADIUS);
+      t.y = AIRH_FLY_HEIGHT;
+      *moveTarget = t;
+      *aimTarget = *moveTarget; // B1 aims at target
+      break;
+    }
+
+    // Arrived -> go to B2
+    if (d <= AIRH_REACHED_DIST) {
+      *state = AIRH_B2;
+      *stateTimer = AIRH_B2_WAIT; // or AIRH_B2_DELAY
+      // park at current position during B2
+      *moveTarget = (Vector3){pos->x, AIRH_FLY_HEIGHT, pos->z};
+      *aimTarget = playerPos; // B2 aims at player
+      break;
+    }
+
+    // In-flight: aim at move target
+    *aimTarget = *moveTarget;
+  } break;
+
+  case AIRH_B2: {
+    *aimTarget = playerPos;
+    *moveTarget =
+        (Vector3){pos->x, AIRH_FLY_HEIGHT + playerPos.y, pos->z}; // park
+
+    *stateTimer -= dt;
+    if (*stateTimer <= 0.0f) {
+      *state = AIRH_B1;
+      *stateTimer = 0.0f;
+    }
+  } break;
+  }
+
+  // printf("H state=%d pos=(%.1f %.1f %.1f) target=(%.1f %.1f %.1f)\n", *state,
+  //        pos->x, pos->y, pos->z, moveTarget->x, moveTarget->y,
+  //        moveTarget->z);
+}
+
 void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
                         float dt) {
-
   tankAiAccum += dt;
   if (tankAiAccum < TANK_AI_DT)
     return;
-
   tankAiAccum -= TANK_AI_DT;
 
   int emCount = eng->em.count;
@@ -154,77 +315,178 @@ void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (eng->actors.types[i] != ENTITY_TANK)
-      continue;
 
-    uint32_t mask = eng->em.masks[i];
-    if (!(mask & C_TANK_MOVEMENT))
-      continue;
+    switch (eng->actors.types[i]) {
+    case ENTITY_TANK:
+      UpdateTankTargetsForEntity(gs, eng, i, *playerPos, dt);
+      break;
 
-    Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
-    Vector3 *moveTarget =
-        getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
-    int *state =
-        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+    case ENTITY_HARASSER:
+      // printf("updating harasser targets\n");
+      UpdateHarasserTargetsForEntity(gs, eng, i, *playerPos, dt);
+      break;
 
-    float *stateTimer =
-        (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
-    // If you add a dedicated ai timer component, use that instead.
-
-    if (!pos || !moveTarget || !state || !stateTimer)
-      continue;
-
-    bool detected = PlayerInDetectionZone(*playerPos);
-
-    // --- state transitions based on detection ---
-    if (!detected) {
-      // go idle
-      // printf("not detected: IDLING\n");
-      *state = TANK_IDLE;
-    } else {
-      if (*state == TANK_IDLE) {
-        // printf("detected: circling\n");
-        *state = TANK_ALERT_CIRCLE;
-        *stateTimer = CHARGE_COOLDOWN; // time until first charge
-      }
+    default:
+      break;
     }
+  }
+}
 
-    // printf("state = %d\n", (int)(*state));
-    // --- state behavior ---
-    switch ((TankAIState)(*state)) {
-    case TANK_IDLE: {
-      // move to fixed idle point
-      Vector3 idle = IDLE_POINT;
-      idle.y = 0.0f;
-      *moveTarget = idle;
+static void UpdateTankVelocityForEntity(GameState_t *gs, Engine_t *eng, int i,
+                                        float dt) {
+  uint32_t mask = eng->em.masks[i];
+  if (!(mask & C_TANK_MOVEMENT))
+    return;
 
-      // keep timer reset-ish
-      *stateTimer = 0.0f;
-    } break;
+  Vector3 *position = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *velocity = getComponent(&eng->actors, i, gs->compReg.cid_velocities);
+  Vector3 *moveTarget =
+      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+  int *moveBehaviour =
+      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+  float moveSpeed = 50;
 
-    case TANK_ALERT_CIRCLE: {
+  if (!position || !velocity || !moveTarget || !moveBehaviour)
+    return;
 
-      *moveTarget = GetCirclePointAroundPlayer(*pos, *playerPos, CIRCLE_RADIUS);
+  position->y = GetTerrainHeightAtXZ(&gs->terrain, position->x, position->z);
 
-      // countdown to next charge
-      *stateTimer -= dt;
-      if (*stateTimer <= 0.0f) {
-        *state = TANK_ALERT_CHARGE;
-        *stateTimer = CHARGE_DURATION;
-      }
-    } break;
+  Vector3 direction = {moveTarget->x - position->x, 0.0f,
+                       moveTarget->z - position->z};
 
-    case TANK_ALERT_CHARGE: {
-      // run straight at player
-      *moveTarget = GetPointTowardsPlayer(*pos, *playerPos, 1000.0f);
+  ModelCollection_t *mc = &eng->actors.modelCollections[i];
 
-      *stateTimer -= dt;
-      if (*stateTimer <= 0.0f) {
-        *state = TANK_ALERT_CIRCLE;
-        *stateTimer = CHARGE_COOLDOWN;
-      }
-    } break;
-    }
+  float targetYaw = atan2f(direction.x, direction.z);
+  float currentYaw = mc->localRotationOffset[0].yaw;
+
+  float turnSpeed = 5.0f;
+  float maxTurn = turnSpeed * dt;
+
+  float yawDiff = targetYaw - currentYaw;
+  while (yawDiff > PI)
+    yawDiff -= 2.0f * PI;
+  while (yawDiff < -PI)
+    yawDiff += 2.0f * PI;
+
+  if (yawDiff > maxTurn)
+    yawDiff = maxTurn;
+  if (yawDiff < -maxTurn)
+    yawDiff = -maxTurn;
+
+  mc->localRotationOffset[0].yaw = currentYaw + yawDiff;
+
+  float distanceSquared = direction.x * direction.x + direction.z * direction.z;
+
+  float adjustedMoveSpeed = moveSpeed;
+  if (*moveBehaviour == TANK_ALERT_CHARGE)
+    adjustedMoveSpeed = moveSpeed * 1.5f;
+
+  if (distanceSquared > 1.0f) {
+    float distance = sqrtf(distanceSquared);
+    direction.x /= distance;
+    direction.z /= distance;
+
+    velocity->x = direction.x * adjustedMoveSpeed;
+    velocity->z = direction.z * adjustedMoveSpeed;
+  } else {
+    velocity->x = 0.0f;
+    velocity->z = 0.0f;
+  }
+  velocity->y = 0.0f;
+}
+
+#define AIRH_TURN_SPEED 6.5f
+
+static void UpdateHarasserVelocityForEntity(GameState_t *gs, Engine_t *eng,
+                                            int i, Vector3 playerPos,
+                                            float dt) {
+  uint32_t mask = eng->em.masks[i];
+  if (!(mask & C_AIRHARASSER_MOVEMENT))
+    return;
+
+  Vector3 *position = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *velocity = getComponent(&eng->actors, i, gs->compReg.cid_velocities);
+  Vector3 *moveTarget =
+      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+  int *state =
+      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+
+  if (!position || !velocity || !moveTarget || !state)
+    return;
+
+  // Keep flight height (pick one convention and use it everywhere)
+  position->y = AIRH_FLY_HEIGHT + playerPos.y;
+
+  ModelCollection_t *mc = &eng->actors.modelCollections[i];
+
+  // Choose what to face based on state
+  Vector3 facePoint = (*state == AIRH_B2) ? playerPos : *moveTarget;
+  facePoint.y += 12;
+  int rayIdx = 0;
+
+  Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+  rc->ray.position = *position;
+  if (rc->parentModelIndex == 1) {
+    Vector3 dir =
+        Vector3Normalize(Vector3Subtract(facePoint, rc->ray.position));
+    rc->ray.direction = dir;
+    rc->active = true;
+  }
+
+  // --- AIM (same style as tank) ---
+  Vector3 aimDir = {facePoint.x - position->x, 0.0f, facePoint.z - position->z};
+
+  float aimLen2 = aimDir.x * aimDir.x + aimDir.z * aimDir.z;
+  if (aimLen2 > 0.0001f) {
+    float targetYaw = atan2f(aimDir.x, aimDir.z);
+    float currentYaw = mc->localRotationOffset[0].yaw;
+
+    float turnSpeed = AIRH_TURN_SPEED; // e.g. 6.5f
+    float maxTurn = turnSpeed * dt;
+
+    float yawDiff = targetYaw - currentYaw;
+    while (yawDiff > PI)
+      yawDiff -= 2.0f * PI;
+    while (yawDiff < -PI)
+      yawDiff += 2.0f * PI;
+
+    if (yawDiff > maxTurn)
+      yawDiff = maxTurn;
+    if (yawDiff < -maxTurn)
+      yawDiff = -maxTurn;
+
+    mc->localRotationOffset[0].yaw = currentYaw + yawDiff;
+
+    // If your renderer uses orientations instead, uncomment:
+    // mc->orientations[0].yaw = mc->localRotationOffset[0].yaw;
+  }
+
+  // --- MOVE ---
+  if (*state == AIRH_B2) {
+    // Pause while aiming at player (shooting handled elsewhere)
+    velocity->x = 0.0f;
+    velocity->y = 0.0f;
+    velocity->z = 0.0f;
+    return;
+  }
+
+  // Behaviour 1: move toward moveTarget
+  Vector3 moveDir = {moveTarget->x - position->x, 0.0f,
+                     moveTarget->z - position->z};
+  float d2 = moveDir.x * moveDir.x + moveDir.z * moveDir.z;
+
+  if (d2 > 1.0f) {
+    float d = sqrtf(d2);
+    moveDir.x /= d;
+    moveDir.z /= d;
+
+    velocity->x = moveDir.x * AIRH_MOVE_SPEED; // e.g. 140.0f
+    velocity->y = 0.0f;
+    velocity->z = moveDir.z * AIRH_MOVE_SPEED;
+  } else {
+    velocity->x = 0.0f;
+    velocity->y = 0.0f;
+    velocity->z = 0.0f;
   }
 }
 
@@ -232,87 +494,27 @@ void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
                            SoundSystem_t *soundSys, float dt) {
   int emCount = eng->em.count;
 
+  Vector3 *playerPos =
+      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
 
-    EntityType_t type = eng->actors.types[i];
-    if (!(type == ENTITY_MECH || type == ENTITY_TURRET || type == ENTITY_TANK))
-      continue;
+    switch (eng->actors.types[i]) {
+    case ENTITY_TANK:
+      UpdateTankVelocityForEntity(gs, eng, i, dt);
+      break;
 
-    uint32_t mask = eng->em.masks[i];
+    case ENTITY_HARASSER:
+      if (playerPos)
+        UpdateHarasserVelocityForEntity(gs, eng, i, *playerPos, dt);
+      break;
 
-    // Only update velocity for entities that can move
-    if (mask & C_TANK_MOVEMENT) {
-      // Get required components
-      Vector3 *position =
-          getComponent(&eng->actors, i, gs->compReg.cid_Positions);
-      Vector3 *velocity =
-          getComponent(&eng->actors, i, gs->compReg.cid_velocities);
-      Vector3 *moveTarget =
-          getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
-      int *moveBehaviour =
-          (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
-      float moveSpeed = 50;
-
-      position->y =
-          GetTerrainHeightAtXZ(&gs->terrain, position->x, position->z);
-      if (!position || !velocity || !moveTarget || !moveBehaviour || !moveSpeed)
-        continue;
-
-      Vector3 direction;
-      direction.x = moveTarget->x - position->x;
-      direction.y = 0.0f; // only moving in horizontal plane
-      direction.z = moveTarget->z - position->z;
-
-      ModelCollection_t *mc = &eng->actors.modelCollections[i];
-
-      float targetYaw = atan2f(direction.x, direction.z);
-      float currentYaw = mc->localRotationOffset[0].yaw;
-
-      // how fast the hull can rotate (radians per second)
-      float turnSpeed = 5.0f; // tweak this
-      float maxTurn = turnSpeed * dt;
-
-      // shortest angle difference [-PI, PI]
-      float yawDiff = targetYaw - currentYaw;
-      while (yawDiff > PI)
-        yawDiff -= 2.0f * PI;
-      while (yawDiff < -PI)
-        yawDiff += 2.0f * PI;
-
-      // clamp rotation amount this frame
-      if (yawDiff > maxTurn)
-        yawDiff = maxTurn;
-      if (yawDiff < -maxTurn)
-        yawDiff = -maxTurn;
-
-      // apply smooth rotation
-      mc->localRotationOffset[0].yaw = currentYaw + yawDiff;
-
-      // Normalize the direction (if not zero)
-      float distanceSquared =
-          direction.x * direction.x + direction.z * direction.z;
-
-      float adjustedMoveSpeed = moveSpeed;
-      if (*moveBehaviour == TANK_ALERT_CHARGE) {
-        adjustedMoveSpeed = moveSpeed * 1.5f; // 50% faster for charge/retreat
-      }
-
-      // Only move if we're not already at the target
-      if (distanceSquared > 1.0f) { // Small threshold
-        float distance = sqrtf(distanceSquared);
-        direction.x /= distance;
-        direction.z /= distance;
-
-        velocity->x = direction.x * adjustedMoveSpeed;
-        velocity->y = 0.0f;
-        velocity->z = direction.z * adjustedMoveSpeed;
-      } else {
-        velocity->x = 0.0f;
-        velocity->z = 0.0f;
-      }
-      velocity->y = 0.0f;
+    case ENTITY_MECH:
+    case ENTITY_TURRET:
+    default:
+      break;
     }
   }
 }
@@ -450,6 +652,212 @@ Vector3 GetTankForwardDirection(int tankId, Engine_t *eng) {
   forward.y = 0;
 
   return Vector3Normalize(forward);
+}
+
+static float Rand01f(void) {
+  return (float)GetRandomValue(0, 10000) / 10000.0f;
+}
+static float RandSigned1f(void) { return Rand01f() * 2.0f - 1.0f; }
+
+// Rotate a direction by yaw (around Y) and pitch (around X in local space)
+static Vector3 ApplyYawPitchToDir(Vector3 dir, float yaw, float pitch) {
+  // yaw around Y
+  float cy = cosf(yaw), sy = sinf(yaw);
+  Vector3 d1 =
+      (Vector3){dir.x * cy + dir.z * sy, dir.y, -dir.x * sy + dir.z * cy};
+
+  // pitch around X
+  float cp = cosf(pitch), sp = sinf(pitch);
+  Vector3 d2 = (Vector3){d1.x, d1.y * cp - d1.z * sp, d1.y * sp + d1.z * cp};
+
+  return Vector3Normalize(d2);
+}
+
+void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
+                                     SoundSystem_t *soundSys, float dt) {
+  int emCount = eng->em.count;
+
+  Vector3 *playerPos =
+      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+  if (!playerPos)
+    return;
+
+  // per-entity burst state
+  static int phase[MAX_ENTITIES] = {
+      0}; // 0=idle/not in B2, 1=prewait, 2=bursting, 3=postwait
+  static float phaseT[MAX_ENTITIES] = {0};
+  static int shotsLeft[MAX_ENTITIES] = {0};
+  static float spacingT[MAX_ENTITIES] = {0};
+  static int prevState[MAX_ENTITIES] = {0}; // to detect entering B2
+
+  for (int i = 0; i < emCount; i++) {
+    if (!eng->em.alive[i])
+      continue;
+    if (eng->actors.types[i] != ENTITY_HARASSER)
+      continue;
+
+    uint32_t mask = eng->em.masks[i];
+    if (!(mask & C_RAYCAST) || !(mask & C_COOLDOWN_TAG))
+      continue;
+
+    int *state =
+        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+    if (!state)
+      continue;
+
+    // Detect entering/leaving B2
+    if (*state != AIRH_B2) {
+      phase[i] = 0;
+      phaseT[i] = 0.0f;
+      shotsLeft[i] = 0;
+      spacingT[i] = 0.0f;
+      prevState[i] = *state;
+      continue;
+    }
+
+    // Entered B2 this frame -> arm sequence
+    if (prevState[i] != AIRH_B2) {
+      phase[i] = 1; // prewait
+      phaseT[i] = AIRH_B2_DELAY;
+      shotsLeft[i] = AIRH_BURST_SHOTS;
+      spacingT[i] = 0.0f;
+    }
+    prevState[i] = *state;
+
+    // Find the gun ray (parentModelIndex == 1 for harasser)
+    int gunRayIdx = -1;
+    for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
+      Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+      if (rc->active && rc->parentModelIndex == 1) {
+        gunRayIdx = rayIdx;
+        break;
+      }
+    }
+    if (gunRayIdx < 0)
+      continue;
+
+    // Cooldown gating (you can also remove this entirely since we have
+    // spacingT)
+    float *cooldown = eng->actors.cooldowns[i];
+    if (!cooldown)
+      continue;
+
+    // Keep cooldown ticking down
+    if (*cooldown > 0.0f) {
+      *cooldown -= dt;
+      continue;
+    }
+
+    // ---- Phase machine ----
+
+    // Phase 1: pre-burst waiting
+    if (phase[i] == 1) {
+      phaseT[i] -= dt;
+      if (phaseT[i] > 0.0f) {
+        *cooldown = 0.01f;
+        continue;
+      }
+      phase[i] = 2;       // start bursting
+      spacingT[i] = 0.0f; // allow immediate first shot
+    }
+
+    // Phase 2: bursting
+    if (phase[i] == 2) {
+      if (shotsLeft[i] <= 0) {
+        // burst finished -> post wait
+        phase[i] = 3;
+        phaseT[i] = AIRH_B2_COOLDOWN;
+        *cooldown = 0.01f;
+        continue;
+      }
+
+      spacingT[i] -= dt;
+      if (spacingT[i] > 0.0f) {
+        *cooldown = 0.01f;
+        continue;
+      }
+
+      // FIRE one bullet
+      Raycast_t *rc = &eng->actors.raycasts[i][gunRayIdx];
+
+      Vector3 toPlayer = Vector3Subtract(*playerPos, rc->ray.position);
+      float dist = sqrtf(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y +
+                         toPlayer.z * toPlayer.z);
+      if (dist < 0.001f)
+        dist = 0.001f;
+
+      // Perfect aim direction (used for gating)
+      Vector3 perfectDir = Vector3Scale(toPlayer, 1.0f / dist);
+
+      // Gate using perfect aim so spread doesn’t prevent firing
+      if (!BarrelAimingAtPlayer(rc->ray.position, perfectDir, *playerPos,
+                                12.0f)) {
+        *cooldown = 0.01f;
+        continue;
+      }
+
+      // --- Apply slight spread for the actual shot ---
+      // Base spread in radians (e.g. ~0.75 degrees)
+      float baseSpread = 0.005f;
+
+      // Optional: increase a bit with distance (clamped)
+      float distFactor = dist / 800.0f; // tune denominator
+      if (distFactor > 1.0f)
+        distFactor = 1.0f;
+      float spread = baseSpread * (1.0f + 0.8f * distFactor);
+
+      // Random yaw/pitch offsets
+      float yawErr = RandSigned1f() * spread;
+      float pitchErr = RandSigned1f() * spread;
+
+      // Final shot direction
+      Vector3 shotDir = ApplyYawPitchToDir(perfectDir, yawErr, pitchErr);
+
+      // Use spread direction for projectile + effects
+      rc->ray.direction = shotDir;
+
+      Vector3 shooterPos =
+          *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+      QueueSound(soundSys, SOUND_WEAPON_FIRE, shooterPos, 0.2f, 1.0f);
+
+      FireProjectile(eng, (entity_t)i, gunRayIdx, 0, 1);
+
+      const float muzzleOffset = 2.0f;
+      Vector3 muzzlePos = Vector3Add(
+          rc->ray.position, Vector3Scale(rc->ray.direction, muzzleOffset));
+      SpawnSmoke(eng, muzzlePos);
+
+      shotsLeft[i]--;
+      spacingT[i] = AIRH_BURST_SPACING;
+      *cooldown = 0.01f;
+      continue;
+    }
+
+    // Phase 3: post-burst waiting -> switch back to B1
+    if (phase[i] == 3) {
+      phaseT[i] -= dt;
+      if (phaseT[i] > 0.0f) {
+        *cooldown = 0.01f;
+        continue;
+      }
+
+      // ✅ Done: go back to behaviour 1
+      *state = AIRH_B1;
+      phase[i] = 0;
+      phaseT[i] = 0.0f;
+      shotsLeft[i] = 0;
+      spacingT[i] = 0.0f;
+
+      // invalidate target so B1 chooses a new point
+      Vector3 *moveTarget =
+          getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+      if (moveTarget)
+        *moveTarget = (Vector3){0, AIRH_FLY_HEIGHT, 0};
+
+      *cooldown = 0.01f;
+      continue;
+    }
+  }
 }
 
 void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,

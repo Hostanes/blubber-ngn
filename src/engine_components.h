@@ -70,6 +70,7 @@ typedef enum {
   C_GRAVITY = 1u << 11,
   C_TRIGGER = 1u << 12,
   C_TANK_MOVEMENT = 1u << 13,
+  C_AIRHARASSER_MOVEMENT = 1u << 14
 } ComponentFlag_t;
 
 typedef int32_t entity_t;
@@ -82,6 +83,7 @@ typedef enum {
   ENTITY_PLAYER,
   ENTITY_MECH,
   ENTITY_TANK,
+  ENTITY_HARASSER,
   ENTITY_WALL,
   ENTITY_DESTRUCT,
   ENTITY_TURRET,
