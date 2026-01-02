@@ -901,7 +901,7 @@ static entity_t CreateTankAlpha(Engine_t *eng, ActorComponentRegistry_t compReg,
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
                         &moveBehaviour);
 
-  float maxAimError = 0.5f;
+  float maxAimError = 1.5f;
   addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
                         &maxAimError);
 
@@ -910,7 +910,7 @@ static entity_t CreateTankAlpha(Engine_t *eng, ActorComponentRegistry_t compReg,
                         &weaponCount);
 
   eng->actors.types[e] = ENTITY_TANK_ALPHA;
-  eng->actors.hitPoints[e] = 150.0f;
+  eng->actors.hitPoints[e] = 500.0f;
 
   // ----- models (same as CreateTank) -----
   ModelCollection_t *mc = &eng->actors.modelCollections[e];
@@ -964,13 +964,13 @@ static entity_t CreateTankAlpha(Engine_t *eng, ActorComponentRegistry_t compReg,
   float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 5.4f;
   eng->actors.cooldowns[e][0] = 1.4f + r;
   eng->actors.firerate[e][0] = 0.5f;
-  eng->actors.muzzleVelocities[e][0] = 2500.0f;
+  eng->actors.muzzleVelocities[e][0] = 2800.0f;
   eng->actors.dropRates[e][0] = 20.0f;
 
   // weapon 1: missile launcher (P_MISSILE)
   eng->actors.cooldowns[e][1] = 3.0f;          // initial delay
   eng->actors.firerate[e][1] = 2.0f;           // one missile every 8s (tune)
-  eng->actors.muzzleVelocities[e][1] = 700.0f; // missile speed (used at spawn)
+  eng->actors.muzzleVelocities[e][1] = 600.0f; // missile speed (used at spawn)
   eng->actors.dropRates[e][1] = 0.0f;          // no gravity for missile
 
   return MakeEntityID(ET_ACTOR, e);

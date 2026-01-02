@@ -250,7 +250,7 @@ float ParticleBaseSize(int type) {
   case 3:
     return 2.0f; //
   case 4:
-    return 3.0f; //
+    return 1.2f; //
   case 5:
     return 150.0f; //
   case 6:
@@ -289,7 +289,7 @@ void DrawParticles(ParticlePool_t *pp) {
     Color c = WHITE;
     switch (type) {
     case 0: // default
-      c = WHITE;
+      c = YELLOW;
       break;
 
     case 1: // smoke
@@ -513,15 +513,14 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
                         false, true, gs->outlineShader, 0.6f, BLACK, i);
 
     // Movement collision boxes (green wireframe)
-    DrawModelCollection(&eng->statics.collisionCollections[i], entityPos,
-    GREEN,
+    DrawModelCollection(&eng->statics.collisionCollections[i], entityPos, GREEN,
                         true, false, gs->outlineShader, 0.0f, BLACK, -1);
 
     Color hitboxColor = RED;
     // Hitboxes (red wireframe)
     DrawModelCollection(&eng->statics.hitboxCollections[i], entityPos,
-                        hitboxColor, true, false, gs->outlineShader, 0,
-                        BLACK, -1);
+                        hitboxColor, true, false, gs->outlineShader, 0, BLACK,
+                        -1);
   }
 
   EndMode3D();

@@ -1484,6 +1484,7 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
     // FIRE
     Vector3 shooterPos =
         *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+
     SoundType_t soundType =
         projType == P_BULLET ? SOUND_WEAPON_FIRE : SOUND_ROCKET_FIRE;
     QueueSound(soundSys, soundType, shooterPos, 0.2f, 1.0f);

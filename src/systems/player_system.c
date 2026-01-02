@@ -30,7 +30,7 @@ static float HEAT_COOL_PER_SEC = 15.0f; // heat/sec cooldown (tweak)
 
 // Heat costs (tweak)
 static float HEAT_COST_DASH = 25.0f;   // on dash start
-static float HEAT_COST_LMB = 3.0f;     // per shot
+static float HEAT_COST_LMB = 5.0f;     // per shot
 static float HEAT_COST_RMB = 12.0f;    // per shot
 static float HEAT_COST_ROCKET = 18.0f; // per rocket
 
@@ -365,6 +365,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
       FireProjectile(eng, pid, 1, 0, 1);
       SpawnSmoke(eng, muzzlePos);
+      spawnParticle(eng, muzzlePos, 0.1, 0);
     }
 
     // Weapon 1: Right cannon shell (RMB) -> ray 2, cooldown slot 1
@@ -386,6 +387,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
       FireProjectile(eng, pid, 2, 1, 2);
       SpawnSmoke(eng, muzzlePos);
+      spawnParticle(eng, muzzlePos, 0.1, 0);
     }
 
     // Weapon 2: Shoulder rocket (Q) -> ray 3, cooldown slot 2
@@ -402,6 +404,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
           Vector3Add(ray->position, Vector3Scale(fwd, muzzleOffset));
 
       FireProjectile(eng, pid, 3, 2, 3);
+      spawnParticle(eng, muzzlePos, 0.1, 0);
     }
   }
 
