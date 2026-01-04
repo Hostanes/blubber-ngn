@@ -303,7 +303,7 @@ static void ResolveTriggerEvents(GameState_t *gs, Engine_t *eng) {
         if (!cb->isColliding) {
           if (cb->onCollision)
             cb->onCollision(eng, gs, MakeEntityID(ET_ACTOR, i),
-                            MakeEntityID(ET_ACTOR, j));
+                            MakeEntityID(ET_ACTOR, j), eng->actors.OnCollideTexts[i]);
           cb->isColliding = true;
         }
       }
@@ -351,6 +351,7 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
   // ===== Update projectiles =====
   UpdateProjectiles(gs, eng, soundSys, dt);
+
   // ===== Resolve collisions =====
   ResolveActorCollisions(gs, eng);
   ResolveActorStaticCollisions(gs, eng);

@@ -32,6 +32,8 @@ SoundSystem_t InitSoundSystem(void) {
   sys.assets[SOUND_ROCKET_FIRE].sound =
       LoadSound("assets/audio/rocket-launcher.wav");
 
+  sys.assets[SOUND_CLANG].sound =
+      LoadSound("assets/audio/metal-clang.wav");
   sys.assets[SOUND_AMBIENT_DESERT].sound =
       LoadSound("assets/audio/desert-ambience-1.wav");
 
@@ -151,7 +153,7 @@ void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
     if (dist <= REF_DIST) {
       atten = 1.0f;
     } else {
-      float t = (dist - REF_DIST) / 2000.0f; // falloff range (tweak)
+      float t = (dist - REF_DIST) / 4000.0f; // falloff range (tweak)
       t = Clamp(t, 0.0f, 1.0f);
       atten = 1.0f - t; // linear fade
     }

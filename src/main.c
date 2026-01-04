@@ -26,7 +26,7 @@ int main(void) {
       .window_height = 720 * 1.2,
 
       .fov_deg = 60.0f,
-      .near_plane = 0.1f,
+      .near_plane = 0.6f,
       .far_plane = 50000.0f,
 
       .max_entities = 2048,

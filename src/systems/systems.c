@@ -41,9 +41,9 @@ void LoadAssets() {
 typedef void (*WaveStartFn)(GameState_t *, Engine_t *);
 
 static WaveStartFn gWaveStarts[MAX_WAVES] = {
-    Wave1Start, Wave2Start,
-    // Wave3Start,
-    // ...
+    Wave1Start, Wave2Start, //
+    Wave3Start, Wave4Start, //
+    Wave5Start, Wave6Start, //
 };
 
 static void UpdateWaves(GameState_t *gs, Engine_t *eng, float dt) {
@@ -124,6 +124,7 @@ static void UpdateWaves(GameState_t *gs, Engine_t *eng, float dt) {
     TriggerMessage(gs, "Wave Complete!");
     if (ws->waveIndex >= ws->totalWaves) {
       WAVE_LOG("[WAVES] All waves complete — FINISHED\n");
+      TriggerMessage(gs, "All waves complete, Well done!");
       ws->state = WAVE_FINISHED;
     } else {
       ws->betweenWaveTimer = ws->betweenWaveDelay;

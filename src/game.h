@@ -70,7 +70,7 @@ typedef struct {
 //----------------------------------------
 
 typedef void (*OnCollisionFn)(Engine_t *, GameState_t *gs, entity_t self,
-                              entity_t other);
+                              entity_t other, char *text);
 typedef void (*OnCollisionExitFn)(Engine_t *, GameState_t *gs, entity_t self,
                                   entity_t other);
 typedef void (*OnDeathFn)(Engine_t *, GameState_t *gs, entity_t self);
@@ -192,11 +192,16 @@ typedef struct GameState {
 
   MessageBanner_t banner;
 
+  bool isZooming;
   float heatMeter;
 
   Shader outlineShader;
 
   WaveSystem_t waves;
+
+  Texture2D tankAimerTex;
+  Texture2D hudDamagedTex;
+
 } GameState_t;
 
 // damage each projectile does by type
@@ -214,6 +219,7 @@ typedef enum {
 //----------------------------------------
 GameState_t InitGameSimulator(Engine_t *eng);
 GameState_t InitGameDuel(Engine_t *eng);
+void StartGameTutorial(GameState_t *gs, Engine_t *eng);
 Vector3 ConvertOrientationToVector3(Orientation o);
 void StartGameDuel(GameState_t *gs, Engine_t *eng);
 void ResetGameDuel(GameState_t *gs, Engine_t *eng);
@@ -221,6 +227,10 @@ static void FreeActorDynamicData(Engine_t *eng);
 
 void Wave1Start(GameState_t *gs, Engine_t *eng);
 void Wave2Start(GameState_t *gs, Engine_t *eng);
+void Wave3Start(GameState_t *gs, Engine_t *eng);
+void Wave4Start(GameState_t *gs, Engine_t *eng);
+void Wave5Start(GameState_t *gs, Engine_t *eng);
+void Wave6Start(GameState_t *gs, Engine_t *eng);
 
 //----------------------------------------
 // Grid Initialization
@@ -410,6 +420,15 @@ static inline void ActivateEntityAt(GameState_t *gs, Engine_t *eng, entity_t e,
 
   // mark alive
   eng->em.alive[idx] = 1;
+  if (eng->actors.types[e] == ENTITY_TANK) {
+    eng->actors.hitPoints[e] = 20;
+  }
+  if (eng->actors.types[e] == ENTITY_TANK_ALPHA) {
+    eng->actors.hitPoints[e] = 500;
+  }
+  if (eng->actors.types[e] == ENTITY_HARASSER) {
+    eng->actors.hitPoints[e] = 6;
+  }
 
   // set position + prev position
   Vector3 *pos =

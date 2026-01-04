@@ -25,14 +25,14 @@ void TriggerMessage(GameState_t *gs, const char *msg);
 
 // Called when the player is inside the cube
 static void Cube_OnCollision(Engine_t *eng, GameState_t *gs, entity_t self,
-                             entity_t other) {
+                             entity_t other, char *text) {
   int idx = GetEntityIndex(self);
   ModelCollection_t *mc = &eng->actors.modelCollections[idx];
 
   // Set color to BLUE
   // mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
 
-  TriggerMessage(gs, "Cube Event Triggered");
+  TriggerMessage(gs, text);
 }
 
 // Called when the player leaves the cube
@@ -623,10 +623,6 @@ entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
   // MODEL 0: Main model from file
   // --------------------------------------------------------
   mc->models[0] = LoadModel(modelPath);
-
-  Texture2D texMain = LoadTexture("assets/textures/target/stand-baked.png");
-  mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texMain;
-
   Orientation standOrientation = {-PI / 2, 0, 0};
 
   mc->offsets[0] = Vector3Zero();
@@ -634,57 +630,93 @@ entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->parentIds[0] = -1;
   mc->isActive[0] = true;
 
-  // --------------------------------------------------------
-  // MODEL 1: Cylinder (rotated on its side)
-  // --------------------------------------------------------
-
-  // Generate a cylinder mesh
-  Mesh cylMesh = GenMeshCylinder(7, 5, 16);
-  mc->models[1] = LoadModelFromMesh(cylMesh);
-
-  Texture2D texCyl = LoadTexture("assets/textures/target/target.png");
-
-  Vector3 cylOffset = {9, 8, 0};
-
-  mc->models[1].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texCyl;
-  mc->offsets[1] = cylOffset;
-
-  Orientation cylOrientation = {
-      PI / 2, // yaw
-      PI / 2, // pitch
-      0.0f    // roll (rotate cylinder sideways)
-  };
-
-  mc->localRotationOffset[1] = cylOrientation;
-
-  mc->parentIds[1] = 0;
-  mc->isActive[1] = true;
-
   //--------------------------------------------------------
-  // HITBOX COLLECTION (2 hitboxes)
+  // HITBOX COLLECTION
   //--------------------------------------------------------
   ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
-  *hb = InitModelCollection(2);
+  *hb = InitModelCollection(1);
 
   // Stand
-  Mesh cube = GenMeshCube(5, 40, 25);
+  Mesh cube = GenMeshCube(20, 30, 20);
   hb->models[0] = LoadModelFromMesh(cube);
   hb->offsets[0] = Vector3Zero();
-  hb->orientations[0] = standOrientation;
   hb->parentIds[0] = -1;
-  hb->isActive[0] = false;
+  hb->isActive[0] = true;
 
-  // Target
-  hb->models[1] = LoadModelFromMesh(cylMesh);
-  hb->offsets[1] = cylOffset;
-  hb->parentIds[1] = 0;
-  hb->isActive[1] = true;
-  hb->localRotationOffset[1] = (Orientation){
-      0.0f,     // yaw
-      0.0f,     // pitch
-      PI / 2.0f // roll (rotate cylinder sideways)
-  };
+  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  *col = InitModelCollection(0); // no solids
 
+  return MakeEntityID(ET_ACTOR, e);
+}
+
+entity_t CreateEnvironmentObject(Engine_t *eng,
+                                 ActorComponentRegistry_t compReg, Vector3 pos,
+                                 Vector3 ori,
+                                 const char *modelPath, // visual model
+                                 float hp, Color tint) {
+  int e = eng->em.count++;
+
+  eng->em.alive[e] = 1;
+
+  eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG;
+
+  eng->actors.types[e] = ENTITY_ENVIRONMENT;
+  eng->actors.hitPoints[e] = hp;
+
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  *mc = InitModelCollection(2);
+
+  mc->models[0] = LoadModel(modelPath);
+  Orientation standOrientation = {-PI / 2, 0, 0};
+  standOrientation.yaw += ori.x;
+  standOrientation.pitch += ori.x;
+  standOrientation.roll += ori.x;
+
+  mc->offsets[0] = Vector3Zero();
+  mc->orientations[0] = standOrientation;
+  mc->parentIds[0] = -1;
+  mc->isActive[0] = true;
+
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  *hb = InitModelCollection(0);
+  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  *col = InitModelCollection(0); // no solids
+
+  return MakeEntityID(ET_ACTOR, e);
+}
+
+entity_t CreateRockRandomOri(Engine_t *eng, ActorComponentRegistry_t compReg,
+                             Vector3 pos) {
+  int e = eng->em.count++;
+  int hp = 5000;
+  char *modelPath = "assets/models/rocks.glb";
+
+  eng->em.alive[e] = 1;
+
+  eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG;
+
+  eng->actors.types[e] = ENTITY_ROCK;
+  eng->actors.hitPoints[e] = hp;
+
+  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+
+  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  *mc = InitModelCollection(2);
+
+  mc->models[0] = LoadModel(modelPath);
+  Orientation standOrientation = {-PI / 2, 0, 0};
+  float randomYaw = ((float)GetRandomValue(0, 360)) * DEG2RAD;
+  standOrientation.yaw += randomYaw;
+
+  mc->offsets[0] = Vector3Zero();
+  mc->orientations[0] = standOrientation;
+  mc->parentIds[0] = -1;
+  mc->isActive[0] = true;
+
+  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  *hb = InitModelCollection(0);
   ModelCollection_t *col = &eng->actors.collisionCollections[e];
   *col = InitModelCollection(0); // no solids
 
@@ -811,8 +843,8 @@ static entity_t CreateDestructible(Engine_t *eng,
   return MakeEntityID(ET_ACTOR, e);
 }
 
-entity_t CreateColorSwitchCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
-                               Vector3 size) {
+entity_t CreateTextTriggerCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
+                               Vector3 size, char *text) {
   int e = eng->em.count++;
   eng->em.alive[e] = 1;
 
@@ -820,6 +852,7 @@ entity_t CreateColorSwitchCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
   eng->em.masks[e] = C_POSITION | C_TRIGGER;
 
   eng->actors.types[e] = ENTITY_TRIGGER;
+  eng->actors.OnCollideTexts[e] = text;
 
   //-----------------------------------------------------
   // POSITION COMPONENT
@@ -1307,7 +1340,7 @@ void ResetGameDuel(GameState_t *gs, Engine_t *eng) {
   gs->banner.hiddenY = -80.0f;
   gs->banner.targetY = 0.0f;
   gs->banner.speed = 200.0f;
-  gs->banner.visibleTime = 5.0f;
+  gs->banner.visibleTime = 10.0f;
 
   gs->pHeadbobTimer = 0.0f;
 
@@ -1401,6 +1434,8 @@ static Vector3 PickSpawnAroundPlayer(GameState_t *gs, Engine_t *eng,
                                      float radiusMin, float radiusMax) {
   Vector3 *pPos = (Vector3 *)getComponent(&eng->actors, (entity_t)gs->playerId,
                                           gs->compReg.cid_Positions);
+  pPos->x = 0;
+  pPos->y = 0;
   Vector3 center = pPos ? *pPos : (Vector3){0, 0, 0};
 
   float a = (float)GetRandomValue(0, 359) * (PI / 180.0f);
@@ -1414,41 +1449,154 @@ static Vector3 PickSpawnAroundPlayer(GameState_t *gs, Engine_t *eng,
 }
 
 void Wave1Start(GameState_t *gs, Engine_t *eng) {
-  int spawnCount = 5;
   gs->waves.enemiesAliveThisWave = 0;
+  TriggerMessage(gs,
+                 "WAVE 1/6\n Watch out! You got a couple scout cars coming in");
 
-  TriggerMessage(gs, "WAVE 1 message");
-
-  for (int i = 0; i < spawnCount; i++) {
+  // 4 tanks
+  for (int i = 0; i < 4; i++) {
     entity_t e = AcquireTank(gs);
     if (!e)
       break;
 
-    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 1500.0f, 2500.0f);
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
     ActivateEntityAt(gs, eng, e, pos);
     gs->waves.enemiesAliveThisWave++;
   }
-
-  // ShowBanner(gs, "Wave 1", 2.0f);
 }
 
 void Wave2Start(GameState_t *gs, Engine_t *eng) {
   gs->waves.enemiesAliveThisWave = 0;
+  TriggerMessage(gs,
+                 "WAVE 2/6\n Enemy birds incoming! Use your blunderbus (E)");
 
-  for (int i = 0; i < 6; i++) {
-    entity_t e = AcquireHarasser(gs);
+  // 3 tanks
+  for (int i = 0; i < 3; i++) {
+    entity_t e = AcquireTank(gs);
     if (!e)
       break;
-    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 900.0f, 1600.0f);
+
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
     ActivateEntityAt(gs, eng, e, pos);
     gs->waves.enemiesAliveThisWave++;
   }
 
-  // plus a tank
-  entity_t t = AcquireTank(gs);
-  if (t) {
-    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 1100.0f, 1800.0f);
-    ActivateEntityAt(gs, eng, t, pos);
+  // 2 harassers
+  for (int i = 0; i < 2; i++) {
+    entity_t e = AcquireHarasser(gs);
+    if (!e)
+      break;
+
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, e, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+}
+
+void Wave3Start(GameState_t *gs, Engine_t *eng) {
+  gs->waves.enemiesAliveThisWave = 0;
+  TriggerMessage(gs, "WAVE 3/6\n More enemies! Keep moving so you dont get hit");
+
+  // 5 tanks
+  for (int i = 0; i < 5; i++) {
+    entity_t e = AcquireTank(gs);
+    if (!e)
+      break;
+
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, e, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+
+  // 3 harassers
+  for (int i = 0; i < 3; i++) {
+    entity_t e = AcquireHarasser(gs);
+    if (!e)
+      break;
+
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, e, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+}
+
+void Wave4Start(GameState_t *gs, Engine_t *eng) {
+  gs->waves.enemiesAliveThisWave = 0;
+  TriggerMessage(
+      gs,
+      "WAVE 4/6\n They called in a larger tank, watch out for those missiles");
+
+  // 1 alpha
+  entity_t a = AcquireAlphaTank(gs);
+  if (a) {
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, a, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+}
+
+void Wave5Start(GameState_t *gs, Engine_t *eng) {
+  gs->waves.enemiesAliveThisWave = 0;
+  TriggerMessage(gs, "WAVE 5/6 \n Nearly at the end, just hold out a little while longer");
+
+  // 1 alpha
+  entity_t a = AcquireAlphaTank(gs);
+  if (a) {
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, a, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+
+  // 2 tanks
+  for (int i = 0; i < 5; i++) {
+    entity_t e = AcquireTank(gs);
+    if (!e)
+      break;
+
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, e, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+
+  // 1 harasser
+  entity_t h = AcquireHarasser(gs);
+  if (h) {
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, h, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+}
+
+void Wave6Start(GameState_t *gs, Engine_t *eng) {
+  gs->waves.enemiesAliveThisWave = 0;
+  TriggerMessage(gs, "WAVE 6/6 \n This should be the last of them");
+
+  // 1 alpha
+  entity_t a = AcquireAlphaTank(gs);
+  if (a) {
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, a, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+
+  // 4 tanks
+  for (int i = 0; i < 10; i++) {
+    entity_t e = AcquireTank(gs);
+    if (!e)
+      break;
+
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, e, pos);
+    gs->waves.enemiesAliveThisWave++;
+  }
+
+  // 2 harassers
+  for (int i = 0; i < 4; i++) {
+    entity_t e = AcquireHarasser(gs);
+    if (!e)
+      break;
+    Vector3 pos = PickSpawnAroundPlayer(gs, eng, 2500.0f, 3500.0f);
+    ActivateEntityAt(gs, eng, e, pos);
     gs->waves.enemiesAliveThisWave++;
   }
 }
@@ -1458,7 +1606,7 @@ static void InitWavePools(GameState_t *gs, Engine_t *eng) {
   memset(&gs->waves, 0, sizeof(gs->waves));
   gs->waves.state = WAVE_WAITING;
   gs->waves.waveIndex = 0;
-  gs->waves.totalWaves = 5;           // whatever
+  gs->waves.totalWaves = 6;           // whatever
   gs->waves.betweenWaveDelay = 15.0f; // seconds between waves
   gs->waves.betweenWaveTimer = 7.0f;  // first wave delay (optional)
 
@@ -1535,6 +1683,47 @@ void StartGameDuel(GameState_t *gs, Engine_t *eng) {
   playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
                                                 playerStartPos.z);
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
+
+  // terrain
+  Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
+  InitTerrain(gs, eng, sandTex, "assets/models/terrain.glb");
+
+  BuildHeightmap(&gs->terrain);
+
+  Texture2D tankAimerTex = LoadTexture("assets/textures/tank-aimer.png");
+  gs->tankAimerTex = tankAimerTex;
+
+  CreateEnvironmentObject(eng, gs->compReg, (Vector3){7000, 1800, 0},
+                          (Vector3){0, 0, 0},
+                          "assets/models/megabuilding-1.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-11000, 1600, 0}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-13000, 1600, 5000}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-13000, 1600, -5000}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+
+  int rocksCount = 150;
+  // scatter radius (tweak)
+  float minRadius = 500.0f;
+  float maxRadius = 3000.0f;
+
+  for (int i = 0; i < rocksCount; i++) {
+    float angle = ((float)GetRandomValue(0, 360)) * DEG2RAD;
+    float radius = ((float)GetRandomValue((int)minRadius, (int)maxRadius));
+
+    Vector3 pos;
+    pos.x = cosf(angle) * radius;
+    pos.z = sinf(angle) * radius;
+
+    // snap to terrain
+    pos.y = GetTerrainHeightAtPosition(&gs->terrain, pos.x, pos.z);
+
+    CreateRockRandomOri(eng, gs->compReg, pos);
+  }
 
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
@@ -1624,9 +1813,25 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   // terrain
   Texture2D sandTex = LoadTexture("assets/textures/xtSand.png");
-  InitTerrain(gs, eng, sandTex, "assets/models/terrain-waves.glb");
+  InitTerrain(gs, eng, sandTex, "assets/models/terrain.glb");
 
   BuildHeightmap(&gs->terrain);
+
+  Texture2D tankAimerTex = LoadTexture("assets/textures/tank-aimer.png");
+  gs->tankAimerTex = tankAimerTex;
+
+  CreateEnvironmentObject(eng, gs->compReg, (Vector3){7000, 1800, 0},
+                          (Vector3){0, 0, 0},
+                          "assets/models/megabuilding-1.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-11000, 1600, 0}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-13000, 1600, 5000}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-13000, 1600, -5000}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
 
   CreateSkybox(eng, (Vector3){0, 0, 0});
 
@@ -1636,6 +1841,25 @@ GameState_t InitGameDuel(Engine_t *eng) {
   Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 0.0f};
   playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
                                                 playerStartPos.z);
+
+  int rocksCount = 150;
+  // scatter radius (tweak)
+  float minRadius = 500.0f;
+  float maxRadius = 3000.0f;
+
+  for (int i = 0; i < rocksCount; i++) {
+    float angle = ((float)GetRandomValue(0, 360)) * DEG2RAD;
+    float radius = ((float)GetRandomValue((int)minRadius, (int)maxRadius));
+
+    Vector3 pos;
+    pos.x = cosf(angle) * radius;
+    pos.z = sinf(angle) * radius;
+
+    // snap to terrain
+    pos.y = GetTerrainHeightAtPosition(&gs->terrain, pos.x, pos.z);
+
+    CreateRockRandomOri(eng, gs->compReg, pos);
+  }
 
   // create player at origin-ish
   gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
@@ -1673,4 +1897,199 @@ GameState_t InitGameDuel(Engine_t *eng) {
   // PrintGrid(&gs->grid);
 
   return *gs;
+}
+
+void StartGameTutorial(GameState_t *gs, Engine_t *eng) {
+  ResetGameDuel(gs, eng);
+
+  // re-register components (same as your InitGameDuel)
+  eng->actors.componentStore =
+      malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+  memset(eng->actors.componentStore, 0,
+         sizeof(ComponentStorage_t) * MAX_COMPONENTS);
+
+  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_prevPositions =
+      registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_weaponCount = registerComponent(&eng->actors, sizeof(int));
+  gs->compReg.cid_weaponDamage = registerComponent(&eng->actors, sizeof(int *));
+  gs->compReg.cid_behavior =
+      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
+  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
+  gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
+
+  float cellSize = GRID_CELL_SIZE;
+  ClearGrid(&gs->grid);
+
+  CreateSkybox(eng, (Vector3){0, 0, 0});
+
+  Vector3 playerStartPos = (Vector3){0.0f, 20.0f, 0.0f};
+  playerStartPos.y = GetTerrainHeightAtPosition(&gs->terrain, playerStartPos.x,
+                                                playerStartPos.z);
+  gs->playerId = GetEntityIndex(CreatePlayer(eng, gs->compReg, playerStartPos));
+
+  Texture2D tankAimerTex = LoadTexture("assets/textures/tank-aimer.png");
+  gs->tankAimerTex = tankAimerTex;
+
+  CreateEnvironmentObject(eng, gs->compReg, (Vector3){7000, 1800, 0},
+                          (Vector3){0, 0, 0},
+                          "assets/models/megabuilding-1.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-11000, 1600, 0}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-13000, 1600, 5000}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+  CreateEnvironmentObject(
+      eng, gs->compReg, (Vector3){-13000, 1600, -5000}, (Vector3){0, 0, 0},
+      "assets/models/megabuilding-2-radar.glb", 1000, WHITE);
+
+  Vector3 rangeStart = (Vector3){-100, 0, 100}; // starting 50 units ahead
+  rangeStart.y =
+      GetTerrainHeightAtPosition(&gs->terrain, rangeStart.x, rangeStart.z) + 5;
+  rangeStart.x += 100;
+
+  Vector3 t0 = rangeStart;
+  t0.x += 500;
+  t0.z -= 200;
+
+  CreateStaticModel(eng, rangeStart, "assets/models/sandbags.glb", WHITE);
+  // Distance markers every 500 units up to 5000 units
+  int maxRange = 3000;
+  for (int dist = 500; dist <= maxRange; dist += 500) {
+
+    float x = rangeStart.x - dist / 10.0f + 200;
+    float z = rangeStart.z + dist;
+    float y = GetTerrainHeightAtPosition(&gs->terrain, x, z);
+
+    bool isBig = (dist % 1000 == 0);
+
+    Vector3 size;
+    Color color;
+
+    if (isBig) {
+
+      CreateTargetActor(eng, gs->compReg, (Vector3){x, y, z},
+                        "assets/models/enemy1-target.glb", 1500, WHITE);
+      continue;
+    } else {
+      CreateTargetActor(eng, gs->compReg, (Vector3){x, y, z},
+                        "assets/models/target-marker.glb", 1500, WHITE);
+    }
+  }
+
+  // -------------------------------------------------------
+  // Tutorial text triggers (walk-forward path)
+  // -------------------------------------------------------
+  // Base position near the range entrance
+
+  // Make a nice path forward (+z) with spaced triggers
+  // Big boxes so you don't miss them
+  Vector3 trigSize = (Vector3){90, 25, 90};
+
+  // 1) Movement + independent legs/torso
+  Vector3 trigMove = (Vector3){t0.x, t0.y, t0.z + 120};
+  trigMove.y =
+      GetTerrainHeightAtPosition(&gs->terrain, trigMove.x, trigMove.z) + 5;
+
+  CreateTextTriggerCube(eng, gs, trigMove, trigSize,
+                        "A / D rotates your LEGS (movement direction).\n"
+                        "Mouse rotates your TORSO (aim direction).\n"
+                        "They are independent: you move in one direction while "
+                        "aiming elsewhere.");
+
+  // 2) Heat + weapons overview (4 weapons)
+  Vector3 trigHeat = (Vector3){t0.x + 260, t0.y, t0.z};
+  trigHeat.y =
+      GetTerrainHeightAtPosition(&gs->terrain, trigHeat.x, trigHeat.z) + 5;
+
+  CreateTextTriggerCube(eng, gs, trigHeat, trigSize,
+                        "WEAPONS + HEAT\n"
+                        "You have 4 weapons.\n"
+                        "Firing builds HEAT.\n"
+                        "If HEAT is high, you must wait for it to cool down.\n"
+                        "Try each weapon on the targets ahead.");
+
+  // 3) Optional: list the actual keys if you want (edit to match your bindings)
+  Vector3 trigWeapons = (Vector3){t0.x + 520, t0.y, t0.z};
+  trigWeapons.y =
+      GetTerrainHeightAtPosition(&gs->terrain, trigWeapons.x, trigWeapons.z) +
+      5;
+
+  CreateTextTriggerCube(eng, gs, trigWeapons, trigSize,
+                        "WEAPON KEYS\n"
+                        "Use your weapon keys to switch/fire.\n"
+                        "Watch the HEAT bar as you shoot.\n"
+                        "Blunderbuss is strong up close (spread).");
+
+  // 4) Dash tutorial
+  Vector3 trigDash = (Vector3){t0.x + 740, t0.y, t0.z};
+  trigDash.y =
+      GetTerrainHeightAtPosition(&gs->terrain, trigDash.x, trigDash.z) + 5;
+
+  CreateTextTriggerCube(eng, gs, trigDash, trigSize,
+                        "DASH\n"
+                        "Use DASH to reposition quickly.\n"
+                        "Dash has a short charge and cooldown.\n"
+                        "Dash out of danger, then re-engage.");
+
+  int rocksCount = 150;
+  // scatter radius (tweak)
+  float minRadius = 500.0f;
+  float maxRadius = 3000.0f;
+
+  for (int i = 0; i < rocksCount; i++) {
+    float angle = ((float)GetRandomValue(0, 360)) * DEG2RAD;
+    float radius = ((float)GetRandomValue((int)minRadius, (int)maxRadius));
+
+    Vector3 pos;
+    pos.x = cosf(angle) * radius;
+    pos.z = sinf(angle) * radius;
+
+    // snap to terrain
+    pos.y = GetTerrainHeightAtPosition(&gs->terrain, pos.x, pos.z);
+
+    CreateRockRandomOri(eng, gs->compReg, pos);
+  }
+
+  // ensure rayCounts initialized for any entities that weren't touched
+  for (int i = 0; i < eng->em.count; i++) {
+    if (eng->actors.rayCounts[i] == 0)
+      eng->actors.rayCounts[i] = 0;
+  }
+
+  // Initialize projectile pool
+  for (int i = 0; i < MAX_PROJECTILES; i++) {
+    eng->projectiles.active[i] = false;
+    eng->projectiles.positions[i] = Vector3Zero();
+    eng->projectiles.velocities[i] = Vector3Zero();
+    eng->projectiles.lifetimes[i] = 0.0f;
+    eng->projectiles.radii[i] = 1.0f; // default bullet size
+    eng->projectiles.owners[i] = -1;
+    eng->projectiles.types[i] = -1;
+  }
+
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    eng->particles.active[i] = false;
+    eng->particles.lifetimes[i] = 0;
+    eng->particles.positions[i] = Vector3Zero();
+    eng->particles.types[i] = -1;
+  }
+
+  WaveSystemDefaults(&gs->waves);
+
+  InitWavePools(gs, eng);
+
+  PopulateGridWithEntities(&gs->grid, gs->compReg, eng);
+
+  WaveSystemDefaults(&gs->waves);
+  gs->waves.totalWaves = 0;
+  gs->waves.state = WAVE_FINISHED;
+
+  TriggerMessage(gs, "Tutorial: learn movement + shooting");
 }

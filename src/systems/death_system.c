@@ -61,7 +61,9 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     if (gs->waves.state == WAVE_ACTIVE && gs->waves.enemiesAliveThisWave > 0) {
       gs->waves.enemiesAliveThisWave--;
       printf("[WAVES] Alive now: %d\n", gs->waves.enemiesAliveThisWave);
-    } // SpawnExplosion(eng, eng->actors.positions[idx]);
+    }
+    spawnParticle(eng, pos, 5, 9);
+    // SpawnExplosion(eng, eng->actors.positions[idx]);
     break;
 
   case ENTITY_HARASSER:
@@ -73,6 +75,7 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
       gs->waves.enemiesAliveThisWave--;
       printf("[WAVES] Alive now: %d\n", gs->waves.enemiesAliveThisWave);
     }
+    spawnParticle(eng, pos, 5, 9);
     // SpawnExplosion(eng, eng->actors.positions[idx]);
     break;
   case ENTITY_MECH:

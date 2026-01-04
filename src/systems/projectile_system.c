@@ -115,6 +115,13 @@ static void SpawnExplosion(GameState_t *gs, Engine_t *eng,
         if (!(eng->em.masks[idx] & C_HITPOINT_TAG))
           continue;
 
+        if (idx == gs->playerId) {
+          QueueSound(soundSys, SOUND_CLANG,
+                     *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+                                              gs->compReg.cid_Positions),
+                     0.2f, 1.0f);
+        }
+
         Vector3 *tpos = (Vector3 *)getComponent(&eng->actors, eid,
                                                 gs->compReg.cid_Positions);
         if (!tpos)
@@ -271,10 +278,10 @@ static bool CheckActorHit(GameState_t *gs, Engine_t *eng,
                                                     gs->compReg.cid_Positions),
                            0.4f, 1.0f);
               } else {
-                QueueSound(soundSys, SOUND_HITMARKER,
+                QueueSound(soundSys, SOUND_CLANG,
                            *(Vector3 *)getComponent(&eng->actors, gs->playerId,
                                                     gs->compReg.cid_Positions),
-                           0.1f, 1.0f);
+                           0.2f, 1.0f);
               }
 
               int damageDealt = projectileDamage[pType];

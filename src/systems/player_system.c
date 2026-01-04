@@ -255,8 +255,11 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   // -----------------------------
   // Camera / look controls
   // -----------------------------
+  if (IsKeyPressed(KEY_B)) {
+    gs->isZooming = !gs->isZooming;
+  }
   float sensitivity = 0.0007f;
-  if (IsKeyDown(KEY_B))
+  if (gs->isZooming)
     sensitivity = 0.0002f;
 
   float turnRate = isSprinting ? 0.2f : 1.0f;
@@ -316,9 +319,11 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   float sprintFOV = baseFOV * 1.1f;
   float targetFOV = isSprinting ? sprintFOV : baseFOV;
 
-  if (controlsLocked)
+  if (controlsLocked) {
+    gs->isZooming = false;
     targetFOV *= DASH_FOV_MULT;
-  if (IsKeyDown(KEY_B))
+  }
+  if (gs->isZooming)
     targetFOV = 10.0f;
 
   camera->fovy = camera->fovy + (targetFOV - camera->fovy) * dt * FOV_SPEED;
@@ -422,8 +427,8 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
           Vector3Add(ray->position, Vector3Scale(baseDir, muzzleOffset));
 
       // --- blunderbuss params ---
-      const int pelletCount = 15;    // number of pellets
-      const float spreadDeg = 2.0f; // cone half-angle (degrees)
+      const int pelletCount = 15;   // number of pellets
+      const float spreadDeg = 1.4f; // cone half-angle (degrees)
       const float spreadRad = spreadDeg * DEG2RAD;
 
       // Build an orthonormal basis around baseDir (right/up)
@@ -470,6 +475,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   // -----------------------------
   mc->offsets[2].z = 8.0f - (eng->actors.cooldowns[pid][0]) * 2.0f;
   mc->offsets[3].z = 8.0f - (eng->actors.cooldowns[pid][1]) * 2.0f;
+  mc->offsets[5].z = 8.0f - (eng->actors.cooldowns[pid][3]) * 2.0f;
 
   // -----------------------------
   // Headbob + footsteps disabled during dash

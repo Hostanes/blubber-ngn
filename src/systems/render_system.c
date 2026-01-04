@@ -232,9 +232,27 @@ void DrawProjectiles(Engine_t *eng) {
       // Slightly behind the cylinder so it doesn't clip
       Vector3 thrusterPos = Vector3Add(back, Vector3Scale(dir, -2.0f));
 
-    } else if (type == 5) {
-      float r = eng->projectiles.radii[i] * 0.5f;
-      DrawSphere(p, r, GRAY);
+    } else if (type == P_MISSILE) {
+
+      float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+      Vector3 dir = (speed > 0.001f)
+                        ? (Vector3){v.x / speed, v.y / speed, v.z / speed}
+                        : (Vector3){0, 0, 1};
+
+      // Cylinder dimensions
+      float length = 35.0f;
+      float radius = 0.5f;
+
+      // Raylib cylinder points from start->end
+      Vector3 front = Vector3Add(p, Vector3Scale(dir, length * 0.5f));
+      Vector3 back = Vector3Add(p, Vector3Scale(dir, -length * 0.5f));
+
+      DrawCylinderEx(back, front, radius, radius, 8, RED);
+
+      // Spawn thruster particle (type 2) at the back
+      // Slightly behind the cylinder so it doesn't clip
+      Vector3 thrusterPos = Vector3Add(back, Vector3Scale(dir, -2.0f));
+
     } else {
       // Unknown type fallback
       DrawSphere(p, eng->projectiles.radii[i], WHITE);
@@ -382,6 +400,27 @@ static void DrawValueBar(int x, int y, int w, int h, float value,
   DrawText(buf, tx, ty, fontSize, textColor);
 }
 
+static entity_t FindActiveAlpha(GameState_t *gs, Engine_t *eng) {
+  for (int i = 0; i < MAX_POOL_ALPHA; i++) {
+    entity_t a = gs->waves.alphaPool[i];
+    if (!a)
+      continue;
+
+    int idx = GetEntityIndex(a);
+    if (!eng->em.alive[idx])
+      continue;
+
+    // also ignore parked ones (extra safety)
+    Vector3 *pos =
+        (Vector3 *)getComponent(&eng->actors, a, gs->compReg.cid_Positions);
+    if (pos && pos->y < -5000.0f)
+      continue;
+
+    return a;
+  }
+  return (entity_t)0;
+}
+
 // --- Main Render Function ---
 void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
@@ -475,6 +514,8 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
     // DrawRaycasts(gs, eng);
 
+    EntityType_t type = eng->actors.types[i];
+
     Color outlineColor = {173, 7, 1, 255};
     bool drawOutline = true;
     float outlineThickness = 0.15;
@@ -487,24 +528,33 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
       outlineThickness = 0.05f;
       outlineColor = (Color){1, 1, 1, 255};
     }
+    if(type == ENTITY_ENVIRONMENT){
+      outlineColor = BLACK;
+      outlineThickness = 15;
+    }
+    if(type == ENTITY_ROCK){
+      outlineColor = BLACK;
+      outlineThickness = 0.05;
+    }
+    
     // Visual models (solid white)
     DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,
                         false, drawOutline, gs->outlineShader, outlineThickness,
                         outlineColor, i);
 
     // Movement collision boxes (green wireframe)
-    // DrawModelCollection(&eng->actors.collisionCollections[i], entityPos,
-    // GREEN,
-    //                     true);
+    DrawModelCollection(&eng->actors.collisionCollections[i], entityPos, GREEN,
+                        true, false, gs->outlineShader, outlineThickness,
+                        outlineColor, i);
 
-    Color hitboxColor = RED;
-    if (!eng->em.alive[i]) {
-      hitboxColor = BLACK;
-    }
-    // Hitboxes (red wireframe)
-    DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
-                        hitboxColor, true, drawOutline, gs->outlineShader, 0,
-                        BLACK, i);
+    // Color hitboxColor = RED;
+    // if (!eng->em.alive[i]) {
+    //   hitboxColor = BLACK;
+    // }
+    // // Hitboxes (red wireframe)
+    // DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
+    //                     hitboxColor, true, false, gs->outlineShader, 0, BLACK,
+    //                     i);
   }
 
   for (int i = 0; i < MAX_STATICS; i++) {
@@ -530,11 +580,11 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     DrawModelCollection(&eng->statics.collisionCollections[i], entityPos, GREEN,
                         true, false, gs->outlineShader, 0.0f, BLACK, -1);
 
-    Color hitboxColor = RED;
-    // Hitboxes (red wireframe)
-    DrawModelCollection(&eng->statics.hitboxCollections[i], entityPos,
-                        hitboxColor, true, false, gs->outlineShader, 0, BLACK,
-                        -1);
+    // Color hitboxColor = RED;
+    // // Hitboxes (red wireframe)
+    // DrawModelCollection(&eng->statics.hitboxCollections[i], entityPos,
+    //                     hitboxColor, true, false, gs->outlineShader, 0, BLACK,
+    //                     -1);
   }
 
   EndMode3D();
@@ -542,26 +592,6 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   // draw UI segment
 
   DrawFPS(10, 10);
-
-  // Prepare debug string
-  char debugOri[128];
-  snprintf(debugOri, sizeof(debugOri),
-           "Torso Yaw: %.2f  Pitch: %.2f  Roll: %.2f\n"
-           "Camera Yaw: %.2f  Pitch: %.2f\n Convergence distance %f",
-           torsoOri.yaw, torsoOri.pitch, torsoOri.roll, camYaw, camPitch,
-           eng->actors.raycasts[pid][0].distance);
-
-  // Draw text at top-left
-  DrawText(debugOri, 10, 40, 20, RAYWHITE);
-
-  // Draw player position
-  char posText[64];
-  snprintf(posText, sizeof(posText), "Player Pos: X: %.2f  Y: %.2f  Z: %.2f",
-           playerPos->x, playerPos->y, playerPos->z);
-
-  int textWidth = MeasureText(posText, 20);
-  DrawText(posText, eng->config.window_width - textWidth - 10, 10, 20,
-           RAYWHITE);
 
   // draw torso leg orientation
   Orientation legs_orientation =
@@ -582,14 +612,6 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   float diff = fmod(torsoYaw - legYaw + PI, 2 * PI);
   if (diff < 0)
     diff += 2 * PI;
-
-  char rotText[64];
-  snprintf(rotText, sizeof(rotText),
-           "legs yaw: %f \ntorso yaw: %f \ndiff: %f\n", legYaw, torsoYaw, diff);
-
-  int rotTextWidth = MeasureText(rotText, 20);
-  DrawText(rotText, eng->config.window_width - rotTextWidth - 10, 30, 20,
-           RAYWHITE);
 
   float hitpoints = eng->actors.hitPoints[gs->playerId];
   int playerHeatMeter = gs->heatMeter;
@@ -630,9 +652,35 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
                (Color){255, 255, 255, 180}, // border
                RAYWHITE);
 
-  float length = 50.0f;
-  Vector2 arrowStart = (Vector2){eng->config.window_width * 0.8,
-                                 eng->config.window_height * 0.8};
+  // ---------------------
+  // ALPHA TANK HP (bottom center, large)
+  // ---------------------
+  entity_t alpha = FindActiveAlpha(gs, eng);
+  if (alpha) {
+    float alphaHP = eng->actors.hitPoints[alpha];
+    float alphaMaxHP = 500.0f;
+
+    // Bigger than player bars
+    int alphaBarW = 640;
+    int alphaBarH = 36;
+
+    // Position it ABOVE player HP/heat bars
+    int alphaPad = 16;
+    int alphaY = yBottom - alphaBarH - labelSize - alphaPad - 8;
+    int alphaX = (eng->config.window_width - alphaBarW) / 2;
+
+    DrawText("ALPHA", alphaX, alphaY - labelSize - 4, labelSize, RAYWHITE);
+
+    DrawValueBar(alphaX, alphaY, alphaBarW, alphaBarH, alphaHP, alphaMaxHP,
+                 (Color){180, 60, 220, 255},  // fill
+                 (Color){20, 20, 20, 200},    // back
+                 (Color){255, 255, 255, 200}, // border
+                 RAYWHITE);
+  }
+
+  float length = 70.0f;
+  Vector2 arrowStart = (Vector2){eng->config.window_width * 0.9,
+                                 eng->config.window_height * 0.84};
 
   float endX = arrowStart.x + cosf(-diff) * length;
   float endY = arrowStart.y + sinf(-diff) * length;
@@ -640,13 +688,21 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   float endXTorso = arrowStart.x;
   float endYTorso = arrowStart.y - length;
 
+  Texture2D tex = gs->tankAimerTex;
+
+  float scale = 0.6f;
+  float rotDeg = -diff * RAD2DEG + 90;
+
+  Rectangle src = {0, 0, tex.width, tex.height};
+  Rectangle dst = {arrowStart.x, arrowStart.y, tex.width * scale,
+                   tex.height * scale};
+
+  Vector2 origin = {dst.width / 2, dst.height / 2};
+
+  DrawTexturePro(tex, src, dst, origin, rotDeg, WHITE);
+
   // torso arrow
   DrawLineEx(arrowStart, (Vector2){endXTorso, endYTorso}, 3.0f, RED);
-  // leg arrow
-  DrawLineEx(arrowStart, (Vector2){endX, endY}, 3.0f, GREEN);
-
-  // Draw other UI shapes
-  DrawCircleV(arrowStart, 10, DARKBLUE);
 
   DrawCircleLines(eng->config.window_width / 2, eng->config.window_height / 2,
                   10, RED);

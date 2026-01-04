@@ -84,6 +84,8 @@ typedef enum {
   ENTITY_WALL,
   ENTITY_DESTRUCT,
   ENTITY_TURRET,
+  ENTITY_ENVIRONMENT,
+  ENTITY_ROCK,
   ENTITY_TRIGGER,
   ENTITY_TANK_ALPHA
 } EntityType_t;
@@ -160,10 +162,7 @@ typedef struct {
 
   EntityType_t types[MAX_ENTITIES];
 
-  // TODO
-  // AI state
-  // position target
-  // aiming target
+  char *OnCollideTexts[MAX_ENTITIES];
 
 } ActorComponents_t;
 
