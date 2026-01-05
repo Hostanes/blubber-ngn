@@ -37,7 +37,7 @@ static inline ExplosionDef GetExplosionDef(int projectileType) {
                           .soundVol = 1.0f,
                           .soundPitch = 1.05f};
   case P_MISSILE: // rocket
-    return (ExplosionDef){.radius = 80.0f,
+    return (ExplosionDef){.radius = 50.0f,
                           .maxDamage = 35.0f,
                           .minDamage = 0.0f,
                           .impulse = 0.0f,

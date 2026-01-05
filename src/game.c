@@ -1679,7 +1679,7 @@ void StartGameDuel(GameState_t *gs, Engine_t *eng) {
   // // TIPS
   // gs->tips.index = 0;
   // gs->tips.count = 6;
-  // gs->tips.visible = true;
+  gs->tips.visible = false;
 
   float cellSize = GRID_CELL_SIZE;
   ClearGrid(&gs->grid);
@@ -1818,7 +1818,7 @@ GameState_t InitGameDuel(Engine_t *eng) {
   // // TIPS
   // gs->tips.index = 0;
   // gs->tips.count = 6;
-  // gs->tips.visible = true;
+  gs->tips.visible = false;
 
   gs->state = STATE_INLEVEL;
   gs->pHeadbobTimer = 0.0f;
