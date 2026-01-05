@@ -226,7 +226,7 @@ void DrawProjectiles(Engine_t *eng) {
       Vector3 front = Vector3Add(p, Vector3Scale(dir, length * 0.5f));
       Vector3 back = Vector3Add(p, Vector3Scale(dir, -length * 0.5f));
 
-      DrawCylinderEx(back, front, radius, radius, 8, ORANGE);
+      DrawCylinderEx(back, front, radius, radius, 8, BLUE);
 
       // Spawn thruster particle (type 2) at the back
       // Slightly behind the cylinder so it doesn't clip
@@ -421,6 +421,80 @@ static entity_t FindActiveAlpha(GameState_t *gs, Engine_t *eng) {
   return (entity_t)0;
 }
 
+static void QuitGameNow(void) {
+  // if you have custom shutdown, call it here
+  CloseAudioDevice(); // safe even if already closed
+  CloseWindow();
+  exit(0); // guarantees full shutdown
+}
+
+static void DrawPauseOverlay(GameState_t *gs, Engine_t *eng) {
+  if (!gs->paused)
+    return;
+
+  int w = eng->config.window_width;
+  int h = eng->config.window_height;
+
+  // dim screen
+  DrawRectangle(0, 0, w, h, (Color){0, 0, 0, 160});
+
+  // panel
+  Rectangle panel = {w / 2.0f - 170, h / 2.0f - 150, 340, 300};
+  DrawRectangleRec(panel, (Color){20, 20, 20, 220});
+  DrawRectangleLinesEx(panel, 2.0f, (Color){255, 255, 255, 120});
+
+  DrawText("PAUSED", (int)panel.x + 110, (int)panel.y + 18, 28, RAYWHITE);
+
+  // buttons
+  Rectangle resumeBtn = {panel.x + 70, panel.y + 75, 200, 50};
+  Rectangle menuBtn = {panel.x + 70, panel.y + 140, 200, 50};
+  Rectangle quitBtn = {panel.x + 70, panel.y + 205, 200, 50};
+
+  Vector2 m = GetMousePosition();
+  bool hoverResume = CheckCollisionPointRec(m, resumeBtn);
+  bool hoverMenu = CheckCollisionPointRec(m, menuBtn);
+  bool hoverQuit = CheckCollisionPointRec(m, quitBtn);
+
+  DrawRectangleRec(resumeBtn, hoverResume ? DARKGRAY : GRAY);
+  DrawText("RESUME", (int)resumeBtn.x + 55, (int)resumeBtn.y + 12, 24, WHITE);
+
+  DrawRectangleRec(menuBtn, hoverMenu ? DARKGRAY : GRAY);
+  DrawText("MAIN MENU", (int)menuBtn.x + 35, (int)menuBtn.y + 12, 24, WHITE);
+
+  DrawRectangleRec(quitBtn, hoverQuit ? (Color){160, 60, 60, 255}
+                                      : (Color){130, 40, 40, 255});
+  DrawText("QUIT", (int)quitBtn.x + 75, (int)quitBtn.y + 12, 24, WHITE);
+
+  // click handlers
+  if (hoverResume && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    gs->paused = false;
+    DisableCursor();
+  }
+
+  if (hoverMenu && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    // go back to menu so player can choose Tutorial or Survival again
+    gs->paused = false;
+    EnableCursor();
+
+    // Optional: clear some transient state so it doesn't carry over
+    gs->isZooming = false;
+    gs->heatMeter = 30; // or whatever your default is
+    gs->pHeadbobTimer = 0.0f;
+
+    // Stop waves immediately (so nothing runs if you accidentally render it)
+    gs->waves.state = WAVE_FINISHED;
+
+    gs->state = STATE_MAINMENU;
+  }
+
+  if (hoverQuit && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    QuitGameNow();
+  }
+
+  DrawText("ESC: Resume", (int)panel.x + 105, (int)panel.y + 270, 18,
+           (Color){200, 200, 200, 255});
+}
+
 // --- Main Render Function ---
 void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
@@ -528,15 +602,15 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
       outlineThickness = 0.05f;
       outlineColor = (Color){1, 1, 1, 255};
     }
-    if(type == ENTITY_ENVIRONMENT){
+    if (type == ENTITY_ENVIRONMENT) {
       outlineColor = BLACK;
       outlineThickness = 15;
     }
-    if(type == ENTITY_ROCK){
+    if (type == ENTITY_ROCK) {
       outlineColor = BLACK;
       outlineThickness = 0.05;
     }
-    
+
     // Visual models (solid white)
     DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,
                         false, drawOutline, gs->outlineShader, outlineThickness,
@@ -553,8 +627,8 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     // }
     // // Hitboxes (red wireframe)
     // DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
-    //                     hitboxColor, true, false, gs->outlineShader, 0, BLACK,
-    //                     i);
+    //                     hitboxColor, true, false, gs->outlineShader, 0,
+    //                     BLACK, i);
   }
 
   for (int i = 0; i < MAX_STATICS; i++) {
@@ -583,8 +657,8 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     // Color hitboxColor = RED;
     // // Hitboxes (red wireframe)
     // DrawModelCollection(&eng->statics.hitboxCollections[i], entityPos,
-    //                     hitboxColor, true, false, gs->outlineShader, 0, BLACK,
-    //                     -1);
+    //                     hitboxColor, true, false, gs->outlineShader, 0,
+    //                     BLACK, -1);
   }
 
   EndMode3D();
@@ -669,7 +743,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     int alphaY = yBottom - alphaBarH - labelSize - alphaPad - 8;
     int alphaX = (eng->config.window_width - alphaBarW) / 2;
 
-    DrawText("ALPHA", alphaX, alphaY - labelSize - 4, labelSize, RAYWHITE);
+    DrawText("Heavy Tank", alphaX, alphaY - labelSize - 4, labelSize, RAYWHITE);
 
     DrawValueBar(alphaX, alphaY, alphaBarW, alphaBarH, alphaHP, alphaMaxHP,
                  (Color){180, 60, 220, 255},  // fill
@@ -677,37 +751,38 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
                  (Color){255, 255, 255, 200}, // border
                  RAYWHITE);
   }
-
-  float length = 70.0f;
-  Vector2 arrowStart = (Vector2){eng->config.window_width * 0.9,
-                                 eng->config.window_height * 0.84};
-
-  float endX = arrowStart.x + cosf(-diff) * length;
-  float endY = arrowStart.y + sinf(-diff) * length;
-
-  float endXTorso = arrowStart.x;
-  float endYTorso = arrowStart.y - length;
-
-  Texture2D tex = gs->tankAimerTex;
-
-  float scale = 0.6f;
-  float rotDeg = -diff * RAD2DEG + 90;
-
-  Rectangle src = {0, 0, tex.width, tex.height};
-  Rectangle dst = {arrowStart.x, arrowStart.y, tex.width * scale,
-                   tex.height * scale};
-
-  Vector2 origin = {dst.width / 2, dst.height / 2};
-
-  DrawTexturePro(tex, src, dst, origin, rotDeg, WHITE);
-
-  // torso arrow
-  DrawLineEx(arrowStart, (Vector2){endXTorso, endYTorso}, 3.0f, RED);
-
   DrawCircleLines(eng->config.window_width / 2, eng->config.window_height / 2,
                   10, RED);
 
   DrawMessageBanner(gs);
+  DrawPauseOverlay(gs, eng);
+
+  // ---------------------
+  // Tips panel (bottom center, above bars)
+  // ---------------------
+  if (gs->tips.visible) {
+    const char *tipText = gTips[gs->tips.index];
+
+    int panelW = 520;
+    int panelH = 220;
+
+    int panelX = (eng->config.window_width - panelW) / 2;
+    int panelY = yBottom - panelH - 90; // tweak vertical placement
+
+    // background panel
+    DrawRectangle(panelX, panelY, panelW, panelH, (Color){0, 0, 0, 160});
+    DrawRectangleLines(panelX, panelY, panelW, panelH,
+                       (Color){255, 255, 255, 120});
+
+    // header
+    char header[64];
+    snprintf(header, sizeof(header), "TIP %d/%d  (LEFT/RIGHT)",
+             gs->tips.index + 1, gTipsCount);
+    DrawText(header, panelX + 12, panelY + 10, 18, RAYWHITE);
+
+    // body text
+    DrawText(tipText, panelX + 12, panelY + 36, 18, RAYWHITE);
+  }
 
   EndDrawing();
 }

@@ -11,7 +11,7 @@ const float DASH_CHARGE_TIME = 0.18f;
 const float DASH_GO_TIME = 0.12f;
 const float DASH_SLOW_TIME = 0.10f;
 
-const float DASH_SPEED = 1200.0f;
+const float DASH_SPEED = 1500.0f;
 const float DASH_SLOW_DAMP = 18.0f;
 
 // Torso pitch kick during dash (radians)
@@ -181,6 +181,43 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   bool controlsLocked = (*pState != PSTATE_NORMAL);
 
   // -----------------------------
+  // Binocular zoom toggle
+  // -----------------------------
+  if (IsKeyPressed(KEY_B)) {
+    gs->isZooming = !gs->isZooming;
+  }
+
+  float sensitivity = 0.0007f;
+  if (gs->isZooming)
+    sensitivity = 0.0002f;
+
+  // -----------------------------
+  // Look controls (FPS style)
+  // -----------------------------
+  if (!controlsLocked) {
+    Vector2 mouse = GetMouseDelta();
+    torso->yaw += mouse.x * sensitivity;
+    torso->pitch += -mouse.y * sensitivity;
+
+    // FPS mode: lock legs to torso (single facing direction)
+    leg->yaw = torso->yaw;
+  }
+
+  // Dash torso pitch kick (visual) happens later, but we clamp pitch after
+  // applying kick.
+
+  // Update ray distance (kept from your version)
+  UpdateRayDistance(gs, eng, gs->playerId, dt);
+
+  // -----------------------------
+  // Movement basis from legs (now locked to torso)
+  // -----------------------------
+  float c = cosf(leg->yaw);
+  float s = sinf(leg->yaw);
+  Vector3 forward = (Vector3){c, 0, s};
+  Vector3 right = (Vector3){-s, 0, c};
+
+  // -----------------------------
   // DASH INPUT (uses heat)
   // -----------------------------
   if (IsKeyPressed(KEY_SPACE) && *pState == PSTATE_NORMAL) {
@@ -192,7 +229,10 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   }
 
   // -----------------------------
-  // DASH STATE MACHINE (movement locked)
+  // DASH STATE MACHINE
+  // - charge: damp motion
+  // - go: set velocity once (do NOT overwrite each frame)
+  // - slow: damp velocity
   // -----------------------------
   switch ((PlayerMoveState)(*pState)) {
   case PSTATE_NORMAL:
@@ -209,18 +249,34 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       *pState = PSTATE_DASH_GO;
       *pTimer = DASH_GO_TIME;
 
-      Vector3 fwd = Vector3Normalize(ForwardFromLegYaw(leg->yaw));
-      vel[pid].x = fwd.x * DASH_SPEED;
-      vel[pid].z = fwd.z * DASH_SPEED;
+      // Dash direction from current movement input (WASD)
+      Vector3 dashDir = (Vector3){0, 0, 0};
+
+      if (IsKeyDown(KEY_W))
+        dashDir = Vector3Add(dashDir, forward);
+      if (IsKeyDown(KEY_S))
+        dashDir = Vector3Subtract(dashDir, forward);
+      if (IsKeyDown(KEY_D))
+        dashDir = Vector3Add(dashDir, right);
+      if (IsKeyDown(KEY_A))
+        dashDir = Vector3Subtract(dashDir, right);
+
+      // If no input, dash forward
+      if (dashDir.x * dashDir.x + dashDir.z * dashDir.z < 0.0001f) {
+        dashDir = forward;
+      }
+
+      dashDir = Vector3Normalize(dashDir);
+      vel[pid].x = dashDir.x * DASH_SPEED;
+      vel[pid].z = dashDir.z * DASH_SPEED;
     }
   } break;
 
   case PSTATE_DASH_GO: {
     *pTimer -= dt;
 
-    Vector3 fwd = Vector3Normalize(ForwardFromLegYaw(leg->yaw));
-    vel[pid].x = fwd.x * DASH_SPEED;
-    vel[pid].z = fwd.z * DASH_SPEED;
+    // IMPORTANT: don't overwrite velocity here, or dash will "bend"
+    // when the player moves the mouse during dash.
 
     if (*pTimer <= 0.0f) {
       *pState = PSTATE_DASH_SLOW;
@@ -253,33 +309,6 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   }
 
   // -----------------------------
-  // Camera / look controls
-  // -----------------------------
-  if (IsKeyPressed(KEY_B)) {
-    gs->isZooming = !gs->isZooming;
-  }
-  float sensitivity = 0.0007f;
-  if (gs->isZooming)
-    sensitivity = 0.0002f;
-
-  float turnRate = isSprinting ? 0.2f : 1.0f;
-
-  if (!controlsLocked) {
-    // Leg yaw with A/D
-    if (IsKeyDown(KEY_A))
-      leg->yaw -= 1.5f * dt * turnRate;
-    if (IsKeyDown(KEY_D))
-      leg->yaw += 1.5f * dt * turnRate;
-
-    // Torso yaw/pitch with mouse
-    Vector2 mouse = GetMouseDelta();
-    torso->yaw += mouse.x * sensitivity;
-    torso->pitch += -mouse.y * sensitivity;
-  }
-
-  UpdateRayDistance(gs, eng, gs->playerId, dt);
-
-  // -----------------------------
   // Dash torso pitch kick (visual)
   // -----------------------------
   static float kickBlend = 0.0f;
@@ -306,13 +335,6 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
     torso->pitch = -1.0f;
 
   // -----------------------------
-  // Movement basis from legs
-  // -----------------------------
-  float c = cosf(leg->yaw);
-  float s = sinf(leg->yaw);
-  Vector3 forward = (Vector3){c, 0, s};
-
-  // -----------------------------
   // FOV
   // -----------------------------
   float baseFOV = eng->config.fov_deg;
@@ -320,6 +342,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   float targetFOV = isSprinting ? sprintFOV : baseFOV;
 
   if (controlsLocked) {
+    // optional: cancel zoom during dash
     gs->isZooming = false;
     targetFOV *= DASH_FOV_MULT;
   }
@@ -329,20 +352,30 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   camera->fovy = camera->fovy + (targetFOV - camera->fovy) * dt * FOV_SPEED;
 
   // -----------------------------
-  // Movement keys (NOT heat-gated)
+  // Movement keys (FPS)
   // -----------------------------
   if (!controlsLocked) {
     float totalSpeedMult = isSprinting ? 2.5f : 1.0f;
-    float forwardSpeedMult = 5.0f * totalSpeedMult;
-    float backwardSpeedMult = 5.0f * totalSpeedMult;
+    float moveAccel = 100.0f * dt * 5.0f * totalSpeedMult;
 
+    // W/S forward/back
     if (IsKeyDown(KEY_W)) {
-      vel[pid].x += forward.x * 100.0f * dt * forwardSpeedMult;
-      vel[pid].z += forward.z * 100.0f * dt * forwardSpeedMult;
+      vel[pid].x += forward.x * moveAccel;
+      vel[pid].z += forward.z * moveAccel;
     }
     if (IsKeyDown(KEY_S)) {
-      vel[pid].x -= forward.x * 100.0f * dt * backwardSpeedMult;
-      vel[pid].z -= forward.z * 100.0f * dt * backwardSpeedMult;
+      vel[pid].x -= forward.x * moveAccel;
+      vel[pid].z -= forward.z * moveAccel;
+    }
+
+    // A/D strafe
+    if (IsKeyDown(KEY_A)) {
+      vel[pid].x -= right.x * moveAccel;
+      vel[pid].z -= right.z * moveAccel;
+    }
+    if (IsKeyDown(KEY_D)) {
+      vel[pid].x += right.x * moveAccel;
+      vel[pid].z += right.z * moveAccel;
     }
   }
 
@@ -412,7 +445,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       spawnParticle(eng, muzzlePos, 0.1, 0);
     }
 
-    // Weapon 3: BLUNDERBUSS
+    // Weapon 3: BLUNDERBUSS (E)
     if (IsKeyPressed(KEY_E) && eng->actors.cooldowns[pid][3] <= 0.0f &&
         HeatTryAction(gs, HEAT_COST_LMB)) {
 
@@ -426,56 +459,44 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       Vector3 muzzlePos =
           Vector3Add(ray->position, Vector3Scale(baseDir, muzzleOffset));
 
-      // --- blunderbuss params ---
-      const int pelletCount = 15;   // number of pellets
-      const float spreadDeg = 1.4f; // cone half-angle (degrees)
+      const int pelletCount = 15;
+      const float spreadDeg = 1.4f;
       const float spreadRad = spreadDeg * DEG2RAD;
 
-      // Build an orthonormal basis around baseDir (right/up)
       Vector3 worldUp = (Vector3){0, 1, 0};
-      Vector3 right = Vector3CrossProduct(worldUp, baseDir);
-      if (Vector3Length(right) < 0.001f) {
-        // if aiming almost straight up/down, choose another axis
+      Vector3 pr = Vector3CrossProduct(worldUp, baseDir);
+      if (Vector3Length(pr) < 0.001f) {
         worldUp = (Vector3){1, 0, 0};
-        right = Vector3CrossProduct(worldUp, baseDir);
+        pr = Vector3CrossProduct(worldUp, baseDir);
       }
-      right = Vector3Normalize(right);
-      Vector3 up = Vector3Normalize(Vector3CrossProduct(baseDir, right));
+      pr = Vector3Normalize(pr);
+      Vector3 pu = Vector3Normalize(Vector3CrossProduct(baseDir, pr));
 
-      // Save original ray direction so we can restore it
       Vector3 originalDir = ray->direction;
 
       for (int i = 0; i < pelletCount; i++) {
-        // Random offsets in [-spreadRad, +spreadRad]
         float rx = ((float)GetRandomValue(-1000, 1000) / 1000.0f) * spreadRad;
         float ry = ((float)GetRandomValue(-1000, 1000) / 1000.0f) * spreadRad;
 
         Vector3 pelletDir = Vector3Add(
-            baseDir, Vector3Add(Vector3Scale(right, rx), Vector3Scale(up, ry)));
+            baseDir, Vector3Add(Vector3Scale(pr, rx), Vector3Scale(pu, ry)));
         pelletDir = Vector3Normalize(pelletDir);
 
-        // Temporarily aim the ray this way so FireProjectile uses it
         ray->direction = pelletDir;
-
-        // FireProjectile(eng, owner, weapon?, projectileType?, damage?)
         FireProjectile(eng, pid, 4, 3, 5);
       }
 
-      // Restore aim ray
       ray->direction = originalDir;
-
-      // One muzzle particle (not per pellet)
       spawnParticle(eng, muzzlePos, 0.1, 0);
     }
   }
 
   // -----------------------------
   // Gun visual recoil offsets
-  // NOTE: keep your original behavior, but fix pid indexing
   // -----------------------------
-  mc->offsets[2].z = 8.0f - (eng->actors.cooldowns[pid][0]) * 2.0f;
-  mc->offsets[3].z = 8.0f - (eng->actors.cooldowns[pid][1]) * 2.0f;
-  mc->offsets[5].z = 8.0f - (eng->actors.cooldowns[pid][3]) * 2.0f;
+  mc->offsets[2].z = 8.0f - (eng->actors.cooldowns[pid][0]) * 2.5f;
+  mc->offsets[3].z = 8.0f - (eng->actors.cooldowns[pid][1]) * 2.5f;
+  mc->offsets[5].z = 8.0f - (eng->actors.cooldowns[pid][3]) * 2.5f;
 
   // -----------------------------
   // Headbob + footsteps disabled during dash
@@ -491,7 +512,7 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
     if (speed > 1.0f) {
       gs->pHeadbobTimer += dt * 8.0f;
-      eng->actors.stepRate[pid] = speed * 0.07f;
+      eng->actors.stepRate[pid] = speed * 0.05f;
 
       float prev = eng->actors.prevStepCycle[pid];
       float curr = eng->actors.stepCycle[pid] + eng->actors.stepRate[pid] * dt;
@@ -509,6 +530,22 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
       gs->pHeadbobTimer = 0.0f;
       eng->actors.stepCycle[pid] = 0.0f;
       eng->actors.prevStepCycle[pid] = 0.0f;
+    }
+  }
+
+  // ---------------------
+  // Tips navigation
+  // ---------------------
+  if (gs->tips.visible) {
+    if (IsKeyPressed(KEY_RIGHT)) {
+      gs->tips.index++;
+      if (gs->tips.index >= gTipsCount)
+        gs->tips.index = 0;
+    }
+    if (IsKeyPressed(KEY_LEFT)) {
+      gs->tips.index--;
+      if (gs->tips.index < 0)
+        gs->tips.index = gTipsCount - 1;
     }
   }
 }

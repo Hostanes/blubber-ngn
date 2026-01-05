@@ -336,7 +336,7 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->offsets[1] = (Vector3){0, 10.2f, 0};
   mc->parentIds[1] = -1;
   mc->orientations[1].yaw = PI;
-  mc->localRotationOffset[1].yaw = 0;
+  mc->localRotationOffset[1].yaw = PI / 2;
   mc->rotLocks[1][0] = true;
   mc->rotLocks[1][1] = true;
   mc->rotLocks[1][2] = false;
@@ -1495,7 +1495,8 @@ void Wave2Start(GameState_t *gs, Engine_t *eng) {
 
 void Wave3Start(GameState_t *gs, Engine_t *eng) {
   gs->waves.enemiesAliveThisWave = 0;
-  TriggerMessage(gs, "WAVE 3/6\n More enemies! Keep moving so you dont get hit");
+  TriggerMessage(gs,
+                 "WAVE 3/6\n More enemies! Keep moving so you dont get hit");
 
   // 5 tanks
   for (int i = 0; i < 5; i++) {
@@ -1537,7 +1538,8 @@ void Wave4Start(GameState_t *gs, Engine_t *eng) {
 
 void Wave5Start(GameState_t *gs, Engine_t *eng) {
   gs->waves.enemiesAliveThisWave = 0;
-  TriggerMessage(gs, "WAVE 5/6 \n Nearly at the end, just hold out a little while longer");
+  TriggerMessage(
+      gs, "WAVE 5/6 \n Nearly at the end, just hold out a little while longer");
 
   // 1 alpha
   entity_t a = AcquireAlphaTank(gs);
@@ -1674,6 +1676,11 @@ void StartGameDuel(GameState_t *gs, Engine_t *eng) {
   gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
   gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
 
+  // // TIPS
+  // gs->tips.index = 0;
+  // gs->tips.count = 6;
+  // gs->tips.visible = true;
+
   float cellSize = GRID_CELL_SIZE;
   ClearGrid(&gs->grid);
 
@@ -1808,6 +1815,11 @@ GameState_t InitGameDuel(Engine_t *eng) {
   gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
   // END REGISTER COMPONENTS
 
+  // // TIPS
+  // gs->tips.index = 0;
+  // gs->tips.count = 6;
+  // gs->tips.visible = true;
+
   gs->state = STATE_INLEVEL;
   gs->pHeadbobTimer = 0.0f;
 
@@ -1923,6 +1935,11 @@ void StartGameTutorial(GameState_t *gs, Engine_t *eng) {
   gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
   gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
 
+  // TIPS
+  gs->tips.index = 0;
+  gs->tips.count = 6;
+  gs->tips.visible = true;
+
   float cellSize = GRID_CELL_SIZE;
   ClearGrid(&gs->grid);
 
@@ -1983,63 +2000,7 @@ void StartGameTutorial(GameState_t *gs, Engine_t *eng) {
     }
   }
 
-  // -------------------------------------------------------
-  // Tutorial text triggers (walk-forward path)
-  // -------------------------------------------------------
-  // Base position near the range entrance
-
-  // Make a nice path forward (+z) with spaced triggers
-  // Big boxes so you don't miss them
-  Vector3 trigSize = (Vector3){90, 25, 90};
-
-  // 1) Movement + independent legs/torso
-  Vector3 trigMove = (Vector3){t0.x, t0.y, t0.z + 120};
-  trigMove.y =
-      GetTerrainHeightAtPosition(&gs->terrain, trigMove.x, trigMove.z) + 5;
-
-  CreateTextTriggerCube(eng, gs, trigMove, trigSize,
-                        "A / D rotates your LEGS (movement direction).\n"
-                        "Mouse rotates your TORSO (aim direction).\n"
-                        "They are independent: you move in one direction while "
-                        "aiming elsewhere.");
-
-  // 2) Heat + weapons overview (4 weapons)
-  Vector3 trigHeat = (Vector3){t0.x + 260, t0.y, t0.z};
-  trigHeat.y =
-      GetTerrainHeightAtPosition(&gs->terrain, trigHeat.x, trigHeat.z) + 5;
-
-  CreateTextTriggerCube(eng, gs, trigHeat, trigSize,
-                        "WEAPONS + HEAT\n"
-                        "You have 4 weapons.\n"
-                        "Firing builds HEAT.\n"
-                        "If HEAT is high, you must wait for it to cool down.\n"
-                        "Try each weapon on the targets ahead.");
-
-  // 3) Optional: list the actual keys if you want (edit to match your bindings)
-  Vector3 trigWeapons = (Vector3){t0.x + 520, t0.y, t0.z};
-  trigWeapons.y =
-      GetTerrainHeightAtPosition(&gs->terrain, trigWeapons.x, trigWeapons.z) +
-      5;
-
-  CreateTextTriggerCube(eng, gs, trigWeapons, trigSize,
-                        "WEAPON KEYS\n"
-                        "Use your weapon keys to switch/fire.\n"
-                        "Watch the HEAT bar as you shoot.\n"
-                        "Blunderbuss is strong up close (spread).");
-
-  // 4) Dash tutorial
-  Vector3 trigDash = (Vector3){t0.x + 740, t0.y, t0.z};
-  trigDash.y =
-      GetTerrainHeightAtPosition(&gs->terrain, trigDash.x, trigDash.z) + 5;
-
-  CreateTextTriggerCube(eng, gs, trigDash, trigSize,
-                        "DASH\n"
-                        "Use DASH to reposition quickly.\n"
-                        "Dash has a short charge and cooldown.\n"
-                        "Dash out of danger, then re-engage.");
-
   int rocksCount = 150;
-  // scatter radius (tweak)
   float minRadius = 500.0f;
   float maxRadius = 3000.0f;
 

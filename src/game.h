@@ -176,6 +176,12 @@ typedef struct {
   bool alphaUsed[MAX_POOL_ALPHA];
 } WaveSystem_t;
 
+typedef struct {
+  int index;    // current tip
+  int count;    // number of tips
+  bool visible; // optional toggle later
+} UITips_t;
+
 //----------------------------------------
 // Game State
 //----------------------------------------
@@ -202,7 +208,26 @@ typedef struct GameState {
   Texture2D tankAimerTex;
   Texture2D hudDamagedTex;
 
+  UITips_t tips;
+
+  bool paused;
+
 } GameState_t;
+
+static const char *gTips[] = {
+    "MOVEMENT\nW/S: move forward/back\nA/D: strafe\nSHIFT: sprint",
+    "AIM\nMouse aims your mech.\nCrosshair shows aim point.",
+
+    "DASH\nSPACE: dash in movement direction.\nUse it to reposition.",
+
+    "WEAPONS\nLMB: left gun\nRMB: cannon\nQ: rocket\nE: blunderbuss\nGuns are "
+    "slightly offcenter\nthey wont shoot exactly at the crosshair",
+
+    "HEAT\nFiring and dashing builds HEAT.\nIf heat is high, you must cool"
+    "down.",
+
+    "ZOOM\nB: toggle binocular zoom\nZoom lowers sensitivity."};
+static const int gTipsCount = (int)(sizeof(gTips) / sizeof(gTips[0]));
 
 // damage each projectile does by type
 static int projectileDamage[] = {0, 5, 20, 15, 30, 2};

@@ -46,6 +46,7 @@ int main(void) {
 
   LoadAssets();
 
+  SetExitKey(KEY_NULL); 
 
   // --------------------------------------------
   // CAMERA SETUP (still here for now)

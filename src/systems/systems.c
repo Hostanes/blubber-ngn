@@ -174,37 +174,47 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
   if (gs->state == STATE_INLEVEL) {
 
-    PlayerControlSystem(gs, eng, soundSys, dt, camera);
+    // Toggle pause
+    if (IsKeyPressed(KEY_ESCAPE)) {
+      gs->paused = !gs->paused;
+      if (gs->paused)
+        EnableCursor();
+      else
+        DisableCursor();
+    }
 
-    int entity = 0; // player
-    int rayIndex = 0;
-    Raycast_t *rc = &eng->actors.raycasts[entity][rayIndex];
-    ModelCollection_t *mc = &eng->actors.modelCollections[entity];
+    if (!gs->paused) {
+      PlayerControlSystem(gs, eng, soundSys, dt, camera);
 
-    UpdateRayCastToModel(gs, eng, rc, entity, 1);
-    UpdateEntityRaycasts(eng, entity);
+      int entity = 0; // player
+      int rayIndex = 0;
+      Raycast_t *rc = &eng->actors.raycasts[entity][rayIndex];
+      UpdateRayCastToModel(gs, eng, rc, entity, 1);
+      UpdateEntityRaycasts(eng, entity);
 
-    DecrementCooldowns(eng, gs, dt);
+      DecrementCooldowns(eng, gs, dt);
+      UpdateWaves(gs, eng, dt);
 
-    UpdateWaves(gs, eng, dt);
+      UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
 
-    UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
+      UpdateEnemyTargets(gs, eng, soundSys, dt);
+      UpdateEnemyVelocities(gs, eng, soundSys, dt);
 
-    UpdateEnemyTargets(gs, eng, soundSys, dt);
-    UpdateEnemyVelocities(gs, eng, soundSys, dt);
+      UpdateTankAimingAndShooting(gs, eng, soundSys, dt);
+      UpdateTankTurretAiming(gs, eng, soundSys, dt);
+      UpdateHarasserAimingAndShooting(gs, eng, soundSys, dt);
+      UpdateAlphaTankTurretAimingAndShooting(gs, eng, soundSys, dt);
 
-    UpdateTankAimingAndShooting(gs, eng, soundSys, dt);
-    UpdateTankTurretAiming(gs, eng, soundSys, dt);
-    UpdateHarasserAimingAndShooting(gs, eng, soundSys, dt);
-    UpdateAlphaTankTurretAimingAndShooting(gs, eng, soundSys, dt);
+      PhysicsSystem(gs, eng, soundSys, dt);
+      UpdateParticles(eng, dt);
 
-    PhysicsSystem(gs, eng, soundSys, dt);
-    UpdateParticles(eng, dt);
+      UpdateMessageBanner(gs, dt);
+    }
 
-    UpdateMessageBanner(gs, dt);
-
+    // Always render (so pause shows the current scene)
     RenderSystem(gs, eng, *camera);
 
+    // Optional: you can still update sound here or skip it when paused
     UpdateSoundSystem(soundSys, eng, gs, dt);
 
   } else if (gs->state == STATE_MAINMENU) {

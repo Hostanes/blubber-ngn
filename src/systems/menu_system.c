@@ -18,13 +18,15 @@ void MainMenuSystem(GameState_t *gs, Engine_t *eng) {
 
   // Draw START
   DrawRectangleRec(startButton, hoveringStart ? DARKGRAY : GRAY);
-  DrawText("START", (int)startButton.x + 50, (int)startButton.y + 12, 24,
+  DrawText("Wave Survival", (int)startButton.x + 50, (int)startButton.y + 12, 24,
            WHITE);
 
   // Draw TUTORIAL
   DrawRectangleRec(tutorialButton, hoveringTutorial ? DARKGRAY : GRAY);
   DrawText("TUTORIAL", (int)tutorialButton.x + 30, (int)tutorialButton.y + 12,
            24, WHITE);
+
+  gs->paused = false;
 
   // Click START => Survival mode (your current behavior)
   if (hoveringStart && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
