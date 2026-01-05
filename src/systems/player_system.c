@@ -8,10 +8,10 @@
 // Tunables
 // -----------------------------
 const float DASH_CHARGE_TIME = 0.18f;
-const float DASH_GO_TIME = 0.12f;
+const float DASH_GO_TIME = 0.2f;
 const float DASH_SLOW_TIME = 0.10f;
 
-const float DASH_SPEED = 1500.0f;
+const float DASH_SPEED = 1800.0f;
 const float DASH_SLOW_DAMP = 18.0f;
 
 // Torso pitch kick during dash (radians)
@@ -29,7 +29,7 @@ static float HEAT_MAX = 100.0f;
 static float HEAT_COOL_PER_SEC = 15.0f; // heat/sec cooldown (tweak)
 
 // Heat costs (tweak)
-static float HEAT_COST_DASH = 25.0f;   // on dash start
+static float HEAT_COST_DASH = 18.0f;   // on dash start
 static float HEAT_COST_LMB = 5.0f;     // per shot
 static float HEAT_COST_RMB = 12.0f;    // per shot
 static float HEAT_COST_ROCKET = 18.0f; // per rocket
