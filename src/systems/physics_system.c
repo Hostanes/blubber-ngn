@@ -63,21 +63,21 @@ float GetTerrainHeightAtXZ(Terrain_t *terrain, float wx, float wz) {
 static float GetTerrainHeightAtEntity(Engine_t *eng, GameState_t *gs,
                                       Terrain_t *terrain, entity_t entity) {
   Vector3 pos =
-      *(Vector3 *)getComponent(&eng->actors, entity, gs->compReg.cid_Positions);
+      *(Vector3 *)getComponent(eng->actors, entity, gs->compReg.cid_Positions);
   return GetTerrainHeightAtXZ(terrain, pos.x, pos.z);
 }
 
 void ApplyTerrainCollision(Engine_t *eng, GameState_t *gs, Terrain_t *terrain,
                            int entityId, float dt) {
 
-  Vector3 *pos = (Vector3 *)getComponent(&eng->actors, entityId,
+  Vector3 *pos = (Vector3 *)getComponent(eng->actors, entityId,
                                          gs->compReg.cid_Positions);
-  Vector3 *vel = (Vector3 *)getComponent(&eng->actors, entityId,
+  Vector3 *vel = (Vector3 *)getComponent(eng->actors, entityId,
                                          gs->compReg.cid_velocities);
 
   if (gs->playerId == entityId) {
 
-    int *pState = (int *)getComponent(&eng->actors, gs->playerId,
+    int *pState = (int *)getComponent(eng->actors, gs->playerId,
                                       gs->compReg.cid_moveBehaviour);
     if (*pState != PSTATE_DASH_CHARGE || *pState != PSTATE_DASH_GO) {
 
@@ -117,11 +117,11 @@ void ApplyTerrainCollision(Engine_t *eng, GameState_t *gs, Terrain_t *terrain,
 
 static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int entityId,
                                 float dt) {
-  Vector3 *pos = (Vector3 *)getComponent(&eng->actors, entityId,
+  Vector3 *pos = (Vector3 *)getComponent(eng->actors, entityId,
                                          gs->compReg.cid_Positions);
-  Vector3 *vel = (Vector3 *)getComponent(&eng->actors, entityId,
+  Vector3 *vel = (Vector3 *)getComponent(eng->actors, entityId,
                                          gs->compReg.cid_velocities);
-  Vector3 *prev = (Vector3 *)getComponent(&eng->actors, entityId,
+  Vector3 *prev = (Vector3 *)getComponent(eng->actors, entityId,
                                           gs->compReg.cid_prevPositions);
   if (!pos || !vel || !prev)
     return;
@@ -151,15 +151,15 @@ static void UpdateActorPosition(Engine_t *eng, GameState_t *gs, int entityId,
 static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
   int emCount = eng->em.count;
   Vector3 *pos =
-      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+      (Vector3 *)GetComponentArray(eng->actors, gs->compReg.cid_Positions);
   Vector3 *vel =
-      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_velocities);
+      (Vector3 *)GetComponentArray(eng->actors, gs->compReg.cid_velocities);
 
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
 
-    EntityType_t typeI = eng->actors.types[i];
+    EntityType_t typeI = eng->actors->types[i];
     if (!(typeI == ENTITY_PLAYER || typeI == ENTITY_MECH ||
           typeI == ENTITY_TANK || typeI == ENTITY_TANK_ALPHA))
       continue;
@@ -189,8 +189,8 @@ static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
           }
           // Check and resolve collision
           if (CheckAndResolveOBBCollision(
-                  &pos[i], &eng->actors.collisionCollections[i], &pos[j],
-                  &eng->actors.collisionCollections[j])) {
+                  &pos[i], &eng->actors->collisionCollections[i], &pos[j],
+                  &eng->actors->collisionCollections[j])) {
 
             Vector3 mtvDir = Vector3Normalize(Vector3Subtract(pos[i], pos[j]));
             float velDot = Vector3DotProduct(vel[i], mtvDir);
@@ -209,15 +209,15 @@ static void ResolveActorCollisions(GameState_t *gs, Engine_t *eng) {
 static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
   int emCount = eng->em.count;
   Vector3 *pos =
-      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+      (Vector3 *)GetComponentArray(eng->actors, gs->compReg.cid_Positions);
   Vector3 *vel =
-      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_velocities);
+      (Vector3 *)GetComponentArray(eng->actors, gs->compReg.cid_velocities);
 
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
 
-    EntityType_t type = eng->actors.types[i];
+    EntityType_t type = eng->actors->types[i];
     if (!(type == ENTITY_PLAYER || type == ENTITY_MECH || type == ENTITY_TANK ||
           type == ENTITY_TANK_ALPHA))
       continue;
@@ -246,7 +246,7 @@ static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
 
           // Check and resolve collision
           if (CheckAndResolveOBBCollision(
-                  &pos[i], &eng->actors.collisionCollections[i],
+                  &pos[i], &eng->actors->collisionCollections[i],
                   &eng->statics.positions[s],
                   &eng->statics.collisionCollections[s])) {
 
@@ -264,7 +264,7 @@ static void ResolveActorStaticCollisions(GameState_t *gs, Engine_t *eng) {
 
 static void ResolveTriggerEvents(GameState_t *gs, Engine_t *eng) {
   int emCount = eng->em.count;
-  Vector3 *pos = GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+  Vector3 *pos = GetComponentArray(eng->actors, gs->compReg.cid_Positions);
 
   for (int i = 0; i < emCount; i++) {
 
@@ -275,7 +275,7 @@ static void ResolveTriggerEvents(GameState_t *gs, Engine_t *eng) {
 
     // Trigger entity
     BehaviorCallBacks_t *cb =
-        getComponent(&eng->actors, i, gs->compReg.cid_behavior);
+        getComponent(eng->actors, i, gs->compReg.cid_behavior);
     if (!cb)
       continue;
 
@@ -294,8 +294,8 @@ static void ResolveTriggerEvents(GameState_t *gs, Engine_t *eng) {
         continue;
 
       bool overlap =
-          CheckOBBOverlap(pos[i], &eng->actors.collisionCollections[i], pos[j],
-                          &eng->actors.collisionCollections[j]);
+          CheckOBBOverlap(pos[i], &eng->actors->collisionCollections[i], pos[j],
+                          &eng->actors->collisionCollections[j]);
 
       if (overlap) {
         someoneOverlapping = true;
@@ -303,7 +303,7 @@ static void ResolveTriggerEvents(GameState_t *gs, Engine_t *eng) {
         if (!cb->isColliding) {
           if (cb->onCollision)
             cb->onCollision(eng, gs, MakeEntityID(ET_ACTOR, i),
-                            MakeEntityID(ET_ACTOR, j), eng->actors.OnCollideTexts[i]);
+                            MakeEntityID(ET_ACTOR, j), eng->actors->OnCollideTexts[i]);
           cb->isColliding = true;
         }
       }
@@ -331,7 +331,7 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     if (!eng->em.alive[i])
       continue;
 
-    EntityType_t type = eng->actors.types[i];
+    EntityType_t type = eng->actors->types[i];
     if (!(type == ENTITY_PLAYER || type == ENTITY_HARASSER ||
           type == ENTITY_TANK || type == ENTITY_TANK_ALPHA))
       continue;
@@ -339,9 +339,9 @@ void PhysicsSystem(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     UpdateActorPosition(eng, gs, i, dt);
 
     // Reinsert into grid if moved
-    if (!Vector3Equals(*(Vector3 *)getComponent(&eng->actors, i,
+    if (!Vector3Equals(*(Vector3 *)getComponent(eng->actors, i,
                                                 gs->compReg.cid_prevPositions),
-                       (*(Vector3 *)getComponent(&eng->actors, i,
+                       (*(Vector3 *)getComponent(eng->actors, i,
                                                  gs->compReg.cid_Positions)))) {
       // printf("updating entity position\n");
       // printf("grid update for %d\n", i);

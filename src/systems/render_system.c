@@ -353,9 +353,9 @@ void DrawRaycasts(GameState_t *gs, Engine_t *eng) {
     if (!(eng->em.masks[i] & C_RAYCAST))
       continue; // skip entities without raycast
 
-    for (int j = 0; j < eng->actors.rayCounts[i]; j++) {
+    for (int j = 0; j < eng->actors->rayCounts[i]; j++) {
 
-      Raycast_t *raycast = &eng->actors.raycasts[i][j];
+      Raycast_t *raycast = &eng->actors->raycasts[i][j];
 
       // Color for debug: player = RED, others = BLUE
       Color c = (i == gs->playerId) ? RED : BLUE;
@@ -412,7 +412,7 @@ static entity_t FindActiveAlpha(GameState_t *gs, Engine_t *eng) {
 
     // also ignore parked ones (extra safety)
     Vector3 *pos =
-        (Vector3 *)getComponent(&eng->actors, a, gs->compReg.cid_Positions);
+        (Vector3 *)getComponent(eng->actors, a, gs->compReg.cid_Positions);
     if (pos && pos->y < -5000.0f)
       continue;
 
@@ -501,12 +501,12 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   const float bobAmount = BOB_AMOUNT; // height in meters, visual only
 
   int pid = gs->playerId;
-  Vector3 *playerPos = (Vector3 *)getComponent(&eng->actors, gs->playerId,
+  Vector3 *playerPos = (Vector3 *)getComponent(eng->actors, gs->playerId,
                                                gs->compReg.cid_Positions);
-  ModelCollection_t *mc = &eng->actors.modelCollections[pid];
+  ModelCollection_t *mc = &eng->actors->modelCollections[pid];
 
   // --- Compute headbob ---
-  float t = eng->actors.stepCycle[pid];
+  float t = eng->actors->stepCycle[pid];
   float bobTri = (t < 0.5f) ? (t * 2.0f) : (2.0f - t * 2.0f); // 0->1->0
   bobTri = 1.0f - bobTri;                                     // flip to drop
   float torsoBobY = bobTri * bobAmount;
@@ -517,7 +517,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
   // Update torso model collection transforms
   UpdateModelCollectionWorldTransforms(mc, torsoPos, camera.target,
-                                       eng->actors.types[pid]);
+                                       eng->actors->types[pid]);
 
   // --- Compute forward from torso orientation ---
   Orientation torsoOri = mc->globalOrientations[1]; // torso model index
@@ -575,20 +575,20 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
   for (int i = 0; i < eng->em.count; i++) {
     Vector3 entityPos =
-        *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+        *(Vector3 *)getComponent(eng->actors, i, gs->compReg.cid_Positions);
 
     // Update world transforms
-    UpdateModelCollectionWorldTransforms(&eng->actors.modelCollections[i],
+    UpdateModelCollectionWorldTransforms(&eng->actors->modelCollections[i],
                                          entityPos, camera.target,
-                                         eng->actors.types[i]);
-    UpdateModelCollectionWorldTransforms(&eng->actors.collisionCollections[i],
+                                         eng->actors->types[i]);
+    UpdateModelCollectionWorldTransforms(&eng->actors->collisionCollections[i],
                                          entityPos, camera.target, 0);
-    UpdateModelCollectionWorldTransforms(&eng->actors.hitboxCollections[i],
+    UpdateModelCollectionWorldTransforms(&eng->actors->hitboxCollections[i],
                                          entityPos, camera.target, 0);
 
     // DrawRaycasts(gs, eng);
 
-    EntityType_t type = eng->actors.types[i];
+    EntityType_t type = eng->actors->types[i];
 
     Color outlineColor = {173, 7, 1, 255};
     bool drawOutline = true;
@@ -612,12 +612,12 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     }
 
     // Visual models (solid white)
-    DrawModelCollection(&eng->actors.modelCollections[i], entityPos, WHITE,
+    DrawModelCollection(&eng->actors->modelCollections[i], entityPos, WHITE,
                         false, drawOutline, gs->outlineShader, outlineThickness,
                         outlineColor, i);
 
     // Movement collision boxes (green wireframe)
-    DrawModelCollection(&eng->actors.collisionCollections[i], entityPos, GREEN,
+    DrawModelCollection(&eng->actors->collisionCollections[i], entityPos, GREEN,
                         true, false, gs->outlineShader, outlineThickness,
                         outlineColor, i);
 
@@ -626,7 +626,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
     //   hitboxColor = BLACK;
     // }
     // // Hitboxes (red wireframe)
-    // DrawModelCollection(&eng->actors.hitboxCollections[i], entityPos,
+    // DrawModelCollection(&eng->actors->hitboxCollections[i], entityPos,
     //                     hitboxColor, true, false, gs->outlineShader, 0,
     //                     BLACK, i);
   }
@@ -669,10 +669,10 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
 
   // draw torso leg orientation
   Orientation legs_orientation =
-      eng->actors.modelCollections[gs->playerId].orientations[0];
+      eng->actors->modelCollections[gs->playerId].orientations[0];
 
   Orientation torso_orientation =
-      eng->actors.modelCollections[gs->playerId].orientations[1];
+      eng->actors->modelCollections[gs->playerId].orientations[1];
 
   float legYaw = fmod(legs_orientation.yaw, 2 * PI);
   if (legYaw < 0)
@@ -687,7 +687,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   if (diff < 0)
     diff += 2 * PI;
 
-  float hitpoints = eng->actors.hitPoints[gs->playerId];
+  float hitpoints = eng->actors->hitPoints[gs->playerId];
   int playerHeatMeter = gs->heatMeter;
 
   // --- Bottom HUD bars ---
@@ -731,7 +731,7 @@ void RenderSystem(GameState_t *gs, Engine_t *eng, Camera3D camera) {
   // ---------------------
   entity_t alpha = FindActiveAlpha(gs, eng);
   if (alpha) {
-    float alphaHP = eng->actors.hitPoints[alpha];
+    float alphaHP = eng->actors->hitPoints[alpha];
     float alphaMaxHP = 500.0f;
 
     // Bigger than player bars

@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "engine_components.h"
 #include "raylib.h"
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +22,8 @@ void engine_init(struct Engine *eng, const struct EngineConfig *cfg) {
   memset(eng->em.alive, 0, sizeof(eng->em.alive));
   memset(eng->em.masks, 0, sizeof(eng->em.masks));
 
-  memset(&eng->actors, 0, sizeof(eng->actors));
+  eng->actors = malloc(sizeof(ActorComponents_t));
+  memset(eng->actors, 0, sizeof(ActorComponents_t));
   memset(&eng->projectiles, 0, sizeof(eng->projectiles));
   memset(&eng->statics, 0, sizeof(eng->statics));
   memset(&eng->particles, 0, sizeof(eng->particles));

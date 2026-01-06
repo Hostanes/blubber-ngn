@@ -114,12 +114,12 @@ static void UpdateWaves(GameState_t *gs, Engine_t *eng, float dt) {
   case WAVE_COMPLETE: {
     ws->waveIndex++;
 
-    float playerHP = eng->actors.hitPoints[gs->playerId];
+    float playerHP = eng->actors->hitPoints[gs->playerId];
     playerHP += 50;
     if (playerHP > 200) {
       playerHP = 200;
     }
-    eng->actors.hitPoints[gs->playerId] = playerHP;
+    eng->actors->hitPoints[gs->playerId] = playerHP;
 
     TriggerMessage(gs, "Wave Complete!");
     if (ws->waveIndex >= ws->totalWaves) {
@@ -150,15 +150,15 @@ void DecrementCooldowns(Engine_t *eng, GameState_t *gs, float dt) {
     // Only process entities that have the cooldown component
     if (eng->em.masks[i] & C_COOLDOWN_TAG) {
 
-      for (int j = 0; j < *(int *)getComponent(&eng->actors, i,
+      for (int j = 0; j < *(int *)getComponent(eng->actors, i,
                                                gs->compReg.cid_weaponCount);
            j++) {
 
-        eng->actors.cooldowns[i][j] -= dt;
+        eng->actors->cooldowns[i][j] -= dt;
 
         // Clamp to zero
-        if (eng->actors.cooldowns[i][j] < 0.0f)
-          eng->actors.cooldowns[i][j] = 0.0f;
+        if (eng->actors->cooldowns[i][j] < 0.0f)
+          eng->actors->cooldowns[i][j] = 0.0f;
       }
     }
   }
@@ -188,14 +188,14 @@ void UpdateGame(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
       int entity = 0; // player
       int rayIndex = 0;
-      Raycast_t *rc = &eng->actors.raycasts[entity][rayIndex];
+      Raycast_t *rc = &eng->actors->raycasts[entity][rayIndex];
       UpdateRayCastToModel(gs, eng, rc, entity, 1);
       UpdateEntityRaycasts(eng, entity);
 
       DecrementCooldowns(eng, gs, dt);
       UpdateWaves(gs, eng, dt);
 
-      UpdateTorsoRecoil(&eng->actors.modelCollections[gs->playerId], 1, dt);
+      UpdateTorsoRecoil(&eng->actors->modelCollections[gs->playerId], 1, dt);
 
       UpdateEnemyTargets(gs, eng, soundSys, dt);
       UpdateEnemyVelocities(gs, eng, soundSys, dt);

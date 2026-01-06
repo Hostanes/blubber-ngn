@@ -183,13 +183,13 @@ static void UpdateTankTargetsForEntity(GameState_t *gs, Engine_t *eng, int i,
   if (!(mask & C_TANK_MOVEMENT))
     return;
 
-  Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *pos = getComponent(eng->actors, i, gs->compReg.cid_Positions);
   Vector3 *moveTarget =
-      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+      getComponent(eng->actors, i, gs->compReg.cid_moveTarget);
   int *state =
-      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+      (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
   float *stateTimer =
-      (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
+      (float *)getComponent(eng->actors, i, gs->compReg.cid_moveTimer);
 
   if (!pos || !moveTarget || !state || !stateTimer)
     return;
@@ -241,14 +241,14 @@ static void UpdateHarasserTargetsForEntity(GameState_t *gs, Engine_t *eng,
   if (!(mask & C_AIRHARASSER_MOVEMENT))
     return;
 
-  Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *pos = getComponent(eng->actors, i, gs->compReg.cid_Positions);
   Vector3 *moveTarget =
-      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
-  Vector3 *aimTarget = getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+      getComponent(eng->actors, i, gs->compReg.cid_moveTarget);
+  Vector3 *aimTarget = getComponent(eng->actors, i, gs->compReg.cid_aimTarget);
   int *state =
-      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+      (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
   float *stateTimer =
-      (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
+      (float *)getComponent(eng->actors, i, gs->compReg.cid_moveTimer);
 
   if (!pos || !moveTarget || !aimTarget || !state || !stateTimer)
     return;
@@ -318,14 +318,14 @@ static void UpdateAlphaTankTargetsForEntity(GameState_t *gs, Engine_t *eng,
   if (!(mask & C_TANK_MOVEMENT))
     return;
 
-  Vector3 *pos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *pos = getComponent(eng->actors, i, gs->compReg.cid_Positions);
   Vector3 *moveTarget =
-      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
-  Vector3 *aimTarget = getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+      getComponent(eng->actors, i, gs->compReg.cid_moveTarget);
+  Vector3 *aimTarget = getComponent(eng->actors, i, gs->compReg.cid_aimTarget);
   int *state =
-      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+      (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
   float *stateTimer =
-      (float *)getComponent(&eng->actors, i, gs->compReg.cid_moveTimer);
+      (float *)getComponent(eng->actors, i, gs->compReg.cid_moveTimer);
 
   if (!pos || !moveTarget || !aimTarget || !state || !stateTimer)
     return;
@@ -380,7 +380,7 @@ void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
   int emCount = eng->em.count;
   Vector3 *playerPos =
-      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+      getComponent(eng->actors, gs->playerId, gs->compReg.cid_Positions);
   if (!playerPos)
     return;
 
@@ -388,7 +388,7 @@ void UpdateEnemyTargets(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
     if (!eng->em.alive[i])
       continue;
 
-    switch (eng->actors.types[i]) {
+    switch (eng->actors->types[i]) {
     case ENTITY_TANK:
       UpdateTankTargetsForEntity(gs, eng, i, *playerPos, dt);
       break;
@@ -414,12 +414,12 @@ static void UpdateTankVelocityForEntity(GameState_t *gs, Engine_t *eng, int i,
   if (!(mask & C_TANK_MOVEMENT))
     return;
 
-  Vector3 *position = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
-  Vector3 *velocity = getComponent(&eng->actors, i, gs->compReg.cid_velocities);
+  Vector3 *position = getComponent(eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *velocity = getComponent(eng->actors, i, gs->compReg.cid_velocities);
   Vector3 *moveTarget =
-      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+      getComponent(eng->actors, i, gs->compReg.cid_moveTarget);
   int *moveBehaviour =
-      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+      (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
   float moveSpeed = 50;
 
   if (!position || !velocity || !moveTarget || !moveBehaviour)
@@ -430,7 +430,7 @@ static void UpdateTankVelocityForEntity(GameState_t *gs, Engine_t *eng, int i,
   Vector3 direction = {moveTarget->x - position->x, 0.0f,
                        moveTarget->z - position->z};
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[i];
+  ModelCollection_t *mc = &eng->actors->modelCollections[i];
 
   float targetYaw = atan2f(direction.x, direction.z);
   float currentYaw = mc->localRotationOffset[0].yaw;
@@ -480,12 +480,12 @@ static void UpdateHarasserVelocityForEntity(GameState_t *gs, Engine_t *eng,
   if (!(mask & C_AIRHARASSER_MOVEMENT))
     return;
 
-  Vector3 *position = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
-  Vector3 *velocity = getComponent(&eng->actors, i, gs->compReg.cid_velocities);
+  Vector3 *position = getComponent(eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *velocity = getComponent(eng->actors, i, gs->compReg.cid_velocities);
   Vector3 *moveTarget =
-      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+      getComponent(eng->actors, i, gs->compReg.cid_moveTarget);
   int *state =
-      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+      (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
 
   if (!position || !velocity || !moveTarget || !state)
     return;
@@ -493,14 +493,14 @@ static void UpdateHarasserVelocityForEntity(GameState_t *gs, Engine_t *eng,
   // Keep flight height (pick one convention and use it everywhere)
   position->y = AIRH_FLY_HEIGHT + playerPos.y;
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[i];
+  ModelCollection_t *mc = &eng->actors->modelCollections[i];
 
   // Choose what to face based on state
   Vector3 facePoint = (*state == AIRH_B2) ? playerPos : *moveTarget;
   facePoint.y += 12;
   int rayIdx = 0;
 
-  Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+  Raycast_t *rc = &eng->actors->raycasts[i][rayIdx];
   rc->ray.position = *position;
   if (rc->parentModelIndex == 1) {
     Vector3 dir =
@@ -572,12 +572,12 @@ static void UpdateAlphaTankVelocityForEntity(GameState_t *gs, Engine_t *eng,
   if (!(mask & C_TANK_MOVEMENT))
     return;
 
-  Vector3 *position = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
-  Vector3 *velocity = getComponent(&eng->actors, i, gs->compReg.cid_velocities);
+  Vector3 *position = getComponent(eng->actors, i, gs->compReg.cid_Positions);
+  Vector3 *velocity = getComponent(eng->actors, i, gs->compReg.cid_velocities);
   Vector3 *moveTarget =
-      getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+      getComponent(eng->actors, i, gs->compReg.cid_moveTarget);
   int *state =
-      (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+      (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
 
   if (!position || !velocity || !moveTarget || !state)
     return;
@@ -596,7 +596,7 @@ static void UpdateAlphaTankVelocityForEntity(GameState_t *gs, Engine_t *eng,
   Vector3 direction = {moveTarget->x - position->x, 0.0f,
                        moveTarget->z - position->z};
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[i];
+  ModelCollection_t *mc = &eng->actors->modelCollections[i];
 
   float targetYaw = atan2f(direction.x, direction.z);
   float currentYaw = mc->localRotationOffset[0].yaw;
@@ -641,13 +641,13 @@ void UpdateEnemyVelocities(GameState_t *gs, Engine_t *eng,
   int emCount = eng->em.count;
 
   Vector3 *playerPos =
-      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+      getComponent(eng->actors, gs->playerId, gs->compReg.cid_Positions);
 
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
 
-    switch (eng->actors.types[i]) {
+    switch (eng->actors->types[i]) {
     case ENTITY_TANK:
       UpdateTankVelocityForEntity(gs, eng, i, dt);
       break;
@@ -697,7 +697,7 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
 
   // Get player position
   Vector3 *playerPos =
-      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+      getComponent(eng->actors, gs->playerId, gs->compReg.cid_Positions);
   if (!playerPos)
     return;
 
@@ -705,7 +705,7 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
   (*playerPos).y -= 3.0;
 
   Vector3 *playerVel =
-      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_velocities);
+      getComponent(eng->actors, gs->playerId, gs->compReg.cid_velocities);
   Vector3 playerVelocity = {0, 0, 0};
   if (playerVel) {
     playerVelocity = *playerVel;
@@ -715,7 +715,7 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
     if (!eng->em.alive[i])
       continue;
 
-    EntityType_t type = eng->actors.types[i];
+    EntityType_t type = eng->actors->types[i];
     if (type != ENTITY_TANK)
       continue;
 
@@ -724,22 +724,22 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
       continue;
 
     // Get tank position
-    Vector3 *tankPos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+    Vector3 *tankPos = getComponent(eng->actors, i, gs->compReg.cid_Positions);
     if (!tankPos)
       continue;
 
     // Get aim target component
     Vector3 *aimTarget =
-        getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+        getComponent(eng->actors, i, gs->compReg.cid_aimTarget);
     if (!aimTarget)
       continue;
 
     // Get other components we might need
     float *aimError =
-        (float *)getComponent(&eng->actors, i, gs->compReg.cid_aimError);
-    float *cooldown = eng->actors.cooldowns[i];
-    float *firerate = eng->actors.firerate[i];
-    float *muzzleVelocity = eng->actors.muzzleVelocities[i];
+        (float *)getComponent(eng->actors, i, gs->compReg.cid_aimError);
+    float *cooldown = eng->actors->cooldowns[i];
+    float *firerate = eng->actors->firerate[i];
+    float *muzzleVelocity = eng->actors->muzzleVelocities[i];
 
     // Calculate simple aim target (player position)
     float projectileSpeed = muzzleVelocity ? muzzleVelocity[0] : 50.0f;
@@ -758,7 +758,7 @@ void UpdateTankAimingAndShooting(GameState_t *gs, Engine_t *eng,
     }
 
     int *state =
-        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+        (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
 
     // if (*state == TANK_IDLE) {
     //   calculatedTarget = AimStraightAheadTarget(i, eng, *tankPos);
@@ -789,7 +789,7 @@ Vector3 GetTankForwardDirection(int tankId, Engine_t *eng) {
   if (tankId < 0 || tankId >= MAX_ENTITIES)
     return forward;
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[tankId];
+  ModelCollection_t *mc = &eng->actors->modelCollections[tankId];
   if (mc->countModels < 1 || !mc->orientations)
     return forward;
 
@@ -828,7 +828,7 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
   int emCount = eng->em.count;
 
   Vector3 *playerPos =
-      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+      getComponent(eng->actors, gs->playerId, gs->compReg.cid_Positions);
   if (!playerPos)
     return;
 
@@ -843,7 +843,7 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (eng->actors.types[i] != ENTITY_HARASSER)
+    if (eng->actors->types[i] != ENTITY_HARASSER)
       continue;
 
     uint32_t mask = eng->em.masks[i];
@@ -851,7 +851,7 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
       continue;
 
     int *state =
-        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+        (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
     if (!state)
       continue;
 
@@ -876,8 +876,8 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
 
     // Find the gun ray (parentModelIndex == 1 for harasser)
     int gunRayIdx = -1;
-    for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
-      Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+    for (int rayIdx = 0; rayIdx < eng->actors->rayCounts[i]; rayIdx++) {
+      Raycast_t *rc = &eng->actors->raycasts[i][rayIdx];
       if (rc->active && rc->parentModelIndex == 1) {
         gunRayIdx = rayIdx;
         break;
@@ -888,7 +888,7 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
 
     // Cooldown gating (you can also remove this entirely since we have
     // spacingT)
-    float *cooldown = eng->actors.cooldowns[i];
+    float *cooldown = eng->actors->cooldowns[i];
     if (!cooldown)
       continue;
 
@@ -928,7 +928,7 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
       }
 
       // FIRE one bullet
-      Raycast_t *rc = &eng->actors.raycasts[i][gunRayIdx];
+      Raycast_t *rc = &eng->actors->raycasts[i][gunRayIdx];
 
       Vector3 toPlayer = Vector3Subtract(*playerPos, rc->ray.position);
       float dist = sqrtf(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y +
@@ -967,7 +967,7 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
       rc->ray.direction = shotDir;
 
       Vector3 shooterPos =
-          *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+          *(Vector3 *)getComponent(eng->actors, i, gs->compReg.cid_Positions);
       QueueSound(soundSys, SOUND_WEAPON_FIRE, shooterPos, 0.2f, 1.0f);
 
       FireProjectile(eng, (entity_t)i, gunRayIdx, 0, 1);
@@ -1000,7 +1000,7 @@ void UpdateHarasserAimingAndShooting(GameState_t *gs, Engine_t *eng,
 
       // invalidate target so B1 chooses a new point
       Vector3 *moveTarget =
-          getComponent(&eng->actors, i, gs->compReg.cid_moveTarget);
+          getComponent(eng->actors, i, gs->compReg.cid_moveTarget);
       if (moveTarget)
         *moveTarget = (Vector3){0, AIRH_FLY_HEIGHT, 0};
 
@@ -1015,26 +1015,26 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
   int emCount = eng->em.count;
 
   Vector3 *playerPos =
-      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+      getComponent(eng->actors, gs->playerId, gs->compReg.cid_Positions);
   if (!playerPos)
     return;
 
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (eng->actors.types[i] != ENTITY_TANK)
+    if (eng->actors->types[i] != ENTITY_TANK)
       continue;
 
     // Get tank position and aim target
-    Vector3 *tankPos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+    Vector3 *tankPos = getComponent(eng->actors, i, gs->compReg.cid_Positions);
     Vector3 *aimTarget =
-        getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+        getComponent(eng->actors, i, gs->compReg.cid_aimTarget);
 
     if (!tankPos || !aimTarget)
       continue;
 
     // Get the model collection
-    ModelCollection_t *mc = &eng->actors.modelCollections[i];
+    ModelCollection_t *mc = &eng->actors->modelCollections[i];
     if (mc->countModels < 3) // Need base(0), turret(1), barrel(2)
       continue;
 
@@ -1118,10 +1118,10 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     }
 
     // Update the ray direction for shooting
-    if (eng->actors.rayCounts[i] > 0) {
+    if (eng->actors->rayCounts[i] > 0) {
       // Find ray attached to barrel (model 2)
-      for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
-        Raycast_t *raycast = &eng->actors.raycasts[i][rayIdx];
+      for (int rayIdx = 0; rayIdx < eng->actors->rayCounts[i]; rayIdx++) {
+        Raycast_t *raycast = &eng->actors->raycasts[i][rayIdx];
         if (raycast->parentModelIndex == 2) { // Barrel model
 
           // We need an aim point. Use your turret aim target if you have it.
@@ -1133,11 +1133,11 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
 
           // Weapon params
           int gunId = 0;
-          float muzzleVel = eng->actors.muzzleVelocities[i][gunId]
-                                ? eng->actors.muzzleVelocities[i][gunId]
+          float muzzleVel = eng->actors->muzzleVelocities[i][gunId]
+                                ? eng->actors->muzzleVelocities[i][gunId]
                                 : 10.0f;
-          float dropRate = eng->actors.dropRates[i][gunId]
-                               ? eng->actors.dropRates[i][gunId]
+          float dropRate = eng->actors->dropRates[i][gunId]
+                               ? eng->actors->dropRates[i][gunId]
                                : 1.0f;
 
           // Horizontal distance to aim point (ignore vertical)
@@ -1213,15 +1213,15 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (eng->actors.types[i] != ENTITY_TANK)
+    if (eng->actors->types[i] != ENTITY_TANK)
       continue;
 
     uint32_t mask = eng->em.masks[i];
     if (!(mask & C_TURRET_BEHAVIOUR_1))
       continue;
 
-    float *cooldown = eng->actors.cooldowns[i];
-    float *firerate = eng->actors.firerate[i];
+    float *cooldown = eng->actors->cooldowns[i];
+    float *firerate = eng->actors->firerate[i];
 
     // If you store cooldown as a single float, make sure it's valid
     if (!cooldown)
@@ -1234,15 +1234,15 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     }
 
     int *state =
-        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+        (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
     if (!state || *state == TANK_IDLE)
       continue; // never shoot in idle
 
     // Find the barrel ray index (parentModelIndex == 2), same as your aiming
     // code :contentReference[oaicite:4]{index=4}
     int barrelRayIdx = -1;
-    for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
-      Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+    for (int rayIdx = 0; rayIdx < eng->actors->rayCounts[i]; rayIdx++) {
+      Raycast_t *rc = &eng->actors->raycasts[i][rayIdx];
       if (rc->active && rc->parentModelIndex == 2) {
         barrelRayIdx = rayIdx;
         break;
@@ -1252,7 +1252,7 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
     if (barrelRayIdx < 0)
       continue;
 
-    Ray ray = eng->actors.raycasts[i][barrelRayIdx].ray;
+    Ray ray = eng->actors->raycasts[i][barrelRayIdx].ray;
 
     // Decide when “aiming at player” counts
     const float playerRadius = 20.0f;  // tweak
@@ -1262,7 +1262,7 @@ void UpdateTankTurretAiming(GameState_t *gs, Engine_t *eng,
 
     // FIRE
     Vector3 shooterPos =
-        *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+        *(Vector3 *)getComponent(eng->actors, i, gs->compReg.cid_Positions);
     QueueSound(soundSys, SOUND_WEAPON_FIRE, shooterPos, 0.2f, 1.0f);
 
     FireProjectile(eng, (entity_t)i, barrelRayIdx, 0, 1);
@@ -1289,7 +1289,7 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
   int emCount = eng->em.count;
 
   Vector3 *playerPos =
-      getComponent(&eng->actors, gs->playerId, gs->compReg.cid_Positions);
+      getComponent(eng->actors, gs->playerId, gs->compReg.cid_Positions);
   if (!playerPos)
     return;
 
@@ -1299,16 +1299,16 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (eng->actors.types[i] != ENTITY_TANK_ALPHA)
+    if (eng->actors->types[i] != ENTITY_TANK_ALPHA)
       continue;
 
-    Vector3 *tankPos = getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+    Vector3 *tankPos = getComponent(eng->actors, i, gs->compReg.cid_Positions);
     Vector3 *aimTarget =
-        getComponent(&eng->actors, i, gs->compReg.cid_aimTarget);
+        getComponent(eng->actors, i, gs->compReg.cid_aimTarget);
     if (!tankPos || !aimTarget)
       continue;
 
-    ModelCollection_t *mc = &eng->actors.modelCollections[i];
+    ModelCollection_t *mc = &eng->actors->modelCollections[i];
     if (!mc || mc->countModels < 3)
       continue;
     if (!mc->localRotationOffset)
@@ -1368,9 +1368,9 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
     }
 
     // Update barrel ray (parentModelIndex == 2)
-    if (eng->actors.rayCounts[i] > 0) {
-      for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
-        Raycast_t *raycast = &eng->actors.raycasts[i][rayIdx];
+    if (eng->actors->rayCounts[i] > 0) {
+      for (int rayIdx = 0; rayIdx < eng->actors->rayCounts[i]; rayIdx++) {
+        Raycast_t *raycast = &eng->actors->raycasts[i][rayIdx];
         if (raycast->parentModelIndex != 2)
           continue;
 
@@ -1379,13 +1379,13 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
 
         // Weapon params: use gun 0 ballistics for aiming compensation
         int gunId = 0;
-        float muzzleVel = (eng->actors.muzzleVelocities[i] &&
-                           eng->actors.muzzleVelocities[i][gunId] > 0.0f)
-                              ? eng->actors.muzzleVelocities[i][gunId]
+        float muzzleVel = (eng->actors->muzzleVelocities[i] &&
+                           eng->actors->muzzleVelocities[i][gunId] > 0.0f)
+                              ? eng->actors->muzzleVelocities[i][gunId]
                               : 10.0f;
         float dropRate =
-            (eng->actors.dropRates[i] && eng->actors.dropRates[i][gunId] > 0.0f)
-                ? eng->actors.dropRates[i][gunId]
+            (eng->actors->dropRates[i] && eng->actors->dropRates[i][gunId] > 0.0f)
+                ? eng->actors->dropRates[i][gunId]
                 : 1.0f;
 
         Vector3 toTarget = Vector3Subtract(aimPos, muzzlePos);
@@ -1419,7 +1419,7 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
   for (int i = 0; i < emCount; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (eng->actors.types[i] != ENTITY_TANK_ALPHA)
+    if (eng->actors->types[i] != ENTITY_TANK_ALPHA)
       continue;
 
     uint32_t mask = eng->em.masks[i];
@@ -1427,14 +1427,14 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
       continue;
 
     int *state =
-        (int *)getComponent(&eng->actors, i, gs->compReg.cid_moveBehaviour);
+        (int *)getComponent(eng->actors, i, gs->compReg.cid_moveBehaviour);
     if (!state)
       continue;
 
     // Find barrel ray index (parentModelIndex == 2)
     int barrelRayIdx = -1;
-    for (int rayIdx = 0; rayIdx < eng->actors.rayCounts[i]; rayIdx++) {
-      Raycast_t *rc = &eng->actors.raycasts[i][rayIdx];
+    for (int rayIdx = 0; rayIdx < eng->actors->rayCounts[i]; rayIdx++) {
+      Raycast_t *rc = &eng->actors->raycasts[i][rayIdx];
       if (rc->active && rc->parentModelIndex == 2) {
         barrelRayIdx = rayIdx;
         break;
@@ -1443,11 +1443,11 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
     if (barrelRayIdx < 0)
       continue;
 
-    Ray ray = eng->actors.raycasts[i][barrelRayIdx].ray;
+    Ray ray = eng->actors->raycasts[i][barrelRayIdx].ray;
 
     // Need 2-weapon arrays
-    float *cooldowns = eng->actors.cooldowns[i];
-    float *firerate = eng->actors.firerate[i];
+    float *cooldowns = eng->actors->cooldowns[i];
+    float *firerate = eng->actors->firerate[i];
     if (!cooldowns || !firerate)
       continue;
 
@@ -1483,7 +1483,7 @@ void UpdateAlphaTankTurretAimingAndShooting(GameState_t *gs, Engine_t *eng,
 
     // FIRE
     Vector3 shooterPos =
-        *(Vector3 *)getComponent(&eng->actors, i, gs->compReg.cid_Positions);
+        *(Vector3 *)getComponent(eng->actors, i, gs->compReg.cid_Positions);
 
     SoundType_t soundType =
         projType == P_BULLET ? SOUND_WEAPON_FIRE : SOUND_ROCKET_FIRE;

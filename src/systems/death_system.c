@@ -10,8 +10,8 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
   eng->em.alive[idx] = 0;
 
   Vector3 pos =
-      *(Vector3 *)getComponent(&eng->actors, idx, gs->compReg.cid_Positions);
-  EntityType_t type = eng->actors.types[idx];
+      *(Vector3 *)getComponent(eng->actors, idx, gs->compReg.cid_Positions);
+  EntityType_t type = eng->actors->types[idx];
 
   switch (type) {
 
@@ -29,8 +29,8 @@ void KillActor(GameState_t *gs, Engine_t *eng, SoundSystem_t *soundSys,
 
   case ENTITY_DESTRUCT:
     printf("Destructible object destroyed\n");
-    eng->actors.modelCollections[idx].isActive[0] = false;
-    eng->actors.modelCollections[idx].isActive[1] = true;
+    eng->actors->modelCollections[idx].isActive[0] = false;
+    eng->actors->modelCollections[idx].isActive[1] = true;
 
     spawnParticle(eng, pos, 5, 2);
 

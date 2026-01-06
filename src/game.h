@@ -354,17 +354,17 @@ static inline GridNode_t *FindGridNodeFromPosition(EntityGrid_t *grid,
 static inline void UpdateEntityInGrid(GameState_t *gs, Engine_t *eng,
                                       entity_t e) {
   int idx = GetEntityIndex(e);
-  EntityType_t type = eng->actors.types[idx];
+  EntityType_t type = eng->actors->types[idx];
 
   if (type != ENTITY_PLAYER && type != ENTITY_HARASSER && type != ENTITY_TANK &&
       type != ENTITY_TANK_ALPHA)
     return;
 
   Vector3 *prevPos =
-      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_prevPositions);
+      (Vector3 *)getComponent(eng->actors, e, gs->compReg.cid_prevPositions);
 
   Vector3 *currPos =
-      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_Positions);
+      (Vector3 *)getComponent(eng->actors, e, gs->compReg.cid_Positions);
 
   GridRemoveEntity(&gs->grid, e, *prevPos);
 
@@ -422,7 +422,7 @@ static inline void DeactivateEntity(GameState_t *gs, Engine_t *eng,
 
   // remove from grid first (if it was in)
   Vector3 *pos =
-      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_Positions);
+      (Vector3 *)getComponent(eng->actors, e, gs->compReg.cid_Positions);
   if (pos)
     GridRemoveEntity(&gs->grid, e, *pos);
 
@@ -431,7 +431,7 @@ static inline void DeactivateEntity(GameState_t *gs, Engine_t *eng,
     *pos = PARK_POS;
 
   Vector3 *prev =
-      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_prevPositions);
+      (Vector3 *)getComponent(eng->actors, e, gs->compReg.cid_prevPositions);
   if (prev)
     *prev = PARK_POS;
 
@@ -445,21 +445,21 @@ static inline void ActivateEntityAt(GameState_t *gs, Engine_t *eng, entity_t e,
 
   // mark alive
   eng->em.alive[idx] = 1;
-  if (eng->actors.types[e] == ENTITY_TANK) {
-    eng->actors.hitPoints[e] = 20;
+  if (eng->actors->types[e] == ENTITY_TANK) {
+    eng->actors->hitPoints[e] = 20;
   }
-  if (eng->actors.types[e] == ENTITY_TANK_ALPHA) {
-    eng->actors.hitPoints[e] = 500;
+  if (eng->actors->types[e] == ENTITY_TANK_ALPHA) {
+    eng->actors->hitPoints[e] = 500;
   }
-  if (eng->actors.types[e] == ENTITY_HARASSER) {
-    eng->actors.hitPoints[e] = 6;
+  if (eng->actors->types[e] == ENTITY_HARASSER) {
+    eng->actors->hitPoints[e] = 6;
   }
 
   // set position + prev position
   Vector3 *pos =
-      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_Positions);
+      (Vector3 *)getComponent(eng->actors, e, gs->compReg.cid_Positions);
   Vector3 *prev =
-      (Vector3 *)getComponent(&eng->actors, e, gs->compReg.cid_prevPositions);
+      (Vector3 *)getComponent(eng->actors, e, gs->compReg.cid_prevPositions);
   if (pos)
     *pos = worldPos;
   if (prev)
@@ -470,7 +470,7 @@ static inline void ActivateEntityAt(GameState_t *gs, Engine_t *eng, entity_t e,
     GridAddEntity(&gs->grid, e, *pos);
 
   float *aiTimer =
-      (float *)getComponent(&eng->actors, e, gs->compReg.cid_aiTimer);
+      (float *)getComponent(eng->actors, e, gs->compReg.cid_aiTimer);
   if (aiTimer)
     *aiTimer = 0.0f;
 }

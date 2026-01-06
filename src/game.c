@@ -27,7 +27,7 @@ void TriggerMessage(GameState_t *gs, const char *msg);
 static void Cube_OnCollision(Engine_t *eng, GameState_t *gs, entity_t self,
                              entity_t other, char *text) {
   int idx = GetEntityIndex(self);
-  ModelCollection_t *mc = &eng->actors.modelCollections[idx];
+  ModelCollection_t *mc = &eng->actors->modelCollections[idx];
 
   // Set color to BLUE
   // mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
@@ -39,7 +39,7 @@ static void Cube_OnCollision(Engine_t *eng, GameState_t *gs, entity_t self,
 static void Cube_OnCollisionExit(Engine_t *eng, GameState_t *gs, entity_t self,
                                  entity_t other) {
   int idx = GetEntityIndex(self);
-  ModelCollection_t *mc = &eng->actors.modelCollections[idx];
+  ModelCollection_t *mc = &eng->actors->modelCollections[idx];
 
   // Set color to RED
   // mc->models[0].materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
@@ -149,11 +149,11 @@ void AddRayToEntity(Engine_t *eng, entity_t e, int parentModelIndex,
   if (e < 0 || e >= eng->em.count)
     return;
 
-  int idx = eng->actors.rayCounts[e];
+  int idx = eng->actors->rayCounts[e];
   if (idx >= MAX_RAYS_PER_ENTITY)
     return; // too many rays
 
-  Raycast_t *rc = &eng->actors.raycasts[e][idx];
+  Raycast_t *rc = &eng->actors->raycasts[e][idx];
   rc->active = true;
   rc->parentModelIndex = parentModelIndex;
   rc->localOffset = localOffset;
@@ -164,7 +164,7 @@ void AddRayToEntity(Engine_t *eng, entity_t e, int parentModelIndex,
   rc->ray.position = Vector3Zero();
   rc->ray.direction = Vector3Zero();
 
-  eng->actors.rayCounts[e] = idx + 1;
+  eng->actors->rayCounts[e] = idx + 1;
 }
 
 // -----------------------------------------------
@@ -301,26 +301,26 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
                      C_HITBOX | C_RAYCAST | C_PLAYER_TAG | C_COOLDOWN_TAG |
                      C_GRAVITY | C_HITPOINT_TAG;
 
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
   Vector3 vel = {0, 0, 0};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_velocities,
                         &vel);
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_prevPositions,
                         &pos);
   int moveBehaviour = PSTATE_NORMAL;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveBehaviour,
                         &moveBehaviour);
   float timer = 0;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveTimer,
                         &timer);
-  eng->actors.stepCycle[e] = 0;
-  eng->actors.prevStepCycle[e] = 0;
-  eng->actors.stepRate[e] = 2.0f;
-  eng->actors.types[e] = ENTITY_PLAYER;
-  eng->actors.hitPoints[e] = 200.0f;
+  eng->actors->stepCycle[e] = 0;
+  eng->actors->prevStepCycle[e] = 0;
+  eng->actors->stepRate[e] = 2.0f;
+  eng->actors->types[e] = ENTITY_PLAYER;
+  eng->actors->hitPoints[e] = 200.0f;
 
   // Model collection: 3 parts (legs, torso/head, gun)
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(6);
 
   mc->models[0] = LoadModel("assets/models/raptor1-legs.glb");
@@ -386,14 +386,14 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->rotLocks[5][2] = false;
 
   int weaponCount = 4;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_weaponCount,
                         &weaponCount);
   int weaponDamage[] = {10, 20, 20, 3};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponDamage,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_weaponDamage,
                         &weaponDamage);
 
   // initialize rayCount and add a muzzle ray for the gun (model index 2)
-  eng->actors.rayCounts[e] = 0;
+  eng->actors->rayCounts[e] = 0;
   // Main aim ray - parent to torso (model index 1)
   AddRayToEntity(eng, e, 1,
                  (Vector3){0, 0, 0},     // offset near head/center of torso
@@ -417,53 +417,53 @@ static entity_t CreatePlayer(Engine_t *eng, ActorComponentRegistry_t compReg,
                  (Orientation){0, 0, 0}, 5000.0f);
 
   // Weapons (3)
-  eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * weaponCount);
-  eng->actors.dropRates[e] = MemAlloc(sizeof(float) * weaponCount);
+  eng->actors->muzzleVelocities[e] = MemAlloc(sizeof(float) * weaponCount);
+  eng->actors->dropRates[e] = MemAlloc(sizeof(float) * weaponCount);
 
   // Weapon 0: left-hand gun (fast bullet)
-  eng->actors.muzzleVelocities[e][0] = 2500.0f;
-  eng->actors.dropRates[e][0] = 20.0f;
+  eng->actors->muzzleVelocities[e][0] = 2500.0f;
+  eng->actors->dropRates[e][0] = 20.0f;
 
   // Weapon 1: right-hand cannon (slow heavy shell, long reload)
-  eng->actors.muzzleVelocities[e][1] = 700.0f; // slow
-  eng->actors.dropRates[e][1] = 35.0f;         // heavier drop (tweak)
+  eng->actors->muzzleVelocities[e][1] = 700.0f; // slow
+  eng->actors->dropRates[e][1] = 35.0f;         // heavier drop (tweak)
 
   // Weapon 2: shoulder rocket (medium speed, no drop)
-  eng->actors.muzzleVelocities[e][2] = 1200.0f; // medium
-  eng->actors.dropRates[e][2] = 0;              // no drop
+  eng->actors->muzzleVelocities[e][2] = 1200.0f; // medium
+  eng->actors->dropRates[e][2] = 0;              // no drop
 
   // Weapon 4: Blunder bus
-  eng->actors.muzzleVelocities[e][3] = 3500.0f; // medium
-  eng->actors.dropRates[e][3] = 15.0f;          // no drop
+  eng->actors->muzzleVelocities[e][3] = 3500.0f; // medium
+  eng->actors->dropRates[e][3] = 15.0f;          // no drop
 
-  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * weaponCount);
-  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * weaponCount);
+  eng->actors->cooldowns[e] = (float *)malloc(sizeof(float) * weaponCount);
+  eng->actors->firerate[e] = (float *)malloc(sizeof(float) * weaponCount);
 
   // Cooldowns start at 0 (ready)
   for (int w = 0; w < weaponCount; w++)
-    eng->actors.cooldowns[e][w] = 0.2f;
+    eng->actors->cooldowns[e][w] = 0.2f;
 
   // Weapon 0: left-hand gun (shots/sec)
-  eng->actors.firerate[e][0] = 0.2f;
+  eng->actors->firerate[e][0] = 0.2f;
 
   // Weapon 1: right-hand cannon (long reload)
-  eng->actors.firerate[e][1] = 2.5f;
+  eng->actors->firerate[e][1] = 2.5f;
 
   // Weapon 2: shoulder rocket
-  eng->actors.firerate[e][2] = 1.5f;
+  eng->actors->firerate[e][2] = 1.5f;
 
   // Weapon 3: BLUNDERBUSS!!
-  eng->actors.firerate[e][3] = 1.5f;
+  eng->actors->firerate[e][3] = 1.5f;
 
   // Collision
-  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  ModelCollection_t *col = &eng->actors->collisionCollections[e];
   *col = InitModelCollection(1);
   Mesh moveBox = GenMeshCube(4, 15, 4);
   col->models[0] = LoadModelFromMesh(moveBox);
   col->offsets[0] = (Vector3){0, 5, 0};
 
   // Hitbox
-  ModelCollection_t *hit = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hit = &eng->actors->hitboxCollections[e];
   *hit = InitModelCollection(1);
   Mesh hitbox1 = GenMeshCube(10, 15, 10);
   hit->models[0] = LoadModelFromMesh(hitbox1);
@@ -605,18 +605,18 @@ entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
   // YES C_HITPOINT_TAG → it has HP and uses death system
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG;
 
-  eng->actors.types[e] = ENTITY_TURRET;
-  eng->actors.hitPoints[e] = hp;
+  eng->actors->types[e] = ENTITY_TURRET;
+  eng->actors->hitPoints[e] = hp;
 
   //--------------------------------------------------------
   // POSITION
   //--------------------------------------------------------
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
 
   //--------------------------------------------------------
   // VISUAL MODEL
   //--------------------------------------------------------
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(2);
 
   // --------------------------------------------------------
@@ -633,7 +633,7 @@ entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
   //--------------------------------------------------------
   // HITBOX COLLECTION
   //--------------------------------------------------------
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(1);
 
   // Stand
@@ -643,7 +643,7 @@ entity_t CreateTargetActor(Engine_t *eng, ActorComponentRegistry_t compReg,
   hb->parentIds[0] = -1;
   hb->isActive[0] = true;
 
-  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  ModelCollection_t *col = &eng->actors->collisionCollections[e];
   *col = InitModelCollection(0); // no solids
 
   return MakeEntityID(ET_ACTOR, e);
@@ -660,12 +660,12 @@ entity_t CreateEnvironmentObject(Engine_t *eng,
 
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG;
 
-  eng->actors.types[e] = ENTITY_ENVIRONMENT;
-  eng->actors.hitPoints[e] = hp;
+  eng->actors->types[e] = ENTITY_ENVIRONMENT;
+  eng->actors->hitPoints[e] = hp;
 
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(2);
 
   mc->models[0] = LoadModel(modelPath);
@@ -679,9 +679,9 @@ entity_t CreateEnvironmentObject(Engine_t *eng,
   mc->parentIds[0] = -1;
   mc->isActive[0] = true;
 
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(0);
-  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  ModelCollection_t *col = &eng->actors->collisionCollections[e];
   *col = InitModelCollection(0); // no solids
 
   return MakeEntityID(ET_ACTOR, e);
@@ -697,12 +697,12 @@ entity_t CreateRockRandomOri(Engine_t *eng, ActorComponentRegistry_t compReg,
 
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG;
 
-  eng->actors.types[e] = ENTITY_ROCK;
-  eng->actors.hitPoints[e] = hp;
+  eng->actors->types[e] = ENTITY_ROCK;
+  eng->actors->hitPoints[e] = hp;
 
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(2);
 
   mc->models[0] = LoadModel(modelPath);
@@ -715,9 +715,9 @@ entity_t CreateRockRandomOri(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->parentIds[0] = -1;
   mc->isActive[0] = true;
 
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(0);
-  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  ModelCollection_t *col = &eng->actors->collisionCollections[e];
   *col = InitModelCollection(0); // no solids
 
   return MakeEntityID(ET_ACTOR, e);
@@ -731,12 +731,12 @@ static entity_t CreateTurret(Engine_t *eng, ActorComponentRegistry_t compReg,
                      C_TURRET_BEHAVIOUR_1 | C_COOLDOWN_TAG | C_RAYCAST |
                      C_GRAVITY;
 
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
-  eng->actors.types[e] = ENTITY_TURRET;
-  eng->actors.hitPoints[e] = 200.0f;
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
+  eng->actors->types[e] = ENTITY_TURRET;
+  eng->actors->hitPoints[e] = 200.0f;
 
   // visual models (base + barrel)
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(2);
 
   mc->models[0] = LoadModelFromMesh(GenMeshCylinder(2.0f, 5.0f, 5));
@@ -748,21 +748,21 @@ static entity_t CreateTurret(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->parentIds[1] = 0;
 
   // hitbox
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(10, 10, 10));
   hb->offsets[0] = Vector3Zero();
   hb->parentIds[0] = -1;
 
   // ray: attach to barrel (model 1) muzzle
-  eng->actors.rayCounts[e] = 0;
+  eng->actors->rayCounts[e] = 0;
   AddRayToEntity(eng, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
-  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.cooldowns[e][0] = 0.0f;
-  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 0.4f;
+  eng->actors->cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors->cooldowns[e][0] = 0.0f;
+  eng->actors->firerate[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors->firerate[e][0] = 0.4f;
 
   entity_t id = MakeEntityID(ET_STATIC, e);
   return id;
@@ -781,18 +781,18 @@ static entity_t CreateDestructible(Engine_t *eng,
   eng->em.masks[e] =
       C_POSITION | C_MODEL | C_COLLISION | C_HITBOX | C_HITPOINT_TAG | C_SOLID;
 
-  eng->actors.types[e] = ENTITY_DESTRUCT;
-  eng->actors.hitPoints[e] = hitPoints;
+  eng->actors->types[e] = ENTITY_DESTRUCT;
+  eng->actors->hitPoints[e] = hitPoints;
 
   //-----------------------------------------------------
   // Position component
   //-----------------------------------------------------
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
 
   //-----------------------------------------------------
   // VISUAL MODEL
   //-----------------------------------------------------
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(2);
   mc->isActive[0] = true;
   mc->isActive[1] = false;
@@ -818,7 +818,7 @@ static entity_t CreateDestructible(Engine_t *eng,
   //-----------------------------------------------------
   // COLLISION MODEL (same size as bounding box)
   //-----------------------------------------------------
-  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  ModelCollection_t *col = &eng->actors->collisionCollections[e];
   *col = InitModelCollection(1);
 
   Mesh colMesh = GenMeshCube(size.x, size.y, size.z);
@@ -829,7 +829,7 @@ static entity_t CreateDestructible(Engine_t *eng,
   //-----------------------------------------------------
   // HITBOX MODEL (same size, normally identical)
   //-----------------------------------------------------
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(1);
 
   Mesh hbMesh = GenMeshCube(size.x, size.y, size.z);
@@ -851,19 +851,19 @@ entity_t CreateTextTriggerCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
   // This entity receives collision events but is NOT solid
   eng->em.masks[e] = C_POSITION | C_TRIGGER;
 
-  eng->actors.types[e] = ENTITY_TRIGGER;
-  eng->actors.OnCollideTexts[e] = text;
+  eng->actors->types[e] = ENTITY_TRIGGER;
+  eng->actors->OnCollideTexts[e] = text;
 
   //-----------------------------------------------------
   // POSITION COMPONENT
   //-----------------------------------------------------
-  addComponentToElement(&eng->em, &eng->actors, e, gs->compReg.cid_Positions,
+  addComponentToElement(&eng->em, eng->actors, e, gs->compReg.cid_Positions,
                         &pos);
 
   //-----------------------------------------------------
   // MODEL (visual)
   //-----------------------------------------------------
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(1);
 
   Mesh mesh = GenMeshCube(size.x, size.y, size.z);
@@ -878,7 +878,7 @@ entity_t CreateTextTriggerCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
   //-----------------------------------------------------
   // COLLISION COLLECTION (same size)
   //-----------------------------------------------------
-  ModelCollection_t *col = &eng->actors.collisionCollections[e];
+  ModelCollection_t *col = &eng->actors->collisionCollections[e];
   *col = InitModelCollection(1);
 
   col->models[0] = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
@@ -895,7 +895,7 @@ entity_t CreateTextTriggerCube(Engine_t *eng, GameState_t *gs, Vector3 pos,
   cb.onDeath = NULL;
   cb.isColliding = false;
 
-  addComponentToElement(&eng->em, &eng->actors, e, gs->compReg.cid_behavior,
+  addComponentToElement(&eng->em, eng->actors, e, gs->compReg.cid_behavior,
                         &cb);
 
   //-----------------------------------------------------
@@ -912,42 +912,42 @@ static entity_t CreateTankAlpha(Engine_t *eng, ActorComponentRegistry_t compReg,
                      C_TURRET_BEHAVIOUR_1 | C_TANK_MOVEMENT | C_COOLDOWN_TAG |
                      C_RAYCAST | C_GRAVITY;
 
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_prevPositions,
                         &pos);
 
   Vector3 vel = {0, 0, 0};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_velocities,
                         &vel);
 
   Vector3 moveTarget = {0, 0, 0};
   Vector3 aimTarget = {0, 0, 0};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimTarget,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_aimTarget,
                         &aimTarget);
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTarget,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveTarget,
                         &moveTarget);
 
   float timer = 0.0f;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveTimer,
                         &timer);
 
   int moveBehaviour = 1;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveBehaviour,
                         &moveBehaviour);
 
   float maxAimError = 1.5f;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_aimError,
                         &maxAimError);
 
   int weaponCount = 2;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_weaponCount,
                         &weaponCount);
 
-  eng->actors.types[e] = ENTITY_TANK_ALPHA;
-  eng->actors.hitPoints[e] = 500.0f;
+  eng->actors->types[e] = ENTITY_TANK_ALPHA;
+  eng->actors->hitPoints[e] = 500.0f;
 
   // ----- models (same as CreateTank) -----
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(3);
 
   mc->models[0] = LoadModel("assets/models/enemy-alpha-hull.glb");
@@ -977,35 +977,35 @@ static entity_t CreateTankAlpha(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->orientations[1] = (Orientation){PI, 0, 0};
 
   // ----- hitbox -----
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(50, 40, 50));
   hb->offsets[0] = (Vector3){0, 0, 0};
   hb->parentIds[0] = -1;
 
   // ----- ray (same barrel) -----
-  eng->actors.rayCounts[e] = 0;
+  eng->actors->rayCounts[e] = 0;
   AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // ----- weapon arrays (size 2) -----
-  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 2);
-  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 2);
+  eng->actors->cooldowns[e] = (float *)malloc(sizeof(float) * 2);
+  eng->actors->firerate[e] = (float *)malloc(sizeof(float) * 2);
 
-  eng->actors.muzzleVelocities[e] = (float *)MemAlloc(sizeof(float) * 2);
-  eng->actors.dropRates[e] = (float *)MemAlloc(sizeof(float) * 2);
+  eng->actors->muzzleVelocities[e] = (float *)MemAlloc(sizeof(float) * 2);
+  eng->actors->dropRates[e] = (float *)MemAlloc(sizeof(float) * 2);
 
   // weapon 0: current gun (bullets)
   float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 5.4f;
-  eng->actors.cooldowns[e][0] = 1.4f + r;
-  eng->actors.firerate[e][0] = 0.5f;
-  eng->actors.muzzleVelocities[e][0] = 2800.0f;
-  eng->actors.dropRates[e][0] = 20.0f;
+  eng->actors->cooldowns[e][0] = 1.4f + r;
+  eng->actors->firerate[e][0] = 0.5f;
+  eng->actors->muzzleVelocities[e][0] = 2800.0f;
+  eng->actors->dropRates[e][0] = 20.0f;
 
   // weapon 1: missile launcher (P_MISSILE)
-  eng->actors.cooldowns[e][1] = 3.0f;          // initial delay
-  eng->actors.firerate[e][1] = 2.0f;           // one missile every 8s (tune)
-  eng->actors.muzzleVelocities[e][1] = 600.0f; // missile speed (used at spawn)
-  eng->actors.dropRates[e][1] = 0.0f;          // no gravity for missile
+  eng->actors->cooldowns[e][1] = 3.0f;          // initial delay
+  eng->actors->firerate[e][1] = 2.0f;           // one missile every 8s (tune)
+  eng->actors->muzzleVelocities[e][1] = 600.0f; // missile speed (used at spawn)
+  eng->actors->dropRates[e][1] = 0.0f;          // no gravity for missile
 
   return MakeEntityID(ET_ACTOR, e);
 }
@@ -1017,39 +1017,39 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
                      C_TURRET_BEHAVIOUR_1 | C_TANK_MOVEMENT | C_COOLDOWN_TAG |
                      C_RAYCAST | C_GRAVITY;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_prevPositions,
                         &pos);
   Vector3 vel = {0, 0, 0};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_velocities,
                         &vel);
 
   Vector3 moveTarget = {0, 0, 0};
   Vector3 aimTarget = {0, 0, 0};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimTarget,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_aimTarget,
                         &aimTarget);
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTarget,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveTarget,
                         &moveTarget);
   float timer = 0;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveTimer,
                         &timer);
   int moveBehaviour = 1;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveBehaviour,
                         &moveBehaviour);
 
   float maxAimError = 0.5f; // Aim error radius in radians
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_aimError,
                         &maxAimError);
 
   int weaponCount = 1;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_weaponCount,
                         &weaponCount);
 
-  eng->actors.types[e] = ENTITY_TANK;
-  eng->actors.hitPoints[e] = 20.0f;
+  eng->actors->types[e] = ENTITY_TANK;
+  eng->actors->hitPoints[e] = 20.0f;
 
   // visual models (base + turret + barrel)
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(3); // Now 3 models!
 
   // Model 0: Tank base (body) - rotates with movement
@@ -1091,27 +1091,27 @@ static entity_t CreateTank(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->orientations[1].roll = 0;
 
   // hitbox
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(25, 20, 25));
   hb->offsets[0] = (Vector3){0, 0, 0};
   hb->parentIds[0] = -1;
 
   // ray: attach to barrel (model 1) muzzle
-  eng->actors.rayCounts[e] = 0;
+  eng->actors->rayCounts[e] = 0;
   AddRayToEntity(eng, e, 2, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
-  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors->cooldowns[e] = (float *)malloc(sizeof(float) * 1);
 
   float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 5.4f;
-  eng->actors.cooldowns[e][0] = 1.4f + r;
-  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 5.5f;
-  eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
-  eng->actors.muzzleVelocities[e][0] = 2500.0f;
-  eng->actors.dropRates[e] = MemAlloc(sizeof(float) * 2);
-  eng->actors.dropRates[e][0] = 20.0f;
+  eng->actors->cooldowns[e][0] = 1.4f + r;
+  eng->actors->firerate[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors->firerate[e][0] = 5.5f;
+  eng->actors->muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors->muzzleVelocities[e][0] = 2500.0f;
+  eng->actors->dropRates[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors->dropRates[e][0] = 20.0f;
 
   entity_t id = MakeEntityID(ET_ACTOR, e);
   return id;
@@ -1124,39 +1124,39 @@ static entity_t CreateHarasser(Engine_t *eng, ActorComponentRegistry_t compReg,
   eng->em.masks[e] = C_POSITION | C_MODEL | C_HITBOX | C_HITPOINT_TAG |
                      C_AIRHARASSER_MOVEMENT | C_COOLDOWN_TAG | C_RAYCAST;
 
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_Positions, &pos);
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_prevPositions,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_Positions, &pos);
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_prevPositions,
                         &pos);
   Vector3 vel = {0, 0, 0};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_velocities,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_velocities,
                         &vel);
 
   Vector3 moveTarget = {0, 0, 0};
   Vector3 aimTarget = {0, 0, 0};
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimTarget,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_aimTarget,
                         &aimTarget);
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTarget,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveTarget,
                         &moveTarget);
   float timer = 0;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveTimer,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveTimer,
                         &timer);
   int moveBehaviour = 1;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_moveBehaviour,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_moveBehaviour,
                         &moveBehaviour);
 
   float maxAimError = 0.5f; // Aim error radius in radians
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_aimError,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_aimError,
                         &maxAimError);
 
   int weaponCount = 1;
-  addComponentToElement(&eng->em, &eng->actors, e, compReg.cid_weaponCount,
+  addComponentToElement(&eng->em, eng->actors, e, compReg.cid_weaponCount,
                         &weaponCount);
 
-  eng->actors.types[e] = ENTITY_HARASSER;
-  eng->actors.hitPoints[e] = 6.0f;
+  eng->actors->types[e] = ENTITY_HARASSER;
+  eng->actors->hitPoints[e] = 6.0f;
 
   // visual models (base + turret + barrel)
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
   *mc = InitModelCollection(2); // Now 3 models!
 
   // Model 0: Tank base (body) - rotates with movement
@@ -1187,27 +1187,27 @@ static entity_t CreateHarasser(Engine_t *eng, ActorComponentRegistry_t compReg,
   mc->orientations[1].roll = 0;
 
   // hitbox
-  ModelCollection_t *hb = &eng->actors.hitboxCollections[e];
+  ModelCollection_t *hb = &eng->actors->hitboxCollections[e];
   *hb = InitModelCollection(1);
   hb->models[0] = LoadModelFromMesh(GenMeshCube(25, 20, 25));
   hb->offsets[0] = (Vector3){0, 0, 0};
   hb->parentIds[0] = -1;
 
   // ray: attach to barrel (model 1) muzzle
-  eng->actors.rayCounts[e] = 0;
+  eng->actors->rayCounts[e] = 0;
   AddRayToEntity(eng, e, 1, (Vector3){0, 0, 0}, (Orientation){0, 0, 0}, 500.0f);
 
   // cooldown & firerate
-  eng->actors.cooldowns[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors->cooldowns[e] = (float *)malloc(sizeof(float) * 1);
 
   float r = 0.1f + ((float)GetRandomValue(0, 1000) / 1000.0f) * 5.4f;
-  eng->actors.cooldowns[e][0] = 1.4f + r;
-  eng->actors.firerate[e] = (float *)malloc(sizeof(float) * 1);
-  eng->actors.firerate[e][0] = 5.5f;
-  eng->actors.muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
-  eng->actors.muzzleVelocities[e][0] = 2500.0f;
-  eng->actors.dropRates[e] = MemAlloc(sizeof(float) * 2);
-  eng->actors.dropRates[e][0] = 20.0f;
+  eng->actors->cooldowns[e][0] = 1.4f + r;
+  eng->actors->firerate[e] = (float *)malloc(sizeof(float) * 1);
+  eng->actors->firerate[e][0] = 5.5f;
+  eng->actors->muzzleVelocities[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors->muzzleVelocities[e][0] = 2500.0f;
+  eng->actors->dropRates[e] = MemAlloc(sizeof(float) * 2);
+  eng->actors->dropRates[e][0] = 20.0f;
 
   entity_t id = MakeEntityID(ET_ACTOR, e);
   return id;
@@ -1247,7 +1247,7 @@ void PopulateGridWithEntities(EntityGrid_t *grid,
     if (!eng->em.alive[i])
       continue;
     Vector3 *pos =
-        (Vector3 *)getComponent(&eng->actors, i, compReg.cid_Positions);
+        (Vector3 *)getComponent(eng->actors, i, compReg.cid_Positions);
     GridAddEntity(grid, MakeEntityID(ET_ACTOR, i), *pos);
   }
 
@@ -1286,46 +1286,46 @@ void PrintGrid(EntityGrid_t *grid) {
 static void FreeActorDynamicData(Engine_t *eng) {
   // free per-entity weapon arrays
   for (int i = 0; i < MAX_ENTITIES; i++) {
-    if (eng->actors.cooldowns[i]) {
-      free(eng->actors.cooldowns[i]);
-      eng->actors.cooldowns[i] = NULL;
+    if (eng->actors->cooldowns[i]) {
+      free(eng->actors->cooldowns[i]);
+      eng->actors->cooldowns[i] = NULL;
     }
-    if (eng->actors.firerate[i]) {
-      free(eng->actors.firerate[i]);
-      eng->actors.firerate[i] = NULL;
+    if (eng->actors->firerate[i]) {
+      free(eng->actors->firerate[i]);
+      eng->actors->firerate[i] = NULL;
     }
 
-    if (eng->actors.muzzleVelocities[i]) {
-      MemFree(eng->actors.muzzleVelocities[i]);
-      eng->actors.muzzleVelocities[i] = NULL;
+    if (eng->actors->muzzleVelocities[i]) {
+      MemFree(eng->actors->muzzleVelocities[i]);
+      eng->actors->muzzleVelocities[i] = NULL;
     }
-    if (eng->actors.dropRates[i]) {
-      MemFree(eng->actors.dropRates[i]);
-      eng->actors.dropRates[i] = NULL;
+    if (eng->actors->dropRates[i]) {
+      MemFree(eng->actors->dropRates[i]);
+      eng->actors->dropRates[i] = NULL;
     }
 
     // If you allocate other per-entity pointers later, free them here too.
   }
 
   // free component store blocks (whatever registerComponent allocated)
-  if (eng->actors.componentStore) {
-    for (int c = 0; c < eng->actors.componentCount; c++) {
-      if (eng->actors.componentStore[c].data) {
-        free(eng->actors.componentStore[c].data);
-        eng->actors.componentStore[c].data = NULL;
+  if (eng->actors->componentStore) {
+    for (int c = 0; c < eng->actors->componentCount; c++) {
+      if (eng->actors->componentStore[c].data) {
+        free(eng->actors->componentStore[c].data);
+        eng->actors->componentStore[c].data = NULL;
       }
-      if (eng->actors.componentStore[c].occupied) {
-        free(eng->actors.componentStore[c].occupied);
-        eng->actors.componentStore[c].occupied = NULL;
+      if (eng->actors->componentStore[c].occupied) {
+        free(eng->actors->componentStore[c].occupied);
+        eng->actors->componentStore[c].occupied = NULL;
       }
-      eng->actors.componentStore[c].count = 0;
+      eng->actors->componentStore[c].count = 0;
     }
 
-    free(eng->actors.componentStore);
-    eng->actors.componentStore = NULL;
+    free(eng->actors->componentStore);
+    eng->actors->componentStore = NULL;
   }
 
-  eng->actors.componentCount = 0;
+  eng->actors->componentCount = 0;
 }
 
 void ResetGameDuel(GameState_t *gs, Engine_t *eng) {
@@ -1432,7 +1432,7 @@ static entity_t AcquireAlphaTank(GameState_t *gs) {
 
 static Vector3 PickSpawnAroundPlayer(GameState_t *gs, Engine_t *eng,
                                      float radiusMin, float radiusMax) {
-  Vector3 *pPos = (Vector3 *)getComponent(&eng->actors, (entity_t)gs->playerId,
+  Vector3 *pPos = (Vector3 *)getComponent(eng->actors, (entity_t)gs->playerId,
                                           gs->compReg.cid_Positions);
   pPos->x = 0;
   pPos->y = 0;
@@ -1656,25 +1656,25 @@ static void WaveSystemDefaults(WaveSystem_t *ws) {
 
 void StartGameDuel(GameState_t *gs, Engine_t *eng) {
   // re-register components (same as your InitGameDuel)
-  eng->actors.componentStore =
+  eng->actors->componentStore =
       malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
-  memset(eng->actors.componentStore, 0,
+  memset(eng->actors->componentStore, 0,
          sizeof(ComponentStorage_t) * MAX_COMPONENTS);
 
-  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_Positions = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_velocities = registerComponent(eng->actors, sizeof(Vector3));
   gs->compReg.cid_prevPositions =
-      registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_weaponCount = registerComponent(&eng->actors, sizeof(int));
-  gs->compReg.cid_weaponDamage = registerComponent(&eng->actors, sizeof(int *));
+      registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_weaponCount = registerComponent(eng->actors, sizeof(int));
+  gs->compReg.cid_weaponDamage = registerComponent(eng->actors, sizeof(int *));
   gs->compReg.cid_behavior =
-      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
-  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
-  gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
+      registerComponent(eng->actors, sizeof(BehaviorCallBacks_t));
+  gs->compReg.cid_aimTarget = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_aimError = registerComponent(eng->actors, sizeof(float));
+  gs->compReg.cid_moveTarget = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTimer = registerComponent(eng->actors, sizeof(float));
+  gs->compReg.cid_moveBehaviour = registerComponent(eng->actors, sizeof(int));
+  gs->compReg.cid_aiTimer = registerComponent(eng->actors, sizeof(float));
 
   // // TIPS
   // gs->tips.index = 0;
@@ -1734,8 +1734,8 @@ void StartGameDuel(GameState_t *gs, Engine_t *eng) {
 
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
-    if (eng->actors.rayCounts[i] == 0)
-      eng->actors.rayCounts[i] = 0;
+    if (eng->actors->rayCounts[i] == 0)
+      eng->actors->rayCounts[i] = 0;
   }
 
   // Initialize projectile pool
@@ -1788,31 +1788,31 @@ GameState_t InitGameDuel(Engine_t *eng) {
   memset(eng->em.alive, 0, sizeof(eng->em.alive));
   memset(eng->em.masks, 0, sizeof(eng->em.masks));
 
-  eng->actors.componentCount = 0;
-  eng->actors.componentStore =
+  eng->actors->componentCount = 0;
+  eng->actors->componentStore =
       malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
-  memset(eng->actors.componentStore, 0,
+  memset(eng->actors->componentStore, 0,
          sizeof(ComponentStorage_t) * MAX_COMPONENTS);
 
   // REGISTER COMPONENTS
-  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_Positions = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_velocities = registerComponent(eng->actors, sizeof(Vector3));
   gs->compReg.cid_prevPositions =
-      registerComponent(&eng->actors, sizeof(Vector3));
+      registerComponent(eng->actors, sizeof(Vector3));
 
-  gs->compReg.cid_weaponCount = registerComponent(&eng->actors, sizeof(int));
-  gs->compReg.cid_weaponDamage = registerComponent(&eng->actors, sizeof(int *));
+  gs->compReg.cid_weaponCount = registerComponent(eng->actors, sizeof(int));
+  gs->compReg.cid_weaponDamage = registerComponent(eng->actors, sizeof(int *));
 
   gs->compReg.cid_behavior =
-      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
+      registerComponent(eng->actors, sizeof(BehaviorCallBacks_t));
 
-  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
+  gs->compReg.cid_aimTarget = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_aimError = registerComponent(eng->actors, sizeof(float));
+  gs->compReg.cid_moveTarget = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTimer = registerComponent(eng->actors, sizeof(float));
+  gs->compReg.cid_moveBehaviour = registerComponent(eng->actors, sizeof(int));
 
-  gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
+  gs->compReg.cid_aiTimer = registerComponent(eng->actors, sizeof(float));
   // END REGISTER COMPONENTS
 
   // // TIPS
@@ -1878,8 +1878,8 @@ GameState_t InitGameDuel(Engine_t *eng) {
 
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
-    if (eng->actors.rayCounts[i] == 0)
-      eng->actors.rayCounts[i] = 0;
+    if (eng->actors->rayCounts[i] == 0)
+      eng->actors->rayCounts[i] = 0;
   }
 
   // Initialize projectile pool
@@ -1915,25 +1915,25 @@ void StartGameTutorial(GameState_t *gs, Engine_t *eng) {
   ResetGameDuel(gs, eng);
 
   // re-register components (same as your InitGameDuel)
-  eng->actors.componentStore =
+  eng->actors->componentStore =
       malloc(sizeof(ComponentStorage_t) * MAX_COMPONENTS);
-  memset(eng->actors.componentStore, 0,
+  memset(eng->actors->componentStore, 0,
          sizeof(ComponentStorage_t) * MAX_COMPONENTS);
 
-  gs->compReg.cid_Positions = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_velocities = registerComponent(&eng->actors, sizeof(Vector3));
+  gs->compReg.cid_Positions = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_velocities = registerComponent(eng->actors, sizeof(Vector3));
   gs->compReg.cid_prevPositions =
-      registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_weaponCount = registerComponent(&eng->actors, sizeof(int));
-  gs->compReg.cid_weaponDamage = registerComponent(&eng->actors, sizeof(int *));
+      registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_weaponCount = registerComponent(eng->actors, sizeof(int));
+  gs->compReg.cid_weaponDamage = registerComponent(eng->actors, sizeof(int *));
   gs->compReg.cid_behavior =
-      registerComponent(&eng->actors, sizeof(BehaviorCallBacks_t));
-  gs->compReg.cid_aimTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_aimError = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveTarget = registerComponent(&eng->actors, sizeof(Vector3));
-  gs->compReg.cid_moveTimer = registerComponent(&eng->actors, sizeof(float));
-  gs->compReg.cid_moveBehaviour = registerComponent(&eng->actors, sizeof(int));
-  gs->compReg.cid_aiTimer = registerComponent(&eng->actors, sizeof(float));
+      registerComponent(eng->actors, sizeof(BehaviorCallBacks_t));
+  gs->compReg.cid_aimTarget = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_aimError = registerComponent(eng->actors, sizeof(float));
+  gs->compReg.cid_moveTarget = registerComponent(eng->actors, sizeof(Vector3));
+  gs->compReg.cid_moveTimer = registerComponent(eng->actors, sizeof(float));
+  gs->compReg.cid_moveBehaviour = registerComponent(eng->actors, sizeof(int));
+  gs->compReg.cid_aiTimer = registerComponent(eng->actors, sizeof(float));
 
   // TIPS
   gs->tips.index = 0;
@@ -2020,8 +2020,8 @@ void StartGameTutorial(GameState_t *gs, Engine_t *eng) {
 
   // ensure rayCounts initialized for any entities that weren't touched
   for (int i = 0; i < eng->em.count; i++) {
-    if (eng->actors.rayCounts[i] == 0)
-      eng->actors.rayCounts[i] = 0;
+    if (eng->actors->rayCounts[i] == 0)
+      eng->actors->rayCounts[i] = 0;
   }
 
   // Initialize projectile pool

@@ -11,7 +11,7 @@ void UpdateRayCast(Raycast_t *raycast, Vector3 position,
 
 void UpdateRayCastToModel(GameState_t *gs, Engine_t *eng, Raycast_t *raycast,
                           int entityId, int modelId) {
-  ModelCollection_t *collection = &eng->actors.modelCollections[entityId];
+  ModelCollection_t *collection = &eng->actors->modelCollections[entityId];
 
   // --- Handle per-axis inversion ---
   float yawInvert = collection->rotInverts[modelId][0] ? -1.0f : 1.0f;
@@ -87,7 +87,7 @@ bool CheckRaycastCollision(GameState_t *gs, Engine_t *eng, Raycast_t *raycast,
       continue;
     }
 
-    ModelCollection_t *hitboxes = &eng->actors.hitboxCollections[i];
+    ModelCollection_t *hitboxes = &eng->actors->hitboxCollections[i];
 
     // Iterate over each model in the entity's hitbox collection
     for (int m = 0; m < hitboxes->countModels; m++) {
@@ -125,13 +125,13 @@ void UpdateEntityRaycasts(Engine_t *eng, entity_t e) {
   if (e < 0 || e >= eng->em.count)
     return;
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[e];
-  int rayCount = eng->actors.rayCounts[e];
+  ModelCollection_t *mc = &eng->actors->modelCollections[e];
+  int rayCount = eng->actors->rayCounts[e];
   if (rayCount <= 0)
     return;
 
   // --- Update primary raycast (index 0) to follow torso ---
-  Raycast_t *primary = &eng->actors.raycasts[e][0];
+  Raycast_t *primary = &eng->actors->raycasts[e][0];
   UpdateRaycastFromTorso(mc, primary);
 
   // Compute the target point this ray points at
@@ -141,7 +141,7 @@ void UpdateEntityRaycasts(Engine_t *eng, entity_t e) {
 
   // --- Update secondary raycasts to point at the same target ---
   for (int i = 1; i < rayCount; i++) {
-    Raycast_t *rc = &eng->actors.raycasts[e][i];
+    Raycast_t *rc = &eng->actors->raycasts[e][i];
 
     // Keep the ray origin at its local offset from the model
     Vector3 origin =

@@ -28,7 +28,7 @@ typedef struct Engine {
   EngineConfig_t config;
 
   EntityManager_t em;
-  ActorComponents_t actors;
+  ActorComponents_t *actors;
   ProjectilePool_t projectiles;
   StaticPool_t statics;
   ParticlePool_t particles;

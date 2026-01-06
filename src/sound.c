@@ -129,7 +129,7 @@ float NearDampen(float dist) {
 
 void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
 
-  Vector3 listenerPos = *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+  Vector3 listenerPos = *(Vector3 *)getComponent(eng->actors, gs->playerId,
                                                  gs->compReg.cid_Positions);
 
   const float REF_DIST = 2.0f;
@@ -179,7 +179,7 @@ void ProcessSoundSystem(SoundSystem_t *sys, Engine_t *eng, GameState_t *gs) {
     // Stereo pan based on player aim yaw (torso yaw)
     // ------------------------------------
     float aimYaw =
-        eng->actors.modelCollections[gs->playerId].orientations[1].yaw + PI;
+        eng->actors->modelCollections[gs->playerId].orientations[1].yaw + PI;
 
     // Build right vector from yaw (XZ only)
     // forward = (cos(yaw), 0, sin(yaw))  => right = (-sin(yaw), 0, cos(yaw))

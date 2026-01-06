@@ -265,7 +265,7 @@ bool ProjectileIntersectsEntityOBB(Engine_t *eng, int projIndex, entity_t eid) {
   case ET_ACTOR:
     if (!eng->em.alive[idx])
       return false;
-    col = &eng->actors.hitboxCollections[idx];
+    col = &eng->actors->hitboxCollections[idx];
     break;
   case ET_STATIC:
     col = &eng->statics.hitboxCollections[idx];

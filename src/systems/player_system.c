@@ -92,7 +92,7 @@ void UpdateRayDistance(GameState_t *gs, Engine_t *eng, entity_t e, float dt) {
     return;
 
   int rayIndex = 0; // the main torso ray
-  Raycast_t *rc = &eng->actors.raycasts[e][rayIndex];
+  Raycast_t *rc = &eng->actors->raycasts[e][rayIndex];
 
   // Get mouse wheel movement
   int wheelMove = GetMouseWheelMove(); // +1 scroll up, -1 scroll down
@@ -154,19 +154,19 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   // Component access / validation
   // -----------------------------
   Vector3 *pos =
-      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_Positions);
+      (Vector3 *)GetComponentArray(eng->actors, gs->compReg.cid_Positions);
   Vector3 *vel =
-      (Vector3 *)GetComponentArray(&eng->actors, gs->compReg.cid_velocities);
+      (Vector3 *)GetComponentArray(eng->actors, gs->compReg.cid_velocities);
 
   int *pState =
-      (int *)getComponent(&eng->actors, pid, gs->compReg.cid_moveBehaviour);
+      (int *)getComponent(eng->actors, pid, gs->compReg.cid_moveBehaviour);
   float *pTimer =
-      (float *)getComponent(&eng->actors, pid, gs->compReg.cid_moveTimer);
+      (float *)getComponent(eng->actors, pid, gs->compReg.cid_moveTimer);
 
   if (!pos || !vel || !pState || !pTimer)
     return;
 
-  ModelCollection_t *mc = &eng->actors.modelCollections[pid];
+  ModelCollection_t *mc = &eng->actors->modelCollections[pid];
   if (!mc->orientations || mc->countModels < 2)
     return;
 
@@ -386,16 +386,16 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
     // Weapon 0: Left gun (LMB) -> ray 1, cooldown slot 0
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) &&
-        eng->actors.cooldowns[pid][0] <= 0.0f &&
+        eng->actors->cooldowns[pid][0] <= 0.0f &&
         HeatTryAction(gs, HEAT_COST_LMB)) {
 
-      eng->actors.cooldowns[pid][0] = eng->actors.firerate[pid][0];
+      eng->actors->cooldowns[pid][0] = eng->actors->firerate[pid][0];
       QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.4f, 1.0f);
 
-      ApplyTorsoRecoil(&eng->actors.modelCollections[pid], 1, 0.01f,
+      ApplyTorsoRecoil(&eng->actors->modelCollections[pid], 1, 0.01f,
                        (Vector3){-0.2f, 1.0f, 0});
 
-      Ray *ray = &eng->actors.raycasts[pid][1].ray;
+      Ray *ray = &eng->actors->raycasts[pid][1].ray;
       float muzzleOffset = 15.0f;
       Vector3 fwd = Vector3Normalize(ray->direction);
       Vector3 muzzlePos =
@@ -408,16 +408,16 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
 
     // Weapon 1: Right cannon shell (RMB) -> ray 2, cooldown slot 1
     if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON) &&
-        eng->actors.cooldowns[pid][1] <= 0.0f &&
+        eng->actors->cooldowns[pid][1] <= 0.0f &&
         HeatTryAction(gs, HEAT_COST_RMB)) {
 
-      eng->actors.cooldowns[pid][1] = eng->actors.firerate[pid][1];
+      eng->actors->cooldowns[pid][1] = eng->actors->firerate[pid][1];
       QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 0.6f, 0.9f);
 
-      ApplyTorsoRecoil(&eng->actors.modelCollections[pid], 1, 0.18f,
+      ApplyTorsoRecoil(&eng->actors->modelCollections[pid], 1, 0.18f,
                        (Vector3){-0.15f, 1.0f, 0});
 
-      Ray *ray = &eng->actors.raycasts[pid][2].ray;
+      Ray *ray = &eng->actors->raycasts[pid][2].ray;
       float muzzleOffset = 18.0f;
       Vector3 fwd = Vector3Normalize(ray->direction);
       Vector3 muzzlePos =
@@ -429,13 +429,13 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
     }
 
     // Weapon 2: Shoulder rocket (Q) -> ray 3, cooldown slot 2
-    if (IsKeyPressed(KEY_Q) && eng->actors.cooldowns[pid][2] <= 0.0f &&
+    if (IsKeyPressed(KEY_Q) && eng->actors->cooldowns[pid][2] <= 0.0f &&
         HeatTryAction(gs, HEAT_COST_ROCKET)) {
 
-      eng->actors.cooldowns[pid][2] = eng->actors.firerate[pid][2];
+      eng->actors->cooldowns[pid][2] = eng->actors->firerate[pid][2];
       QueueSound(soundSys, SOUND_ROCKET_FIRE, pos[pid], 1.0f, 1.1f);
 
-      Ray *ray = &eng->actors.raycasts[pid][3].ray;
+      Ray *ray = &eng->actors->raycasts[pid][3].ray;
       float muzzleOffset = 20.0f;
       Vector3 fwd = Vector3Normalize(ray->direction);
       Vector3 muzzlePos =
@@ -446,13 +446,13 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
     }
 
     // Weapon 3: BLUNDERBUSS (E)
-    if (IsKeyPressed(KEY_E) && eng->actors.cooldowns[pid][3] <= 0.0f &&
+    if (IsKeyPressed(KEY_E) && eng->actors->cooldowns[pid][3] <= 0.0f &&
         HeatTryAction(gs, HEAT_COST_LMB)) {
 
-      eng->actors.cooldowns[pid][3] = eng->actors.firerate[pid][2];
+      eng->actors->cooldowns[pid][3] = eng->actors->firerate[pid][2];
       QueueSound(soundSys, SOUND_WEAPON_FIRE, pos[pid], 1.0f, 1.1f);
 
-      Ray *ray = &eng->actors.raycasts[pid][4].ray;
+      Ray *ray = &eng->actors->raycasts[pid][4].ray;
 
       float muzzleOffset = 20.0f;
       Vector3 baseDir = Vector3Normalize(ray->direction);
@@ -494,28 +494,28 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
   // -----------------------------
   // Gun visual recoil offsets
   // -----------------------------
-  mc->offsets[2].z = 8.0f - (eng->actors.cooldowns[pid][0]) * 2.5f;
-  mc->offsets[3].z = 8.0f - (eng->actors.cooldowns[pid][1]) * 2.5f;
-  mc->offsets[5].z = 8.0f - (eng->actors.cooldowns[pid][3]) * 2.5f;
+  mc->offsets[2].z = 8.0f - (eng->actors->cooldowns[pid][0]) * 2.5f;
+  mc->offsets[3].z = 8.0f - (eng->actors->cooldowns[pid][1]) * 2.5f;
+  mc->offsets[5].z = 8.0f - (eng->actors->cooldowns[pid][3]) * 2.5f;
 
   // -----------------------------
   // Headbob + footsteps disabled during dash
   // -----------------------------
   if (controlsLocked) {
     gs->pHeadbobTimer = 0.0f;
-    eng->actors.stepCycle[pid] = 0.0f;
-    eng->actors.prevStepCycle[pid] = 0.0f;
-    eng->actors.stepRate[pid] = 0.0f;
+    eng->actors->stepCycle[pid] = 0.0f;
+    eng->actors->prevStepCycle[pid] = 0.0f;
+    eng->actors->stepRate[pid] = 0.0f;
   } else {
     Vector3 v = vel[pid];
     float speed = sqrtf(v.x * v.x + v.z * v.z);
 
     if (speed > 1.0f) {
       gs->pHeadbobTimer += dt * 8.0f;
-      eng->actors.stepRate[pid] = speed * 0.05f;
+      eng->actors->stepRate[pid] = speed * 0.05f;
 
-      float prev = eng->actors.prevStepCycle[pid];
-      float curr = eng->actors.stepCycle[pid] + eng->actors.stepRate[pid] * dt;
+      float prev = eng->actors->prevStepCycle[pid];
+      float curr = eng->actors->stepCycle[pid] + eng->actors->stepRate[pid] * dt;
 
       if (curr >= 1.0f)
         curr -= 1.0f;
@@ -524,12 +524,12 @@ void PlayerControlSystem(GameState_t *gs, Engine_t *eng,
         QueueSound(soundSys, SOUND_FOOTSTEP, pos[pid], 0.1f, 1.0f);
       }
 
-      eng->actors.stepCycle[pid] = curr;
-      eng->actors.prevStepCycle[pid] = curr;
+      eng->actors->stepCycle[pid] = curr;
+      eng->actors->prevStepCycle[pid] = curr;
     } else {
       gs->pHeadbobTimer = 0.0f;
-      eng->actors.stepCycle[pid] = 0.0f;
-      eng->actors.prevStepCycle[pid] = 0.0f;
+      eng->actors->stepCycle[pid] = 0.0f;
+      eng->actors->prevStepCycle[pid] = 0.0f;
     }
   }
 

@@ -117,12 +117,12 @@ static void SpawnExplosion(GameState_t *gs, Engine_t *eng,
 
         if (idx == gs->playerId) {
           QueueSound(soundSys, SOUND_CLANG,
-                     *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+                     *(Vector3 *)getComponent(eng->actors, gs->playerId,
                                               gs->compReg.cid_Positions),
                      0.2f, 1.0f);
         }
 
-        Vector3 *tpos = (Vector3 *)getComponent(&eng->actors, eid,
+        Vector3 *tpos = (Vector3 *)getComponent(eng->actors, eid,
                                                 gs->compReg.cid_Positions);
         if (!tpos)
           continue;
@@ -139,9 +139,9 @@ static void SpawnExplosion(GameState_t *gs, Engine_t *eng,
         if (dmg <= 0.0f)
           continue;
 
-        eng->actors.hitPoints[idx] -= dmg;
+        eng->actors->hitPoints[idx] -= dmg;
 
-        if (eng->actors.hitPoints[idx] <= 0) {
+        if (eng->actors->hitPoints[idx] <= 0) {
           KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
         }
       }
@@ -250,7 +250,7 @@ static bool CheckActorHit(GameState_t *gs, Engine_t *eng,
         if (!(eng->em.masks[idx] & C_HITBOX))
           continue;
 
-        ModelCollection_t *hb = &eng->actors.hitboxCollections[idx];
+        ModelCollection_t *hb = &eng->actors->hitboxCollections[idx];
         if (hb->countModels <= 0 || !hb->isActive)
           continue;
 
@@ -274,20 +274,20 @@ static bool CheckActorHit(GameState_t *gs, Engine_t *eng,
             if (eng->em.masks[idx] & C_HITPOINT_TAG) {
               if (e != MakeEntityID(ET_ACTOR, gs->playerId)) {
                 QueueSound(soundSys, SOUND_HITMARKER,
-                           *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+                           *(Vector3 *)getComponent(eng->actors, gs->playerId,
                                                     gs->compReg.cid_Positions),
                            0.4f, 1.0f);
               } else {
                 QueueSound(soundSys, SOUND_CLANG,
-                           *(Vector3 *)getComponent(&eng->actors, gs->playerId,
+                           *(Vector3 *)getComponent(eng->actors, gs->playerId,
                                                     gs->compReg.cid_Positions),
                            0.2f, 1.0f);
               }
 
               int damageDealt = projectileDamage[pType];
-              eng->actors.hitPoints[idx] -= damageDealt;
+              eng->actors->hitPoints[idx] -= damageDealt;
 
-              if (eng->actors.hitPoints[idx] <= 0.0f) {
+              if (eng->actors->hitPoints[idx] <= 0.0f) {
                 KillEntity(gs, eng, soundSys, MakeEntityID(ET_ACTOR, idx));
               }
             }
@@ -361,7 +361,7 @@ static Vector3 StepProjectile(GameState_t *gs, Engine_t *eng, int i, float dt) {
 
   case P_MISSILE: {
     // --- homing missile: go straight up, then turn toward player ---
-    Vector3 *playerPos = (Vector3 *)getComponent(&eng->actors, gs->playerId,
+    Vector3 *playerPos = (Vector3 *)getComponent(eng->actors, gs->playerId,
                                                  gs->compReg.cid_Positions);
 
     Vector3 v = eng->projectiles.velocities[i];
@@ -500,10 +500,10 @@ void spawnProjectile(Engine_t *eng, Vector3 pos, Vector3 velocity,
 
 void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex, int gunId,
                     int projType) {
-  if (!eng->actors.raycasts[shooter][rayIndex].active)
+  if (!eng->actors->raycasts[shooter][rayIndex].active)
     return;
 
-  Ray *ray = &eng->actors.raycasts[shooter][rayIndex].ray;
+  Ray *ray = &eng->actors->raycasts[shooter][rayIndex].ray;
 
   Vector3 origin = ray->position;
   Vector3 dir = Vector3Normalize(ray->direction);
@@ -513,12 +513,12 @@ void FireProjectile(Engine_t *eng, entity_t shooter, int rayIndex, int gunId,
   }
 
   // Load weapon stats from components
-  float muzzleVel = eng->actors.muzzleVelocities[shooter][gunId]
-                        ? eng->actors.muzzleVelocities[shooter][gunId]
+  float muzzleVel = eng->actors->muzzleVelocities[shooter][gunId]
+                        ? eng->actors->muzzleVelocities[shooter][gunId]
                         : 10.0f; // default fallback
 
-  float drop = eng->actors.dropRates[shooter][gunId]
-                   ? eng->actors.dropRates[shooter][gunId]
+  float drop = eng->actors->dropRates[shooter][gunId]
+                   ? eng->actors->dropRates[shooter][gunId]
                    : 1.0f;
 
   if (projType == P_MISSILE)
