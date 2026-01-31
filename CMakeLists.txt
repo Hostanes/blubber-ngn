@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # ------------------- Raylib -------------------
-find_package(raylib 4.0 QUIET)
+find_package(raylib 4.0 DEBUG)
 
 # you can also specify a path manually
 # set(RAYLIB_INCLUDE_DIR "/path/to/raylib/include")
@@ -16,30 +16,12 @@ find_package(raylib 4.0 QUIET)
 
 # ------------------- Source Files -------------------
 set(SOURCES
-    src/main.c
-    src/game.c
-    src/sound.c
-    src/engine.c
-    src/engine_components.c
-    src/systems/systems.c
-    src/systems/collision_system.c
-    src/systems/projectile_system.c
-    src/systems/render_system.c
-    src/systems/game_updates.c
-    src/systems/raycast_system.c
-    src/systems/raycast_system.c
-    src/systems/physics_system.c
-    src/systems/menu_system.c
-    src/systems/player_system.c
-    src/systems/particle_system.c
-    src/systems/death_system.c
-    src/systems/ai_system.c
-    src/systems/banner_system.c
+
 )
 
 
 # ------------------- Executable -------------------
-add_executable(MechArenaDemo ${SOURCES})
+add_executable(Game ${SOURCES})
 
 # ------------------- Include Directories -------------------
 target_include_directories(MechArenaDemo PRIVATE src)
