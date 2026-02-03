@@ -1,44 +1,36 @@
-
-# CMakeLists.txt
 cmake_minimum_required(VERSION 3.16)
-project(MechArenaDemo C)
+project(Game C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # ------------------- Raylib -------------------
-find_package(raylib 4.0 DEBUG)
-
-# you can also specify a path manually
-# set(RAYLIB_INCLUDE_DIR "/path/to/raylib/include")
-# set(RAYLIB_LIBRARY "/path/to/raylib/libraylib.a")
+find_package(raylib 4.0 REQUIRED)
 
 # ------------------- Source Files -------------------
-set(SOURCES
-
+file(GLOB_RECURSE SOURCES
+    src/engine/*.c
+    src/game/*.c
 )
-
 
 # ------------------- Executable -------------------
 add_executable(Game ${SOURCES})
 
 # ------------------- Include Directories -------------------
-target_include_directories(MechArenaDemo PRIVATE src)
+target_include_directories(Game PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
 
 # ------------------- Link Libraries -------------------
-if(raylib_FOUND)
-    target_link_libraries(MechArenaDemo PRIVATE raylib)
-else()
-    message(FATAL_ERROR "raylib not found! Please install it or set RAYLIB_INCLUDE_DIR / RAYLIB_LIBRARY.")
-endif()
+target_link_libraries(Game PRIVATE raylib)
 
 # ------------------- Platform-specific options -------------------
 if (UNIX)
-    target_link_libraries(MechArenaDemo PRIVATE m pthread dl)
+    target_link_libraries(Game PRIVATE m pthread dl)
 endif()
 
 # ------------------- Output -------------------
-set_target_properties(MechArenaDemo PROPERTIES
+set_target_properties(Game PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
 )

@@ -1,13 +1,10 @@
-
-#ifndef ECS_TYPES_H
-#define ECS_TYPES_H
-
-#include <stdbool.h>
+#pragma once
 #include <stdint.h>
 
-#define MAX_ENTITIES 10000
+typedef struct {
+  uint32_t id;
+  uint32_t generation;
+  uint32_t type;
+} entity_t;
 
-typedef uint32_t entity_t;
-typedef uint32_t component_mask_t;
-
-#endif
+typedef uint32_t componentId_t;
