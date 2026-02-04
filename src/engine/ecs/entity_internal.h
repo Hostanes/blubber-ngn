@@ -7,5 +7,5 @@ struct entityManager_t {
   uint32_t freeCount;    //
 
   uint32_t capacity; // total allocated ids
-  uint32_t nextId;
+  uint32_t nextId;   // nextId usually at currently used section of array
 };

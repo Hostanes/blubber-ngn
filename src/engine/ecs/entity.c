@@ -48,7 +48,7 @@ entity_t EntityCreate(entityManager_t *entityManager) {
     id = entityManager->freeIds[--entityManager->freeCount];
   } else {
     if (entityManager->capacity == 0 ||
-        entityManager->capacity <= entityManager->freeCount) {
+        entityManager->capacity <= entityManager->nextId) {
       EntityManagerGrow(entityManager);
     }
 
@@ -57,8 +57,8 @@ entity_t EntityCreate(entityManager_t *entityManager) {
 
   entity_t entity;
   entity.id = id;
-  entity.generation = 0;
-  entity.type = 0; // default type for now
+  entity.generation = entityManager->generations[id];
+  entity.type = 0; // TODO fix, default type for now
 
   return entity;
 }
@@ -70,6 +70,7 @@ void EntityDestroy(entityManager_t *entityManager, entity_t entity) {
 
   uint32_t id = entity.id;
 
+  // only increment generations on destroys
   entityManager->generations[id]++;
 
   entityManager->freeIds =

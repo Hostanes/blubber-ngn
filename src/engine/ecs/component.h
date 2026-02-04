@@ -9,8 +9,6 @@ typedef struct componentPool_t componentPool_t;
 
 void ComponentPoolInit(componentPool_t *componentPool, size_t elementSize);
 
-componentId_t ComponentRegister(size_t elementSize, const char *name);
-
 void *ComponentAdd(componentPool_t *componentPool, entity_t entity);
 
 void ComponentRemove(componentPool_t *componentPool, entity_t entity);
