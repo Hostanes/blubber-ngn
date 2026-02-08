@@ -8,7 +8,7 @@
 
 typedef enum {
   ArchetypeStorageInline,
-  ArchetypeStoragePool
+  ArchetypeStorageHandle
 } archetypeStorageType_t;
 
 typedef struct {
@@ -17,8 +17,17 @@ typedef struct {
 
   size_t elementSize;
 
-  void *data;            // inline storage (SoA)
-  componentPool_t *pool; // pooled storage
+  void *data; // SoA array:
+              // - inline value (Position, Velocity)
+              // - OR handle (uint32_t, index, pointer, etc)
+
+  // knows where handles point, only used in case of handles
+  componentPool_t *pool;
+
+  // currently unused
+  void *externalStore; // optional:
+                       // - TimerPool*
+                       // - ModelStore*
 } archetypeColumn_t;
 
 struct archetype_t {

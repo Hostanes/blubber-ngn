@@ -51,7 +51,7 @@ int main(void) {
 
   archetype_t *archA = WorldCreateArchetype(world, &maskA);
   ArchetypeAddInline(archA, COMP_POSITION, sizeof(Position));
-  ArchetypeAddPool(archA, COMP_TIMER, &timerPool);
+  ArchetypeAddHandle(archA, COMP_TIMER, &timerPool);
 
   /* ---------- archetype 2: Position + Health + Timer ---------- */
 
@@ -61,7 +61,7 @@ int main(void) {
   archetype_t *archB = WorldCreateArchetype(world, &maskB);
   ArchetypeAddInline(archB, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(archB, COMP_HEALTH, sizeof(Health));
-  ArchetypeAddPool(archB, COMP_TIMER, &timerPool);
+  ArchetypeAddHandle(archB, COMP_TIMER, &timerPool);
 
   /* ---------- create entities ---------- */
 

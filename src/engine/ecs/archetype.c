@@ -4,107 +4,93 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void ArchetypeGrow(archetype_t *archetype) {
-  uint32_t oldCap = archetype->capacity;
+static void ArchetypeGrow(archetype_t *arch) {
+  uint32_t oldCap = arch->capacity;
   uint32_t newCap = oldCap == 0 ? 64 : oldCap * 2;
 
-  archetype->entities = realloc(archetype->entities, newCap * sizeof(entity_t));
+  arch->entities = realloc(arch->entities, newCap * sizeof(entity_t));
 
-  for (uint32_t i = 0; i < archetype->columnCount; ++i) {
-    archetypeColumn_t *col = &archetype->columns[i];
-
-    if (col->storageType == ArchetypeStorageInline) {
+  for (uint32_t i = 0; i < arch->columnCount; ++i) {
+    archetypeColumn_t *col = &arch->columns[i];
+    if (col->elementSize > 0) {
       col->data = realloc(col->data, newCap * col->elementSize);
     }
   }
 
-  archetype->capacity = newCap;
+  arch->capacity = newCap;
 }
 
-void ArchetypeInit(archetype_t *archetype, bitset_t mask) {
-  archetype->mask = mask;
-
-  archetype->entities = NULL;
-  archetype->count = 0;
-  archetype->capacity = 0;
-
-  archetype->columns = NULL;
-  archetype->columnCount = 0;
+void ArchetypeInit(archetype_t *arch, bitset_t mask) {
+  arch->mask = mask;
+  arch->entities = NULL;
+  arch->count = 0;
+  arch->capacity = 0;
+  arch->columns = NULL;
+  arch->columnCount = 0;
 }
 
-void ArchetypeShutdown(archetype_t *archetype) {
-  for (uint32_t i = 0; i < archetype->columnCount; ++i) {
-    archetypeColumn_t *col = &archetype->columns[i];
-
-    if (col->storageType == ArchetypeStorageInline) {
-      free(col->data);
-    }
+void ArchetypeShutdown(archetype_t *arch) {
+  for (uint32_t i = 0; i < arch->columnCount; ++i) {
+    free(arch->columns[i].data);
   }
 
-  free(archetype->columns);
-  free(archetype->entities);
+  free(arch->columns);
+  free(arch->entities);
 
-  archetype->columns = NULL;
-  archetype->entities = NULL;
-  archetype->count = 0;
-  archetype->capacity = 0;
+  memset(arch, 0, sizeof(*arch));
 }
 
-uint32_t ArchetypeAddEntity(archetype_t *archetype, entity_t entity) {
-  if (archetype->count >= archetype->capacity) {
-    ArchetypeGrow(archetype);
-  }
+static archetypeColumn_t *ArchetypeAddColumn(archetype_t *arch,
+                                             componentId_t componentId,
+                                             archetypeStorageType_t storageType,
+                                             size_t elementSize) {
 
-  uint32_t index = archetype->count++;
+  arch->columns = realloc(arch->columns,
+                          (arch->columnCount + 1) * sizeof(archetypeColumn_t));
 
-  archetype->entities[index] = entity;
-
-  for (uint32_t i = 0; i < archetype->columnCount; ++i) {
-    archetypeColumn_t *col = &archetype->columns[i];
-
-    if (col->storageType == ArchetypeStorageInline) {
-      void *dst = (char *)col->data + index * col->elementSize;
-      memset(dst, 0, col->elementSize);
-    } else {
-      ComponentAdd(col->pool, entity);
-    }
-  }
-
-  return index;
-}
-
-static archetypeColumn_t *ArchetypeAddColumn(archetype_t *archetype,
-                                             componentId_t componentId) {
-
-  archetype->columns =
-      realloc(archetype->columns,
-              (archetype->columnCount + 1) * sizeof(archetypeColumn_t));
-
-  archetypeColumn_t *col = &archetype->columns[archetype->columnCount++];
-
+  archetypeColumn_t *col = &arch->columns[arch->columnCount++];
   memset(col, 0, sizeof(*col));
+
   col->componentId = componentId;
+  col->storageType = storageType;
+  col->elementSize = elementSize;
+  col->data = NULL;
+  col->externalStore = NULL;
 
   return col;
 }
 
-void ArchetypeAddInlineColumn(archetype_t *archetype, componentId_t componentId,
-                              size_t elementSize) {
-
-  archetypeColumn_t *col = ArchetypeAddColumn(archetype, componentId);
-
-  col->storageType = ArchetypeStorageInline;
-  col->elementSize = elementSize;
-  col->data = NULL;
+void ArchetypeAddInline(archetype_t *arch, componentId_t id, size_t size) {
+  ArchetypeAddColumn(arch, id, ArchetypeStorageInline, size);
 }
 
-void ArchetypeAddPoolColumn(archetype_t *archetype, componentId_t componentId,
-                            componentPool_t *pool) {
-
-  archetypeColumn_t *col = ArchetypeAddColumn(archetype, componentId);
-
-  col->storageType = ArchetypeStoragePool;
+void ArchetypeAddHandle(archetype_t *arch, componentId_t id,
+                        componentPool_t *pool) {
+  archetypeColumn_t *col =
+      ArchetypeAddColumn(arch, id, ArchetypeStorageHandle, sizeof(uint32_t));
   col->pool = pool;
+}
+
+uint32_t ArchetypeAddEntity(archetype_t *arch, entity_t entity) {
+  if (arch->count >= arch->capacity) {
+    ArchetypeGrow(arch);
+  }
+
+  uint32_t index = arch->count++;
+  arch->entities[index] = entity;
+
+  for (uint32_t i = 0; i < arch->columnCount; ++i) {
+    archetypeColumn_t *col = &arch->columns[i];
+    void *dst = (char *)col->data + index * col->elementSize;
+    if (col->storageType == ArchetypeStorageInline) {
+      memset(dst, 0, col->elementSize);
+    } else {
+      uint32_t handle = ComponentCreate(col->pool);
+      *(uint32_t *)dst = handle;
+    }
+  }
+
+  return index;
 }
 
 archetypeColumn_t *ArchetypeFindColumn(archetype_t *arch,
@@ -115,31 +101,4 @@ archetypeColumn_t *ArchetypeFindColumn(archetype_t *arch,
     }
   }
   return NULL;
-}
-
-void ArchetypeAddInline(archetype_t *arch, componentId_t id, size_t size) {
-  arch->columns = realloc(arch->columns,
-                          (arch->columnCount + 1) * sizeof(archetypeColumn_t));
-
-  archetypeColumn_t *col = &arch->columns[arch->columnCount++];
-
-  col->componentId = id;
-  col->storageType = ArchetypeStorageInline;
-  col->elementSize = size;
-  col->data = NULL;
-  col->pool = NULL;
-}
-
-void ArchetypeAddPool(archetype_t *arch, componentId_t id,
-                      componentPool_t *pool) {
-  arch->columns = realloc(arch->columns,
-                          (arch->columnCount + 1) * sizeof(archetypeColumn_t));
-
-  archetypeColumn_t *col = &arch->columns[arch->columnCount++];
-
-  col->componentId = id;
-  col->storageType = ArchetypeStoragePool;
-  col->elementSize = 0;
-  col->data = NULL;
-  col->pool = pool;
 }

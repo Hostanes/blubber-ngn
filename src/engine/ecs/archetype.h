@@ -2,6 +2,7 @@
 #pragma once
 #include "../util/bitset.h"
 #include "archetype_internal.h"
+#include "component.h"
 #include "ecs_types.h"
 #include <stdint.h>
 
@@ -17,5 +18,5 @@ archetypeColumn_t *ArchetypeFindColumn(archetype_t *arch,
 
 void ArchetypeAddInline(archetype_t *arch, componentId_t id, size_t size);
 
-void ArchetypeAddPool(archetype_t *arch, componentId_t id,
-                      componentPool_t *pool);
+void ArchetypeAddHandle(archetype_t *arch, componentId_t id,
+                        componentPool_t *pool);

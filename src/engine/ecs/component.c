@@ -4,13 +4,14 @@
 #include <string.h>
 
 void ComponentPoolInit(componentPool_t *componentPool, size_t elementSize) {
-  componentPool->denseEntities = NULL;
+  componentPool->denseHandles = NULL;
   componentPool->denseData = NULL;
   componentPool->sparse = NULL;
 
   componentPool->count = 0;
   componentPool->denseCapacity = 0;
   componentPool->sparseCapacity = 0;
+  componentPool->nextHandle = 0;
   componentPool->elementSize = elementSize;
 }
 
@@ -18,8 +19,8 @@ static void ComponentPoolGrow(componentPool_t *componentPool) {
   uint32_t oldCapacity = componentPool->denseCapacity;
   uint32_t newCapacity = oldCapacity == 0 ? 64 : oldCapacity * 2;
 
-  componentPool->denseEntities =
-      realloc(componentPool->denseEntities, newCapacity * sizeof(entity_t));
+  componentPool->denseHandles =
+      realloc(componentPool->denseHandles, newCapacity * sizeof(entity_t));
 
   componentPool->denseData = realloc(componentPool->denseData,
                                      newCapacity * componentPool->elementSize);
@@ -27,9 +28,8 @@ static void ComponentPoolGrow(componentPool_t *componentPool) {
   componentPool->denseCapacity = newCapacity;
 }
 
-static void ComponentPoolEnsureSparse(componentPool_t *pool,
-                                      uint32_t entityId) {
-  uint32_t required = entityId + 1;
+static void ComponentPoolEnsureSparse(componentPool_t *pool, uint32_t handle) {
+  uint32_t required = handle + 1;
 
   if (required <= pool->sparseCapacity) {
     return;
@@ -53,11 +53,11 @@ static void ComponentPoolEnsureSparse(componentPool_t *pool,
 
 // componentId_t ComponentRegister(size_t elementSize, const char *name);
 
-void *ComponentAdd(componentPool_t *componentPool, entity_t entity) {
-  ComponentPoolEnsureSparse(componentPool, entity.id);
+void *ComponentAdd(componentPool_t *componentPool, uint32_t handle) {
+  ComponentPoolEnsureSparse(componentPool, handle);
 
-  if (ComponentHas(componentPool, entity)) {
-    return ComponentGet(componentPool, entity);
+  if (ComponentHas(componentPool, handle)) {
+    return ComponentGet(componentPool, handle);
   }
 
   if (componentPool->count >= componentPool->denseCapacity) {
@@ -66,8 +66,8 @@ void *ComponentAdd(componentPool_t *componentPool, entity_t entity) {
 
   uint32_t index = componentPool->count++;
 
-  componentPool->denseEntities[index] = entity;
-  componentPool->sparse[entity.id] = index;
+  componentPool->denseHandles[index] = handle;
+  componentPool->sparse[handle] = index;
 
   void *data =
       (char *)componentPool->denseData + index * componentPool->elementSize;
@@ -79,18 +79,18 @@ void *ComponentAdd(componentPool_t *componentPool, entity_t entity) {
 
 // TODO test the performance of this method
 // removing should hopefully happen rarely, maybe only during loading times
-void ComponentRemove(componentPool_t *componentPool, entity_t entity) {
+void ComponentRemove(componentPool_t *componentPool, uint32_t handle) {
 
-  if (!ComponentHas(componentPool, entity)) {
+  if (!ComponentHas(componentPool, handle)) {
     return;
   }
 
-  uint32_t index = componentPool->sparse[entity.id];
+  uint32_t index = componentPool->sparse[handle];
   uint32_t last = componentPool->count - 1;
 
   if (index != last) {
     // move last element into removed slot
-    componentPool->denseEntities[index] = componentPool->denseEntities[last];
+    componentPool->denseHandles[index] = componentPool->denseHandles[last];
 
     memcpy((char *)componentPool->denseData +
                index * componentPool->elementSize,
@@ -98,32 +98,54 @@ void ComponentRemove(componentPool_t *componentPool, entity_t entity) {
            componentPool->elementSize);
 
     // update sparse index for moved entity
-    entity_t moved = componentPool->denseEntities[index];
-    componentPool->sparse[moved.id] = index;
+    uint32_t moved = componentPool->denseHandles[index];
+    componentPool->sparse[moved] = index;
   }
 
   // unset in sparse array
-  componentPool->sparse[entity.id] = UINT32_MAX;
+  componentPool->sparse[handle] = UINT32_MAX;
   componentPool->count--;
 }
 
-void *ComponentGet(componentPool_t *componentPool, entity_t entity) {
-  if (!ComponentHas(componentPool, entity)) {
+void *ComponentGet(componentPool_t *componentPool, uint32_t handle) {
+  if (!ComponentHas(componentPool, handle)) {
     return NULL;
   }
 
-  uint32_t index = componentPool->sparse[entity.id];
+  uint32_t index = componentPool->sparse[handle];
   return (char *)componentPool->denseData + index * componentPool->elementSize;
 }
 
-bool ComponentHas(const componentPool_t *componentPool, entity_t entity) {
-  if (!componentPool->sparse || entity.id >= componentPool->sparseCapacity) {
+bool ComponentHas(const componentPool_t *componentPool, uint32_t handle) {
+  if (!componentPool->sparse || handle >= componentPool->sparseCapacity) {
     return false;
   }
 
-  uint32_t id = entity.id;
+  uint32_t id = handle;
   uint32_t index = componentPool->sparse[id];
 
   // check if entity assigned this comp && if this index still active
   return index != UINT32_MAX && index < componentPool->count;
+}
+
+// add functiont hat creates its own handle
+// as opposed to taking one through parameters
+uint32_t ComponentCreate(componentPool_t *pool) {
+  uint32_t handle = pool->nextHandle++;
+  ComponentPoolEnsureSparse(pool, handle);
+
+  if (pool->count >= pool->denseCapacity) {
+    ComponentPoolGrow(pool);
+  }
+
+  uint32_t index = pool->count++;
+
+  pool->denseHandles[index] = handle;
+  pool->sparse[handle] = index;
+
+  void *data = (char *)pool->denseData + index * pool->elementSize;
+
+  memset(data, 0, pool->elementSize);
+
+  return handle;
 }

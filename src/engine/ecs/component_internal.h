@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 struct componentPool_t {
-  entity_t *denseEntities;
+  uint32_t *denseHandles;
   void *denseData;
 
   uint32_t *sparse;
@@ -12,5 +12,6 @@ struct componentPool_t {
   uint32_t denseCapacity;
   uint32_t sparseCapacity;
 
+  uint32_t nextHandle;
   size_t elementSize;
 };

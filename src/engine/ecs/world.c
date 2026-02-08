@@ -102,13 +102,17 @@ void *WorldGetComponent(world_t *world, entity_t entity,
   archetype_t *arch = loc.archetype;
 
   archetypeColumn_t *col = ArchetypeFindColumn(arch, componentId);
-
   if (!col)
     return NULL;
 
+  /* ---------- inline storage ---------- */
   if (col->storageType == ArchetypeStorageInline) {
     return (char *)col->data + loc.index * col->elementSize;
-  } else {
-    return ComponentGet(col->pool, entity);
   }
+
+  /* ---------- handle storage ---------- */
+  uint32_t *handleArray = (uint32_t *)col->data;
+  uint32_t handle = handleArray[loc.index];
+
+  return ComponentGet((componentPool_t *)col->pool, handle);
 }
