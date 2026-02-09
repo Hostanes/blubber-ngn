@@ -20,6 +20,7 @@ struct world_t {
   uint32_t archetypeCount;
   uint32_t archetypeCapacity;
 
+  // where the entity is inside each archetype
   entityLocation_t *entityLocations;
   uint32_t entityLocationCapacity;
 };

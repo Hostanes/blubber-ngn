@@ -1,118 +1,115 @@
-
 #include "../engine/ecs/archetype.h"
 #include "../engine/ecs/component.h"
 #include "../engine/ecs/entity.h"
-#include "../engine/ecs/entity_internal.h"
 #include "../engine/ecs/world.h"
 #include "../engine/util/bitset.h"
-#include <stdio.h>
+#include "gamestate.h"
+#include "raylib.h"
+#include <stdlib.h>
 
-enum {
-  COMP_POSITION = 0,
-  COMP_HEALTH = 1,
-  COMP_TIMER = 2,
-};
-
-typedef struct {
-  float x, y, z;
-} Position;
-
-typedef struct {
-  int value;
-} Health;
-
-typedef struct {
-  float time;
-} Timer;
-
-static bitset_t MakeMask(uint32_t *bits, uint32_t count) {
-  bitset_t mask;
-  BitsetInit(&mask, 64);
-
-  for (uint32_t i = 0; i < count; ++i) {
-    BitsetSet(&mask, bits[i]);
-  }
-
-  return mask;
+static Matrix TransformToMatrix(Transform t) {
+  Matrix s = MatrixScale(t.scale.x, t.scale.y, t.scale.z);
+  Matrix r = QuaternionToMatrix(t.rotation);
+  Matrix p = MatrixTranslate(t.translation.x, t.translation.y, t.translation.z);
+  return MatrixMultiply(MatrixMultiply(s, r), p);
 }
 
 int main(void) {
+  /* ---------- raylib ---------- */
+
+  InitWindow(1280, 720, "ECS + Raylib");
+  SetTargetFPS(60);
+
+  Camera3D camera = {0};
+  camera.position = (Vector3){0, 2, 9};
+  camera.target = (Vector3){0, 0, 0};
+  camera.up = (Vector3){0, 1, 0};
+  camera.fovy = 90.0f;
+  camera.projection = CAMERA_PERSPECTIVE;
+
+  /* ---------- ECS ---------- */
+
   world_t *world = WorldCreate();
 
-  /* ---------- global pooled components ---------- */
+  componentPool_t modelCollectionPool;
+  ComponentPoolInit(&modelCollectionPool, sizeof(ModelCollection_t));
 
-  componentPool_t timerPool;
-  ComponentPoolInit(&timerPool, sizeof(Timer));
+  uint32_t bits[] = {COMP_TRANSFORM, COMP_MODEL_COLLECTION};
+  bitset_t mask = MakeMask(bits, 2);
 
-  /* ---------- archetype 1: Position + Timer ---------- */
+  archetype_t *arch = WorldCreateArchetype(world, &mask);
+  ArchetypeAddInline(arch, COMP_TRANSFORM, sizeof(Transform));
+  ArchetypeAddHandle(arch, COMP_MODEL_COLLECTION, &modelCollectionPool);
 
-  uint32_t maskA_bits[] = {COMP_POSITION, COMP_TIMER};
-  bitset_t maskA = MakeMask(maskA_bits, 2);
+  /* ---------- Entity ---------- */
 
-  archetype_t *archA = WorldCreateArchetype(world, &maskA);
-  ArchetypeAddInline(archA, COMP_POSITION, sizeof(Position));
-  ArchetypeAddHandle(archA, COMP_TIMER, &timerPool);
+  entity_t e = WorldCreateEntity(world, &mask);
 
-  /* ---------- archetype 2: Position + Health + Timer ---------- */
+  Transform *t = WorldGetComponent(world, e, COMP_TRANSFORM);
+  *t = TransformIdentity();
+  t->translation = (Vector3){0, 0, 0};
 
-  uint32_t maskB_bits[] = {COMP_POSITION, COMP_HEALTH, COMP_TIMER};
-  bitset_t maskB = MakeMask(maskB_bits, 3);
+  modelCollectionHandle_t handle = e.id;
 
-  archetype_t *archB = WorldCreateArchetype(world, &maskB);
-  ArchetypeAddInline(archB, COMP_POSITION, sizeof(Position));
-  ArchetypeAddInline(archB, COMP_HEALTH, sizeof(Health));
-  ArchetypeAddHandle(archB, COMP_TIMER, &timerPool);
+  ModelCollection_t *mc =
+      (ModelCollection_t *)ComponentAdd(&modelCollectionPool, handle);
 
-  /* ---------- create entities ---------- */
+  mc->count = 1;
+  mc->modelInstances = calloc(1, sizeof(ModelInstance));
 
-  entity_t e1 = WorldCreateEntity(world, &maskA);
-  entity_t e2 = WorldCreateEntity(world, &maskB);
+  mc->modelInstances[0].model = LoadModelFromMesh(GenMeshCube(1, 1, 1));
+  mc->modelInstances[0].local = TransformIdentity();
 
-  /* ---------- write components ---------- */
+  modelCollectionHandle_t *h =
+      WorldGetComponent(world, e, COMP_MODEL_COLLECTION);
+  *h = handle;
 
-  Position *p1 = WorldGetComponent(world, e1, COMP_POSITION);
-  Timer *t1 = WorldGetComponent(world, e1, COMP_TIMER);
+  /* ---------- Loop ---------- */
 
-  p1->x = 1;
-  p1->y = 2;
-  p1->z = 3;
-  t1->time = 5.0f;
+  while (!WindowShouldClose()) {
+    BeginDrawing();
+    ClearBackground(RAYWHITE);
 
-  Position *p2 = WorldGetComponent(world, e2, COMP_POSITION);
-  Health *h2 = WorldGetComponent(world, e2, COMP_HEALTH);
-  Timer *t2 = WorldGetComponent(world, e2, COMP_TIMER);
+    BeginMode3D(camera);
 
-  p2->x = 10;
-  p2->y = 20;
-  p2->z = 30;
-  h2->value = 100;
-  t2->time = 9.0f;
+    DrawGrid(20, 1.0f);
 
-  /* ---------- read back ---------- */
+    // render entity
+    Transform worldT = *t;
+    Matrix worldMat = TransformToMatrix(worldT);
 
-  printf("Entity A: pos=(%.1f %.1f %.1f) timer=%.1f\n", p1->x, p1->y, p1->z,
-         t1->time);
+    for (uint32_t i = 0; i < mc->count; ++i) {
+      ModelInstance *mi = &mc->modelInstances[i];
 
-  printf("Entity B: pos=(%.1f %.1f %.1f) hp=%d timer=%.1f\n", p2->x, p2->y,
-         p2->z, h2->value, t2->time);
+      Vector3 pos = worldT.translation;
 
-  p1->x += 55;
-  p1->y += 55;
-  p1->z += 55;
-  t1->time -= 1.0f;
+      // Raylib uses axis + angle, not quaternion
+      Vector3 axis;
+      float angle;
+      QuaternionToAxisAngle(worldT.rotation, &axis, &angle);
+      angle *= RAD2DEG;
 
-  p2->x += 5;
-  p2->y += 5;
-  p2->z += 5;
-  h2->value -= 50;
-  t2->time -= 1.0f;
+      Vector3 scale = worldT.scale;
 
-  printf("Entity A: pos=(%.1f %.1f %.1f) timer=%.1f\n", p1->x, p1->y, p1->z,
-         t1->time);
+      DrawModelEx(mi->model, pos, axis, angle, scale, WHITE);
+      DrawCube((Vector3){0, 0.5f, 0}, 1, 1, 1, RED);
+      DrawCubeWires((Vector3){0, 0.5f, 0}, 1, 1, 1, BLACK);
+    }
 
-  printf("Entity B: pos=(%.1f %.1f %.1f) hp=%d timer=%.1f\n", p2->x, p2->y,
-         p2->z, h2->value, t2->time);
+    EndMode3D();
+
+    DrawText("ECS + ModelCollection", 20, 20, 20, DARKGRAY);
+    EndDrawing();
+  }
+
+  /* ---------- Cleanup ---------- */
+
+  UnloadModel(mc->modelInstances[0].model);
+  free(mc->modelInstances);
+  ComponentRemove(&modelCollectionPool, handle);
 
   WorldDestroy(world);
+  CloseWindow();
+
   return 0;
 }
