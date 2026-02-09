@@ -1,115 +1,202 @@
 #include "../engine/ecs/archetype.h"
 #include "../engine/ecs/component.h"
-#include "../engine/ecs/entity.h"
 #include "../engine/ecs/world.h"
 #include "../engine/util/bitset.h"
-#include "gamestate.h"
-#include "raylib.h"
-#include <stdlib.h>
 
-static Matrix TransformToMatrix(Transform t) {
-  Matrix s = MatrixScale(t.scale.x, t.scale.y, t.scale.z);
-  Matrix r = QuaternionToMatrix(t.rotation);
-  Matrix p = MatrixTranslate(t.translation.x, t.translation.y, t.translation.z);
-  return MatrixMultiply(MatrixMultiply(s, r), p);
+#include "raylib.h"
+#include "raymath.h"
+
+#include <math.h>
+#include <stdio.h>
+
+#define ECS_GET(world, entity, Type, ID)                                       \
+  ((Type *)WorldGetComponent(world, entity, ID))
+
+/* ================= Components ================= */
+
+enum {
+  COMP_POSITION = 0,
+  COMP_VELOCITY,
+  COMP_ORIENTATION,
+  COMP_MODEL,
+};
+
+typedef struct {
+  Vector3 value;
+} Position;
+
+typedef struct {
+  Vector3 value;
+} Velocity;
+
+typedef struct {
+  float yaw;
+  float pitch;
+} Orientation;
+
+typedef struct {
+  Model model;
+} ModelComponent;
+
+/* ================= Utilities ================= */
+
+static bitset_t MakeMask(uint32_t *bits, uint32_t count) {
+  bitset_t mask;
+  BitsetInit(&mask, 64);
+  for (uint32_t i = 0; i < count; ++i) {
+    BitsetSet(&mask, bits[i]);
+  }
+  return mask;
 }
 
-int main(void) {
-  /* ---------- raylib ---------- */
+/* ================= Systems ================= */
 
-  InitWindow(1280, 720, "ECS + Raylib");
+void PlayerControlSystem(world_t *world, entity_t player) {
+  Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
+  Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
+  Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
+
+  (void)pos; // currently unused
+
+  const float speed = 5.0f;
+  const float mouseSensitivity = 0.002f;
+
+  Vector2 mouse = GetMouseDelta();
+  ori->yaw -= mouse.x * mouseSensitivity;
+  ori->pitch -= mouse.y * mouseSensitivity;
+
+  ori->pitch = Clamp(ori->pitch, -PI/2, PI/2);
+
+  Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
+  Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
+
+  vel->value = (Vector3){0};
+
+  if (IsKeyDown(KEY_W))
+    vel->value = Vector3Add(vel->value, forward);
+  if (IsKeyDown(KEY_S))
+    vel->value = Vector3Subtract(vel->value, forward);
+  if (IsKeyDown(KEY_A))
+    vel->value = Vector3Add(vel->value, right);
+  if (IsKeyDown(KEY_D))
+    vel->value = Vector3Subtract(vel->value, right);
+
+  if (Vector3Length(vel->value) > 0.0f) {
+    vel->value = Vector3Scale(Vector3Normalize(vel->value), speed);
+  }
+}
+
+void MovementSystem(world_t *world, archetype_t *arch, float dt) {
+  for (uint32_t i = 0; i < arch->count; ++i) {
+    entity_t e = arch->entities[i];
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    Velocity *vel = ECS_GET(world, e, Velocity, COMP_VELOCITY);
+
+    pos->value = Vector3Add(pos->value, Vector3Scale(vel->value, dt));
+  }
+}
+
+void RenderSystem(world_t *world, archetype_t *arch) {
+  for (uint32_t i = 0; i < arch->count; ++i) {
+    entity_t e = arch->entities[i];
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+    ModelComponent *mc = ECS_GET(world, e, ModelComponent, COMP_MODEL);
+
+    DrawModelEx(mc->model, pos->value, (Vector3){0, 1, 0}, ori->yaw * RAD2DEG,
+                (Vector3){1, 1, 1}, WHITE);
+  }
+}
+
+/* ================= Main ================= */
+
+int main(void) {
+  InitWindow(1280, 720, "ECS FPS Test");
+  DisableCursor();
   SetTargetFPS(60);
 
   Camera3D camera = {0};
-  camera.position = (Vector3){0, 2, 9};
-  camera.target = (Vector3){0, 0, 0};
-  camera.up = (Vector3){0, 1, 0};
-  camera.fovy = 90.0f;
+  camera.fovy = 75.0f;
   camera.projection = CAMERA_PERSPECTIVE;
-
-  /* ---------- ECS ---------- */
 
   world_t *world = WorldCreate();
 
-  componentPool_t modelCollectionPool;
-  ComponentPoolInit(&modelCollectionPool, sizeof(ModelCollection_t));
+  /* ---------- Model Pool ---------- */
 
-  uint32_t bits[] = {COMP_TRANSFORM, COMP_MODEL_COLLECTION};
-  bitset_t mask = MakeMask(bits, 2);
+  componentPool_t modelPool;
+  ComponentPoolInit(&modelPool, sizeof(ModelComponent));
 
-  archetype_t *arch = WorldCreateArchetype(world, &mask);
-  ArchetypeAddInline(arch, COMP_TRANSFORM, sizeof(Transform));
-  ArchetypeAddHandle(arch, COMP_MODEL_COLLECTION, &modelCollectionPool);
+  Model cube = LoadModelFromMesh(GenMeshCube(1, 1, 1));
 
-  /* ---------- Entity ---------- */
+  /* ---------- Player Archetype ---------- */
 
-  entity_t e = WorldCreateEntity(world, &mask);
+  uint32_t playerBits[] = {COMP_POSITION, COMP_VELOCITY, COMP_ORIENTATION,
+                           COMP_MODEL};
+  bitset_t playerMask = MakeMask(playerBits, 4);
 
-  Transform *t = WorldGetComponent(world, e, COMP_TRANSFORM);
-  *t = TransformIdentity();
-  t->translation = (Vector3){0, 0, 0};
+  archetype_t *playerArch = WorldCreateArchetype(world, &playerMask);
+  ArchetypeAddInline(playerArch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(playerArch, COMP_VELOCITY, sizeof(Velocity));
+  ArchetypeAddInline(playerArch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddHandle(playerArch, COMP_MODEL, &modelPool);
 
-  modelCollectionHandle_t handle = e.id;
+  entity_t player = WorldCreateEntity(world, &playerMask);
 
-  ModelCollection_t *mc =
-      (ModelCollection_t *)ComponentAdd(&modelCollectionPool, handle);
+  ECS_GET(world, player, Position, COMP_POSITION)->value =
+      (Vector3){0, 1.8f, 0};
 
-  mc->count = 1;
-  mc->modelInstances = calloc(1, sizeof(ModelInstance));
+  ECS_GET(world, player, ModelComponent, COMP_MODEL)->model = cube;
 
-  mc->modelInstances[0].model = LoadModelFromMesh(GenMeshCube(1, 1, 1));
-  mc->modelInstances[0].local = TransformIdentity();
+  /* ---------- Box Archetype ---------- */
 
-  modelCollectionHandle_t *h =
-      WorldGetComponent(world, e, COMP_MODEL_COLLECTION);
-  *h = handle;
+  uint32_t boxBits[] = {COMP_POSITION, COMP_ORIENTATION, COMP_MODEL};
+  bitset_t boxMask = MakeMask(boxBits, 3);
 
-  /* ---------- Loop ---------- */
+  archetype_t *boxArch = WorldCreateArchetype(world, &boxMask);
+  ArchetypeAddInline(boxArch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(boxArch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddHandle(boxArch, COMP_MODEL, &modelPool);
+
+  for (int i = 0; i < 10; ++i) {
+    entity_t box = WorldCreateEntity(world, &boxMask);
+
+    ECS_GET(world, box, Position, COMP_POSITION)->value =
+        (Vector3){i * 2.0f, 0.5f, 5.0f};
+
+    ECS_GET(world, box, ModelComponent, COMP_MODEL)->model = cube;
+  }
+
+  /* ---------- Main Loop ---------- */
 
   while (!WindowShouldClose()) {
-    BeginDrawing();
-    ClearBackground(RAYWHITE);
+    float dt = GetFrameTime();
 
+    PlayerControlSystem(world, player);
+    MovementSystem(world, playerArch, dt);
+
+    Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
+    Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
+
+    camera.position = pos->value;
+    camera.target =
+        Vector3Add(pos->value,
+                   (Vector3){sinf(ori->yaw), sinf(ori->pitch), cosf(ori->yaw)});
+    camera.up = (Vector3){0, 1, 0};
+
+    BeginDrawing();
+    ClearBackground(SKYBLUE);
     BeginMode3D(camera);
 
-    DrawGrid(20, 1.0f);
-
-    // render entity
-    Transform worldT = *t;
-    Matrix worldMat = TransformToMatrix(worldT);
-
-    for (uint32_t i = 0; i < mc->count; ++i) {
-      ModelInstance *mi = &mc->modelInstances[i];
-
-      Vector3 pos = worldT.translation;
-
-      // Raylib uses axis + angle, not quaternion
-      Vector3 axis;
-      float angle;
-      QuaternionToAxisAngle(worldT.rotation, &axis, &angle);
-      angle *= RAD2DEG;
-
-      Vector3 scale = worldT.scale;
-
-      DrawModelEx(mi->model, pos, axis, angle, scale, WHITE);
-      DrawCube((Vector3){0, 0.5f, 0}, 1, 1, 1, RED);
-      DrawCubeWires((Vector3){0, 0.5f, 0}, 1, 1, 1, BLACK);
-    }
+    RenderSystem(world, boxArch);
+    RenderSystem(world, playerArch);
 
     EndMode3D();
-
-    DrawText("ECS + ModelCollection", 20, 20, 20, DARKGRAY);
+    DrawFPS(10, 10);
     EndDrawing();
   }
 
-  /* ---------- Cleanup ---------- */
-
-  UnloadModel(mc->modelInstances[0].model);
-  free(mc->modelInstances);
-  ComponentRemove(&modelCollectionPool, handle);
-
-  WorldDestroy(world);
   CloseWindow();
-
   return 0;
 }

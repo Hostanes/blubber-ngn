@@ -20,7 +20,7 @@ static void ComponentPoolGrow(componentPool_t *componentPool) {
   uint32_t newCapacity = oldCapacity == 0 ? 64 : oldCapacity * 2;
 
   componentPool->denseHandles =
-      realloc(componentPool->denseHandles, newCapacity * sizeof(entity_t));
+      realloc(componentPool->denseHandles, newCapacity * sizeof(uint32_t));
 
   componentPool->denseData = realloc(componentPool->denseData,
                                      newCapacity * componentPool->elementSize);
@@ -52,30 +52,6 @@ static void ComponentPoolEnsureSparse(componentPool_t *pool, uint32_t handle) {
 }
 
 // componentId_t ComponentRegister(size_t elementSize, const char *name);
-
-void *ComponentAdd(componentPool_t *componentPool, uint32_t handle) {
-  ComponentPoolEnsureSparse(componentPool, handle);
-
-  if (ComponentHas(componentPool, handle)) {
-    return ComponentGet(componentPool, handle);
-  }
-
-  if (componentPool->count >= componentPool->denseCapacity) {
-    ComponentPoolGrow(componentPool);
-  }
-
-  uint32_t index = componentPool->count++;
-
-  componentPool->denseHandles[index] = handle;
-  componentPool->sparse[handle] = index;
-
-  void *data =
-      (char *)componentPool->denseData + index * componentPool->elementSize;
-
-  memset(data, 0, componentPool->elementSize);
-
-  return data;
-}
 
 // TODO test the performance of this method
 // removing should hopefully happen rarely, maybe only during loading times

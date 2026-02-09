@@ -13,7 +13,11 @@ static void ArchetypeGrow(archetype_t *arch) {
   for (uint32_t i = 0; i < arch->columnCount; ++i) {
     archetypeColumn_t *col = &arch->columns[i];
     if (col->elementSize > 0) {
-      col->data = realloc(col->data, newCap * col->elementSize);
+      if (!col->data) {
+        col->data = calloc(newCap, col->elementSize);
+      } else {
+        col->data = realloc(col->data, newCap * col->elementSize);
+      }
     }
   }
 
