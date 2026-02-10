@@ -5,6 +5,11 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+
+
+# ------------------- OpenMP-------------------
+find_package(OpenMP)
+
 # ------------------- Raylib -------------------
 find_package(raylib 4.0 REQUIRED)
 
@@ -24,6 +29,11 @@ target_include_directories(Game PRIVATE
 
 # ------------------- Link Libraries -------------------
 target_link_libraries(Game PRIVATE raylib)
+
+if (OpenMP_C_FOUND)
+    target_link_libraries(Game PRIVATE OpenMP::OpenMP_C)
+endif()
+
 
 # ------------------- Platform-specific options -------------------
 if (UNIX)

@@ -12,6 +12,8 @@
 #define ECS_GET(world, entity, Type, ID)                                       \
   ((Type *)WorldGetComponent(world, entity, ID))
 
+#define OMP_MIN_ITERATIONS 1024
+
 /* ================= Components ================= */
 
 enum {
@@ -70,9 +72,14 @@ void PlayerControlSystem(world_t *world, entity_t player) {
   ori->yaw -= mouse.x * mouseSensitivity;
   ori->pitch -= mouse.y * mouseSensitivity;
 
-  ori->pitch = Clamp(ori->pitch, -PI / 2, PI / 2);
+  ori->pitch = Clamp(ori->pitch, -PI / 2 + 0.001, PI / 2 - 0.001);
 
-  Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
+  Vector3 forward = {
+      cosf(ori->pitch) * sinf(ori->yaw),
+      sinf(ori->pitch),
+      // 0,
+      cosf(ori->pitch) * cosf(ori->yaw),
+  };
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
 
   vel->value = (Vector3){0};
@@ -92,6 +99,7 @@ void PlayerControlSystem(world_t *world, entity_t player) {
 }
 
 void MovementSystem(world_t *world, archetype_t *arch, float dt) {
+#pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
     entity_t e = arch->entities[i];
 
@@ -102,7 +110,7 @@ void MovementSystem(world_t *world, archetype_t *arch, float dt) {
   }
 }
 
-void timerSystem(componentPool_t *timerPool, float dt) {
+void TimerSystem(componentPool_t *timerPool, float dt) {
   Timer *timers = (Timer *)timerPool->denseData;
   for (uint32_t i = 0; i < timerPool->count; ++i) {
     timers[i].value -= dt;
@@ -110,10 +118,21 @@ void timerSystem(componentPool_t *timerPool, float dt) {
   }
 }
 
-void RenderSystem(world_t *world, archetype_t *arch) {
+void UpdateCubesSystem(world_t *world, archetype_t *arch, float dt) {
+#pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
     entity_t e = arch->entities[i];
 
+    Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+
+    ori->yaw += 1 * dt;
+  }
+}
+
+void RenderSystem(world_t *world, archetype_t *arch) {
+#pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
+  for (uint32_t i = 0; i < arch->count; ++i) {
+    entity_t e = arch->entities[i];
     Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
     Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
     ModelComponent *mc = ECS_GET(world, e, ModelComponent, COMP_MODEL);
@@ -142,14 +161,14 @@ int main(void) {
   ComponentPoolInit(&modelPool, sizeof(ModelComponent));
 
   componentPool_t timerPool;
-  ComponentPoolInit(&timerPool, sizeof(float));
+  ComponentPoolInit(&timerPool, sizeof(Timer));
 
   Model cube = LoadModelFromMesh(GenMeshCube(1, 1, 1));
 
   /* ---------- Player Archetype ---------- */
 
   uint32_t playerBits[] = {COMP_POSITION, COMP_VELOCITY, COMP_ORIENTATION,
-                           COMP_MODEL | COMP_TIMER};
+                           COMP_MODEL, COMP_TIMER};
   bitset_t playerMask = MakeMask(playerBits, 5);
 
   archetype_t *playerArch = WorldCreateArchetype(world, &playerMask);
@@ -178,7 +197,7 @@ int main(void) {
   ArchetypeAddInline(boxArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddHandle(boxArch, COMP_MODEL, &modelPool);
 
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 100; ++i) {
     entity_t box = WorldCreateEntity(world, &boxMask);
 
     ECS_GET(world, box, Position, COMP_POSITION)->value =
@@ -192,21 +211,26 @@ int main(void) {
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
 
-    timerSystem(&timerPool, dt);
+    TimerSystem(&timerPool, dt);
 
-    printf("player timer:%f \n",
-           ECS_GET(world, player, Timer, COMP_TIMER)->value);
+    // printf("player timer:%f \n",
+    //        ECS_GET(world, player, Timer, COMP_TIMER)->value);
 
     PlayerControlSystem(world, player);
     MovementSystem(world, playerArch, dt);
+    UpdateCubesSystem(world, boxArch, dt);
 
     Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
     Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
 
     camera.position = pos->value;
-    camera.target =
-        Vector3Add(pos->value,
-                   (Vector3){sinf(ori->yaw), sinf(ori->pitch), cosf(ori->yaw)});
+
+    Vector3 forward = {
+        cosf(ori->pitch) * sinf(ori->yaw),
+        sinf(ori->pitch),
+        cosf(ori->pitch) * cosf(ori->yaw),
+    };
+    camera.target = Vector3Add(pos->value, forward);
     camera.up = (Vector3){0, 1, 0};
 
     BeginDrawing();
