@@ -19,6 +19,7 @@ enum {
   COMP_VELOCITY,
   COMP_ORIENTATION,
   COMP_MODEL,
+  COMP_TIMER,
 };
 
 typedef struct {
@@ -28,6 +29,10 @@ typedef struct {
 typedef struct {
   Vector3 value;
 } Velocity;
+
+typedef struct {
+  float value;
+} Timer;
 
 typedef struct {
   float yaw;
@@ -65,7 +70,7 @@ void PlayerControlSystem(world_t *world, entity_t player) {
   ori->yaw -= mouse.x * mouseSensitivity;
   ori->pitch -= mouse.y * mouseSensitivity;
 
-  ori->pitch = Clamp(ori->pitch, -PI/2, PI/2);
+  ori->pitch = Clamp(ori->pitch, -PI / 2, PI / 2);
 
   Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
@@ -94,6 +99,14 @@ void MovementSystem(world_t *world, archetype_t *arch, float dt) {
     Velocity *vel = ECS_GET(world, e, Velocity, COMP_VELOCITY);
 
     pos->value = Vector3Add(pos->value, Vector3Scale(vel->value, dt));
+  }
+}
+
+void timerSystem(componentPool_t *timerPool, float dt) {
+  Timer *timers = (Timer *)timerPool->denseData;
+  for (uint32_t i = 0; i < timerPool->count; ++i) {
+    timers[i].value -= dt;
+    timers[i].value = timers[i].value <= 0 ? 0 : timers[i].value;
   }
 }
 
@@ -128,19 +141,23 @@ int main(void) {
   componentPool_t modelPool;
   ComponentPoolInit(&modelPool, sizeof(ModelComponent));
 
+  componentPool_t timerPool;
+  ComponentPoolInit(&timerPool, sizeof(float));
+
   Model cube = LoadModelFromMesh(GenMeshCube(1, 1, 1));
 
   /* ---------- Player Archetype ---------- */
 
   uint32_t playerBits[] = {COMP_POSITION, COMP_VELOCITY, COMP_ORIENTATION,
-                           COMP_MODEL};
-  bitset_t playerMask = MakeMask(playerBits, 4);
+                           COMP_MODEL | COMP_TIMER};
+  bitset_t playerMask = MakeMask(playerBits, 5);
 
   archetype_t *playerArch = WorldCreateArchetype(world, &playerMask);
   ArchetypeAddInline(playerArch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(playerArch, COMP_VELOCITY, sizeof(Velocity));
   ArchetypeAddInline(playerArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddHandle(playerArch, COMP_MODEL, &modelPool);
+  ArchetypeAddHandle(playerArch, COMP_TIMER, &timerPool);
 
   entity_t player = WorldCreateEntity(world, &playerMask);
 
@@ -148,6 +165,8 @@ int main(void) {
       (Vector3){0, 1.8f, 0};
 
   ECS_GET(world, player, ModelComponent, COMP_MODEL)->model = cube;
+
+  ECS_GET(world, player, Timer, COMP_TIMER)->value = 5.0f;
 
   /* ---------- Box Archetype ---------- */
 
@@ -172,6 +191,11 @@ int main(void) {
 
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
+
+    timerSystem(&timerPool, dt);
+
+    printf("player timer:%f \n",
+           ECS_GET(world, player, Timer, COMP_TIMER)->value);
 
     PlayerControlSystem(world, player);
     MovementSystem(world, playerArch, dt);
