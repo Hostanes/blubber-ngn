@@ -5,9 +5,10 @@
 
 #include "raylib.h"
 #include "raymath.h"
-
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define ECS_GET(world, entity, Type, ID)                                       \
   ((Type *)WorldGetComponent(world, entity, ID))
@@ -23,6 +24,13 @@ enum {
   COMP_MODEL,
   COMP_TIMER,
 };
+
+typedef enum {
+  MODEL_ROT_WORLD,     // ignore entity orientation
+  MODEL_ROT_YAW_ONLY,  // yaw only
+  MODEL_ROT_YAW_PITCH, // yaw + pitch
+  MODEL_ROT_FULL,      // future-proof (roll etc)
+} ModelRotationMode;
 
 typedef struct {
   Vector3 value;
@@ -43,7 +51,17 @@ typedef struct {
 
 typedef struct {
   Model model;
-} ModelComponent;
+  Vector3 offset;   // local position offset
+  Vector3 rotation; // local rotation (Euler, radians)
+  Vector3 scale;    // local scale
+  ModelRotationMode rotationMode;
+} ModelInstance_t;
+
+typedef struct {
+  uint32_t count;
+  uint32_t capacity;
+  ModelInstance_t *models;
+} ModelCollection_t;
 
 /* ================= Utilities ================= */
 
@@ -54,6 +72,53 @@ static bitset_t MakeMask(uint32_t *bits, uint32_t count) {
     BitsetSet(&mask, bits[i]);
   }
   return mask;
+}
+
+void ModelCollectionInit(ModelCollection_t *mc, uint32_t initialCapacity) {
+  mc->count = 0;
+  mc->capacity = initialCapacity;
+  mc->models = malloc(sizeof(ModelInstance_t) * initialCapacity);
+}
+
+void ModelCollectionAdd(ModelCollection_t *mc, ModelInstance_t instance) {
+  if (mc->count >= mc->capacity) {
+    mc->capacity = mc->capacity ? mc->capacity * 2 : 2;
+    mc->models = realloc(mc->models, sizeof(ModelInstance_t) * mc->capacity);
+  }
+  mc->models[mc->count++] = instance;
+}
+
+void ModelCollectionFree(ModelCollection_t *mc) {
+  free(mc->models);
+  mc->models = NULL;
+  mc->count = mc->capacity = 0;
+}
+
+static Vector3 ResolveModelRotation(const Orientation *entityOri,
+                                    const ModelInstance_t *mi) {
+  Vector3 result = mi->rotation;
+
+  switch (mi->rotationMode) {
+  case MODEL_ROT_WORLD:
+    // no entity rotation
+    break;
+
+  case MODEL_ROT_YAW_ONLY:
+    result.y += entityOri->yaw;
+    break;
+
+  case MODEL_ROT_YAW_PITCH:
+    result.y += entityOri->yaw;
+    result.x += entityOri->pitch;
+    break;
+
+  case MODEL_ROT_FULL:
+    result.x += entityOri->pitch;
+    result.y += entityOri->yaw;
+    break;
+  }
+
+  return result;
 }
 
 /* ================= Systems ================= */
@@ -76,8 +141,8 @@ void PlayerControlSystem(world_t *world, entity_t player) {
 
   Vector3 forward = {
       cosf(ori->pitch) * sinf(ori->yaw),
-      sinf(ori->pitch),
-      // 0,
+      // sinf(ori->pitch),
+      0,
       cosf(ori->pitch) * cosf(ori->yaw),
   };
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
@@ -133,21 +198,34 @@ void RenderSystem(world_t *world, archetype_t *arch) {
 #pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
     entity_t e = arch->entities[i];
+
     Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
     Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
-    ModelComponent *mc = ECS_GET(world, e, ModelComponent, COMP_MODEL);
+    ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
 
-    DrawModelEx(mc->model, pos->value, (Vector3){0, 1, 0}, ori->yaw * RAD2DEG,
-                (Vector3){1, 1, 1}, WHITE);
+    for (uint32_t m = 0; m < mc->count; ++m) {
+      ModelInstance_t *mi = &mc->models[m];
+
+      Vector3 worldPos = Vector3Add(pos->value, mi->offset);
+      Vector3 rot = ResolveModelRotation(ori, mi);
+
+      Matrix transform =
+          MatrixMultiply(MatrixRotateY(rot.y), MatrixRotateX(rot.x));
+
+      DrawModelEx(mi->model, worldPos, (Vector3){0, 1, 0}, rot.y * RAD2DEG,
+                  mi->scale, WHITE);
+    }
   }
 }
 
 /* ================= Main ================= */
 
 int main(void) {
+
+  SetConfigFlags(FLAG_VSYNC_HINT);
   InitWindow(1280, 720, "ECS FPS Test");
   DisableCursor();
-  SetTargetFPS(60);
+  SetTargetFPS(0);
 
   Camera3D camera = {0};
   camera.fovy = 75.0f;
@@ -158,7 +236,7 @@ int main(void) {
   /* ---------- Model Pool ---------- */
 
   componentPool_t modelPool;
-  ComponentPoolInit(&modelPool, sizeof(ModelComponent));
+  ComponentPoolInit(&modelPool, sizeof(ModelCollection_t));
 
   componentPool_t timerPool;
   ComponentPoolInit(&timerPool, sizeof(Timer));
@@ -183,7 +261,21 @@ int main(void) {
   ECS_GET(world, player, Position, COMP_POSITION)->value =
       (Vector3){0, 1.8f, 0};
 
-  ECS_GET(world, player, ModelComponent, COMP_MODEL)->model = cube;
+  ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
+  ModelCollectionInit(mc, 2);
+
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = cube,
+                                           .offset = (Vector3){0, -2, 0},
+                                           .rotation = (Vector3){0, 0, 0},
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_YAW_ONLY});
+
+  Model gun = LoadModel("assets/models/gun1.glb");
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gun,
+                                           .offset = (Vector3){0, -.9f, 0},
+                                           .rotation = (Vector3){0, 0, 0},
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_FULL});
 
   ECS_GET(world, player, Timer, COMP_TIMER)->value = 5.0f;
 
@@ -203,7 +295,16 @@ int main(void) {
     ECS_GET(world, box, Position, COMP_POSITION)->value =
         (Vector3){i * 2.0f, 0.5f, 5.0f};
 
-    ECS_GET(world, box, ModelComponent, COMP_MODEL)->model = cube;
+    ModelCollection_t *mc = ECS_GET(world, box, ModelCollection_t, COMP_MODEL);
+
+    ModelCollectionInit(mc, 1);
+
+    ModelCollectionAdd(mc, (ModelInstance_t){
+                               .model = cube,
+                               .offset = (Vector3){0, 0, 0},
+                               .rotation = (Vector3){0, 0, 0},
+                               .scale = (Vector3){1, 1, 1},
+                           });
   }
 
   /* ---------- Main Loop ---------- */
