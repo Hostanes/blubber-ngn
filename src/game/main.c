@@ -163,6 +163,15 @@ void PlayerControlSystem(world_t *world, entity_t player) {
   }
 }
 
+void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
+  Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
+  ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
+
+  ModelInstance_t *gun = &mc->models[1]; // temporary, fine for now
+
+  gun->rotation.x = -ori->pitch;
+}
+
 void MovementSystem(world_t *world, archetype_t *arch, float dt) {
 #pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
@@ -189,8 +198,16 @@ void UpdateCubesSystem(world_t *world, archetype_t *arch, float dt) {
     entity_t e = arch->entities[i];
 
     Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+    ori->yaw += 1.0f * dt;
 
-    ori->yaw += 1 * dt;
+    ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+    ModelInstance_t *gun = &mc->models[1];
+
+    // Oscillate between -PI/4 and +PI/4
+    const float amplitude = PI / 4.0f;
+    const float speed = 1.5f; // radians per second (frequency control)
+
+    gun->rotation.x = sinf(GetTime() * speed) * amplitude;
   }
 }
 
@@ -203,17 +220,27 @@ void RenderSystem(world_t *world, archetype_t *arch) {
     Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
     ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
 
+    // Entity yaw (world-space)
+    Matrix T_world = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+    Matrix R_entityYaw = MatrixRotateY(ori->yaw);
+    Matrix entityTransform = MatrixMultiply(R_entityYaw, T_world);
+
     for (uint32_t m = 0; m < mc->count; ++m) {
       ModelInstance_t *mi = &mc->models[m];
 
-      Vector3 worldPos = Vector3Add(pos->value, mi->offset);
-      Vector3 rot = ResolveModelRotation(ori, mi);
+      // Local model transform
+      Matrix local =
+          MatrixMultiply(MatrixScale(mi->scale.x, mi->scale.y, mi->scale.z),
+                         MatrixRotateXYZ(mi->rotation));
 
-      Matrix transform =
-          MatrixMultiply(MatrixRotateY(rot.y), MatrixRotateX(rot.x));
+      local = MatrixMultiply(
+          MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z), local);
 
-      DrawModelEx(mi->model, worldPos, (Vector3){0, 1, 0}, rot.y * RAD2DEG,
-                  mi->scale, WHITE);
+      // Final transform
+      Matrix transform = MatrixMultiply(local, entityTransform);
+
+      mi->model.transform = transform;
+      DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
     }
   }
 }
@@ -289,7 +316,7 @@ int main(void) {
   ArchetypeAddInline(boxArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddHandle(boxArch, COMP_MODEL, &modelPool);
 
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 1; ++i) {
     entity_t box = WorldCreateEntity(world, &boxMask);
 
     ECS_GET(world, box, Position, COMP_POSITION)->value =
@@ -297,14 +324,19 @@ int main(void) {
 
     ModelCollection_t *mc = ECS_GET(world, box, ModelCollection_t, COMP_MODEL);
 
-    ModelCollectionInit(mc, 1);
+    ModelCollectionInit(mc, 2);
 
-    ModelCollectionAdd(mc, (ModelInstance_t){
-                               .model = cube,
-                               .offset = (Vector3){0, 0, 0},
-                               .rotation = (Vector3){0, 0, 0},
-                               .scale = (Vector3){1, 1, 1},
-                           });
+    ModelCollectionAdd(mc, (ModelInstance_t){.model = cube,
+                                             .offset = (Vector3){0, 0, 0},
+                                             .rotation = (Vector3){0, 0, 0},
+                                             .scale = (Vector3){1, 1, 1},
+                                             .rotationMode = MODEL_ROT_FULL});
+
+    ModelCollectionAdd(mc, (ModelInstance_t){.model = gun,
+                                             .offset = (Vector3){0, 0, 0},
+                                             .rotation = (Vector3){0, 0, 0},
+                                             .scale = (Vector3){1, 1, 1},
+                                             .rotationMode = MODEL_ROT_FULL});
   }
 
   /* ---------- Main Loop ---------- */
@@ -319,6 +351,7 @@ int main(void) {
 
     PlayerControlSystem(world, player);
     MovementSystem(world, playerArch, dt);
+    PlayerWeaponSystem(world, player, dt);
     UpdateCubesSystem(world, boxArch, dt);
 
     Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
