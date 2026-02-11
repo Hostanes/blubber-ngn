@@ -1,4 +1,5 @@
 #include "game.h"
+#include "omp.h"
 
 /* ================= Utilities ================= */
 
@@ -61,6 +62,9 @@ static Vector3 ResolveModelRotation(const Orientation *entityOri,
 /* ================= Main ================= */
 
 int main(void) {
+
+  omp_set_num_threads(omp_get_num_procs() / 2);
+
   Engine engine = EngineInit();
   GameWorld game = GameWorldCreate(&engine, engine.world);
   RunGameLoop(&engine, &game);

@@ -6,6 +6,7 @@
 #include "systems/systems.h"
 
 void UpdateCubesSystem(world_t *world, archetype_t *arch, float dt) {
+  float t = GetTime();
 #pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
     entity_t e = arch->entities[i];
@@ -18,9 +19,10 @@ void UpdateCubesSystem(world_t *world, archetype_t *arch, float dt) {
 
     // Oscillate between -PI/4 and +PI/4
     const float amplitude = PI / 4.0f;
-    const float speed = 1.5f; // radians per second (frequency control)
+    const float speed =
+        1.5f - i * 0.01; // radians per second (frequency control)
 
-    gun->rotation.x = sinf(GetTime() * speed) * amplitude;
+    gun->rotation.x = sinf(t * speed) * amplitude;
   }
 }
 
@@ -31,25 +33,39 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
 
-    TimerSystem(&engine->timerPool, dt);
+    switch (game->gameState) {
 
-    PlayerControlSystem(world, game->player);
-    MovementSystem(world, game->playerArch, dt);
-    PlayerWeaponSystem(world, game->player);
-    UpdateCubesSystem(world, game->boxArch, dt);
+    case GAMESTATE_MAINMENU: {
+      if (IsKeyPressed(KEY_ENTER)) {
+        game->gameState = GAMESTATE_INLEVEL;
+        DisableCursor();
+      }
 
-    Orientation *ori =
-        ECS_GET(world, game->player, Orientation, COMP_ORIENTATION);
-    Position *pos = ECS_GET(world, game->player, Position, COMP_POSITION);
+      RenderMainMenu(game);
+    } break;
 
-    camera->position = pos->value;
-    camera->target =
-        Vector3Add(pos->value, (Vector3){cosf(ori->pitch) * sinf(ori->yaw),
-                                         sinf(ori->pitch),
-                                         cosf(ori->pitch) * cosf(ori->yaw)});
-    camera->up = (Vector3){0, 1, 0};
+    case GAMESTATE_INLEVEL: {
+      PlayerControlSystem(world, game->player);
+      MovementSystem(world, game->playerArch, dt);
+      PlayerWeaponSystem(world, game->player);
+      UpdateCubesSystem(world, game->boxArch, dt);
+      TimerSystem(&engine->timerPool, dt);
 
-    RenderSystem(world, game, camera);
-    RenderSystem(world, game, camera);
+      Orientation *ori =
+          ECS_GET(world, game->player, Orientation, COMP_ORIENTATION);
+      Position *pos = ECS_GET(world, game->player, Position, COMP_POSITION);
+
+      camera->position = pos->value;
+      camera->target =
+          Vector3Add(pos->value, (Vector3){
+                                     cosf(ori->pitch) * sinf(ori->yaw),
+                                     sinf(ori->pitch),
+                                     cosf(ori->pitch) * cosf(ori->yaw),
+                                 });
+      camera->up = (Vector3){0, 1, 0};
+
+      RenderLevelSystem(world, game, camera);
+    } break;
+    }
   }
 }

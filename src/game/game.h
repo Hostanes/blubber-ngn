@@ -14,6 +14,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+enum gameState {
+  GAMESTATE_MAINMENU = 0,
+  GAMESTATE_INLEVEL,
+};
+
 typedef struct {
   world_t *world;
   Camera3D camera;
@@ -24,6 +29,7 @@ typedef struct {
 
 typedef struct GameWorld {
   entity_t player;
+  enum gameState gameState;
   archetype_t *playerArch;
   archetype_t *boxArch;
 } GameWorld;
