@@ -4,16 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-static archetype_t *WorldFindArchetype(world_t *world, const bitset_t *mask) {
+static int32_t WorldFindArchetype(world_t *world, const bitset_t *mask) {
   for (uint32_t i = 0; i < world->archetypeCount; ++i) {
     if (BitsetEquals(&world->archetypes[i].mask, mask)) {
-      return &world->archetypes[i];
+      return (int32_t)i;
     }
   }
-  return NULL;
+  return -1;
 }
 
-archetype_t *WorldCreateArchetype(world_t *world, const bitset_t *mask) {
+uint32_t WorldCreateArchetype(world_t *world, const bitset_t *mask) {
   if (world->archetypeCount >= world->archetypeCapacity) {
     uint32_t oldCap = world->archetypeCapacity;
     uint32_t newCap = oldCap == 0 ? 8 : oldCap * 2;
@@ -27,10 +27,12 @@ archetype_t *WorldCreateArchetype(world_t *world, const bitset_t *mask) {
     world->archetypeCapacity = newCap;
   }
 
-  archetype_t *arch = &world->archetypes[world->archetypeCount++];
+  uint32_t index = world->archetypeCount++;
+  archetype_t *arch = &world->archetypes[index];
+
   ArchetypeInit(arch, *mask);
 
-  return arch;
+  return index;
 }
 
 world_t *WorldCreate(void) {
@@ -69,14 +71,16 @@ entity_t WorldCreateEntity(world_t *world, const bitset_t *mask) {
     world->entityLocationCapacity = newCap;
   }
 
-  archetype_t *arch = WorldFindArchetype(world, mask);
-  if (!arch) {
-    arch = WorldCreateArchetype(world, mask);
+  int32_t archIndex = WorldFindArchetype(world, mask);
+  if (archIndex < 0) {
+    archIndex = WorldCreateArchetype(world, mask);
   }
+
+  archetype_t *arch = &world->archetypes[archIndex];
 
   uint32_t index = ArchetypeAddEntity(arch, entity);
 
-  world->entityLocations[entity.id].archetype = arch;
+  world->entityLocations[entity.id].archetype = archIndex;
   world->entityLocations[entity.id].index = index;
 
   return entity;
@@ -99,7 +103,7 @@ void *WorldGetComponent(world_t *world, entity_t entity,
   }
 
   entityLocation_t loc = world->entityLocations[entity.id];
-  archetype_t *arch = loc.archetype;
+  archetype_t *arch = &world->archetypes[loc.archetype];
 
   archetypeColumn_t *col = ArchetypeFindColumn(arch, componentId);
   if (!col)

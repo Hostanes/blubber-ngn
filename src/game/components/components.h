@@ -1,5 +1,6 @@
 
 #pragma once
+#include "collision.h"
 #include "movement.h"
 #include "renderable.h"
 #include "timer.h"
@@ -11,4 +12,5 @@ enum {
   COMP_ORIENTATION,
   COMP_MODEL,
   COMP_TIMER,
+  COMP_AABB,
 };

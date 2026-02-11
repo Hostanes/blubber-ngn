@@ -1,7 +1,3 @@
-#include "../engine/util/bitset.h"
-#include "components/components.h"
-#include "components/renderable.h"
-#include "ecs_get.h"
 #include "game.h"
 
 static bitset_t MakeMask(uint32_t *bits, uint32_t count) {
@@ -32,13 +28,14 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                            COMP_MODEL, COMP_TIMER};
 
   bitset_t playerMask = MakeMask(playerBits, 5);
-  gw.playerArch = WorldCreateArchetype(world, &playerMask);
+  gw.playerArchId = WorldCreateArchetype(world, &playerMask);
+  archetype_t *playerArch = WorldGetArchetype(world, gw.playerArchId);
 
-  ArchetypeAddInline(gw.playerArch, COMP_POSITION, sizeof(Position));
-  ArchetypeAddInline(gw.playerArch, COMP_VELOCITY, sizeof(Velocity));
-  ArchetypeAddInline(gw.playerArch, COMP_ORIENTATION, sizeof(Orientation));
-  ArchetypeAddHandle(gw.playerArch, COMP_MODEL, &engine->modelPool);
-  ArchetypeAddHandle(gw.playerArch, COMP_TIMER, &engine->timerPool);
+  ArchetypeAddInline(playerArch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(playerArch, COMP_VELOCITY, sizeof(Velocity));
+  ArchetypeAddInline(playerArch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddHandle(playerArch, COMP_MODEL, &engine->modelPool);
+  ArchetypeAddHandle(playerArch, COMP_TIMER, &engine->timerPool);
 
   gw.player = WorldCreateEntity(world, &playerMask);
 
@@ -60,16 +57,19 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL});
 
+  /* ---------- Obstacle archetype ---------- */
+
   /* ---------- Box archetype ---------- */
 
   uint32_t boxBits[] = {COMP_POSITION, COMP_ORIENTATION, COMP_MODEL};
   bitset_t boxMask = MakeMask(boxBits, 3);
 
-  gw.boxArch = WorldCreateArchetype(world, &boxMask);
+  gw.obstacleArchId = WorldCreateArchetype(world, &boxMask);
+  archetype_t *obsatcleArch = WorldGetArchetype(world, gw.obstacleArchId);
 
-  ArchetypeAddInline(gw.boxArch, COMP_POSITION, sizeof(Position));
-  ArchetypeAddInline(gw.boxArch, COMP_ORIENTATION, sizeof(Orientation));
-  ArchetypeAddHandle(gw.boxArch, COMP_MODEL, &engine->modelPool);
+  ArchetypeAddInline(obsatcleArch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(obsatcleArch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddHandle(obsatcleArch, COMP_MODEL, &engine->modelPool);
 
   for (int i = 0; i < 5000; ++i) {
     entity_t box = WorldCreateEntity(world, &boxMask);
@@ -88,5 +88,6 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                                              .scale = (Vector3){1, 1, 1},
                                              .rotationMode = MODEL_ROT_FULL});
   }
+
   return gw;
 }

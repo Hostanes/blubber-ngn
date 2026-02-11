@@ -2,6 +2,19 @@
 #include "systems.h"
 #include <raylib.h>
 
+static bitset_t modelMask;
+static bool modelMaskInit = false;
+
+static void EnsureModelMask(void) {
+  if (modelMaskInit)
+    return;
+
+  BitsetInit(&modelMask, 64);
+  BitsetSet(&modelMask, COMP_MODEL);
+
+  modelMaskInit = true;
+}
+
 void RenderMainMenu(GameWorld *game) {
   BeginDrawing();
   ClearBackground(DARKGRAY);
@@ -57,6 +70,7 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
 }
 
 void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
+  EnsureModelMask();
 
   BeginDrawing();
   ClearBackground(GRAY);
@@ -64,8 +78,14 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   DrawGrid(50, 5.0f);
 
-  RenderArchetype(world, game->playerArch);
-  RenderArchetype(world, game->boxArch);
+  for (uint32_t i = 0; i < world->archetypeCount; ++i) {
+    archetype_t *arch = &world->archetypes[i];
+
+    if (!BitsetContainsAll(&arch->mask, &modelMask))
+      continue;
+
+    RenderArchetype(world, arch);
+  }
 
   EndMode3D();
   DrawFPS(10, 10);

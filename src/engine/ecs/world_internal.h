@@ -9,8 +9,8 @@
 #define maxComponents 64
 
 typedef struct {
-  archetype_t *archetype;
-  uint32_t index; // index inside archetype
+  uint32_t archetype; // index into world->archetypes
+  uint32_t index;     // index within archetype
 } entityLocation_t;
 
 struct world_t {

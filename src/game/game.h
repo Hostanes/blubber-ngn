@@ -5,10 +5,14 @@
 #include "../engine/ecs/world.h"
 #include "../engine/util/bitset.h"
 #include "components/components.h"
+#include "components/movement.h"
+#include "components/renderable.h"
+#include "components/transform.h"
 #include "ecs_get.h"
 #include "game.h"
 #include "raylib.h"
 #include "raymath.h"
+#include "systems/systems.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,8 +34,8 @@ typedef struct {
 typedef struct GameWorld {
   entity_t player;
   enum gameState gameState;
-  archetype_t *playerArch;
-  archetype_t *boxArch;
+  uint32_t playerArchId;
+  uint32_t obstacleArchId;
 } GameWorld;
 
 void RunGameLoop(Engine *engine, GameWorld *game);

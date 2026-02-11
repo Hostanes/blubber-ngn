@@ -1,5 +1,4 @@
 #pragma once
-
 #include "../../engine/ecs/world.h"
 #include "../components/components.h"
 #include "../components/movement.h"
@@ -12,7 +11,7 @@
 typedef struct GameWorld GameWorld;
 
 void PlayerControlSystem(world_t *world, entity_t player);
-void PlayerWeaponSystem(world_t *world, entity_t player);
+void PlayerWeaponSystem(world_t *world, entity_t player, float dt);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);
 void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera);
 void RenderMainMenu(GameWorld *game);

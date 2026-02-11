@@ -1,6 +1,5 @@
 
 #include "game.h"
-#include "raylib.h"
 
 Engine EngineInit(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);

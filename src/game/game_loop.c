@@ -1,9 +1,5 @@
 
-#include "ecs_get.h"
 #include "game.h"
-#include "raylib.h"
-#include "raymath.h"
-#include "systems/systems.h"
 
 void UpdateCubesSystem(world_t *world, archetype_t *arch, float dt) {
   float t = GetTime();
@@ -46,9 +42,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
     case GAMESTATE_INLEVEL: {
       PlayerControlSystem(world, game->player);
-      MovementSystem(world, game->playerArch, dt);
-      PlayerWeaponSystem(world, game->player);
-      UpdateCubesSystem(world, game->boxArch, dt);
+      MovementSystem(world, WorldGetArchetype(world, game->playerArchId), dt);
+      PlayerWeaponSystem(world, game->player, dt);
       TimerSystem(&engine->timerPool, dt);
 
       Orientation *ori =
