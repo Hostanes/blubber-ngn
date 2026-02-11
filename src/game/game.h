@@ -3,6 +3,7 @@
 #include "../engine/ecs/archetype.h"
 #include "../engine/ecs/component.h"
 #include "../engine/ecs/world.h"
+#include "../engine/math/heightmap.h"
 #include "../engine/util/bitset.h"
 #include "components/components.h"
 #include "components/movement.h"
@@ -34,8 +35,12 @@ typedef struct {
 typedef struct GameWorld {
   entity_t player;
   enum gameState gameState;
+
   uint32_t playerArchId;
   uint32_t obstacleArchId;
+
+  HeightMap terrainHeightMap;
+  Model terrainModel;
 } GameWorld;
 
 void RunGameLoop(Engine *engine, GameWorld *game);

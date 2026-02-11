@@ -73,10 +73,12 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   EnsureModelMask();
 
   BeginDrawing();
-  ClearBackground(GRAY);
+  ClearBackground(SKYBLUE);
   BeginMode3D(*camera);
 
-  DrawGrid(50, 5.0f);
+  // DrawGrid(50, 5.0f);
+
+  DrawModel(game->terrainModel, (Vector3){0, 0, 0}, 1.0f, WHITE);
 
   for (uint32_t i = 0; i < world->archetypeCount; ++i) {
     archetype_t *arch = &world->archetypes[i];
@@ -89,5 +91,26 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   EndMode3D();
   DrawFPS(10, 10);
+
+  // --- Player debug info (top-right) ---
+  archetype_t *playerArch = &world->archetypes[0];
+  entity_t player = playerArch->entities[0];
+
+  Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
+  Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
+
+  int screenW = GetScreenWidth();
+
+  char buf[256];
+  snprintf(buf, sizeof(buf),
+           "Player Pos:\n"
+           "  x: %.2f\n  y: %.2f\n  z: %.2f\n\n"
+           "Velocity:\n"
+           "  x: %.2f\n  y: %.2f\n  z: %.2f",
+           pos->value.x, pos->value.y, pos->value.z, vel->value.x, vel->value.y,
+           vel->value.z);
+
+  DrawText(buf, screenW - 260, 10, 16, WHITE);
+
   EndDrawing();
 }

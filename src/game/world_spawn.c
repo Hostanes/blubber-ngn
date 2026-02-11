@@ -1,4 +1,7 @@
+#include "components/components.h"
 #include "game.h"
+#include <raylib.h>
+#include <raymath.h>
 
 static bitset_t MakeMask(uint32_t *bits, uint32_t count) {
   bitset_t mask;
@@ -11,6 +14,12 @@ static bitset_t MakeMask(uint32_t *bits, uint32_t count) {
 GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
   gw.gameState = GAMESTATE_MAINMENU;
+
+  gw.terrainModel = LoadModel("assets/models/terrain-tutorial.glb");
+  // gw.terrainModel = LoadModel("assets/models/terrain-level1.glb");
+  gw.terrainHeightMap =
+      HeightMap_FromMesh(gw.terrainModel.meshes[0], MatrixIdentity());
+
   /* ---------- Component pools ---------- */
 
   static componentPool_t modelPool;
@@ -25,9 +34,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   /* ---------- Player archetype ---------- */
 
   uint32_t playerBits[] = {COMP_POSITION, COMP_VELOCITY, COMP_ORIENTATION,
-                           COMP_MODEL, COMP_TIMER};
+                           COMP_MODEL, COMP_TIMER, COMP_GRAVITY};
 
-  bitset_t playerMask = MakeMask(playerBits, 5);
+  bitset_t playerMask = MakeMask(playerBits, 6);
   gw.playerArchId = WorldCreateArchetype(world, &playerMask);
   archetype_t *playerArch = WorldGetArchetype(world, gw.playerArchId);
 
@@ -36,6 +45,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(playerArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddHandle(playerArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(playerArch, COMP_TIMER, &engine->timerPool);
+  ArchetypeAddHandle(playerArch, COMP_COYOTETIMER, &engine->timerPool);
 
   gw.player = WorldCreateEntity(world, &playerMask);
 
@@ -48,7 +58,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ModelCollectionInit(mc, 2);
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = cube,
-                                           .offset = (Vector3){0, -2, 0},
+                                           .offset = (Vector3){0, 2, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY});
 

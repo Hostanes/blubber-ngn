@@ -11,6 +11,9 @@ enum {
   COMP_VELOCITY,
   COMP_ORIENTATION,
   COMP_MODEL,
+  COMP_COYOTETIMER,
   COMP_TIMER,
   COMP_AABB,
+  COMP_GRAVITY, // for gravity and colliding with terrain and obstacles from
+                // below
 };

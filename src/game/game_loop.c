@@ -1,5 +1,6 @@
 
 #include "game.h"
+#include "systems/systems.h"
 
 void UpdateCubesSystem(world_t *world, archetype_t *arch, float dt) {
   float t = GetTime();
@@ -41,8 +42,9 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
     } break;
 
     case GAMESTATE_INLEVEL: {
-      PlayerControlSystem(world, game->player);
+      PlayerControlSystem(world, game, game->player, dt);
       MovementSystem(world, WorldGetArchetype(world, game->playerArchId), dt);
+      ApplyGravity(world, game, dt);
       PlayerWeaponSystem(world, game->player, dt);
       TimerSystem(&engine->timerPool, dt);
 

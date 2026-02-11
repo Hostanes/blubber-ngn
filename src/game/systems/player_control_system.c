@@ -1,18 +1,36 @@
+#include "../game.h"
 #include "systems.h"
 
 static Vector3 playerWeaponSway;
-const float swayAmount = 0.15f; // meters
-const float swaySpeed = 15.0f;  // responsiveness
+const float swayAmount = .05f;
+const float swaySpeed = 15.0f;
 
-void PlayerControlSystem(world_t *world, entity_t player) {
+const float speed = 20.0f;
+const float mouseSensitivity = 0.002f;
+
+const float jumpVelocity = 10.0f;
+const float jumpCoyoteTimeMax = 0.3f;
+
+void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
+                         float dt) {
   Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
   Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
   Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
 
-  (void)pos; // currently unused
+  Timer *coyoteTimer = ECS_GET(world, player, Timer, COMP_COYOTETIMER);
 
-  const float speed = 15.0f;
-  const float mouseSensitivity = 0.002f;
+  float groundY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
+                                            pos->value.x, pos->value.z);
+  float footY = pos->value.y - 2.0f;
+  bool isOnGround = (footY <= groundY + 0.02f);
+
+  if (isOnGround) {
+    // Refresh coyote time while grounded
+    coyoteTimer->value = jumpCoyoteTimeMax;
+  } else {
+    if (coyoteTimer->value < 0.0f)
+      coyoteTimer->value = 0.0f;
+  }
 
   Vector2 mouse = GetMouseDelta();
   ori->yaw -= mouse.x * mouseSensitivity;
@@ -27,8 +45,8 @@ void PlayerControlSystem(world_t *world, entity_t player) {
       cosf(ori->pitch) * cosf(ori->yaw),
   };
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
-
-  vel->value = (Vector3){0};
+  float vy = vel->value.y;
+  vel->value = (Vector3){0, vy, 0};
 
   if (IsKeyDown(KEY_W))
     vel->value = Vector3Add(vel->value, forward);
@@ -39,9 +57,23 @@ void PlayerControlSystem(world_t *world, entity_t player) {
   if (IsKeyDown(KEY_D))
     vel->value = Vector3Subtract(vel->value, right);
 
-  if (Vector3Length(vel->value) > 0.0f) {
-    vel->value = Vector3Scale(Vector3Normalize(vel->value), speed);
+  bool canJump = (coyoteTimer->value > 0.0f);
+
+  if (IsKeyPressed(KEY_SPACE) && canJump) {
+    vel->value.y = jumpVelocity;
+
+    // Consume coyote time immediately
+    coyoteTimer->value = 0.0f;
   }
+
+  Vector3 horiz = {vel->value.x, 0.0f, vel->value.z};
+
+  if (Vector3Length(horiz) > 0.0f) {
+    horiz = Vector3Scale(Vector3Normalize(horiz), speed);
+  }
+
+  vel->value.x = horiz.x;
+  vel->value.z = horiz.z;
 }
 
 void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
@@ -51,39 +83,35 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
 
   ModelInstance_t *gun = &mc->models[1];
 
-  // Base rotation from pitch
   gun->rotation.x = -ori->pitch;
 
-  // Camera basis
-  Vector3 forward = {
-      sinf(ori->yaw),
-      0.0f,
-      cosf(ori->yaw),
-  };
+  Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
+  Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
 
-  Vector3 right = {
-      cosf(ori->yaw),
-      0.0f,
-      -sinf(ori->yaw),
-  };
-
-  // Project velocity into camera space
   float lateral = Vector3DotProduct(vel->value, right);
   float longitudinal = Vector3DotProduct(vel->value, forward);
+  float vertical = vel->value.y;
 
-  // Target sway (invert so motion feels weighted)
-  Vector3 targetSway = {-lateral * 0.002f,             // left/right
-                        -fabsf(longitudinal) * 0.001f, // slight downward bob
+  float maxSpeed = 15.0f;
+
+  float lateralNorm = Clamp(lateral / maxSpeed, -1.0f, 1.0f);
+  float forwardNorm = Clamp(longitudinal / maxSpeed, -1.0f, 1.0f);
+  float verticalNorm = Clamp(vertical / jumpVelocity, -1.0f, 1.0f);
+
+  Vector3 targetSway = {-lateralNorm * swayAmount,
+                        -fabsf(forwardNorm) * swayAmount * 0.6f -
+                            verticalNorm * swayAmount * 1.2f,
                         0.0f};
 
-  // Clamp
-  targetSway.x = Clamp(targetSway.x, -0.04f, 0.04f);
-  targetSway.y = Clamp(targetSway.y, -0.03f, 0.0f);
-
-  // Smoothly approach target (critical for feel)
   playerWeaponSway = Vector3Lerp(playerWeaponSway, targetSway, dt * swaySpeed);
 
-  // Apply sway to model offset
-  gun->offset = Vector3Add((Vector3){0, -0.9f, 0}, // base offset
-                           playerWeaponSway);
+  // Idle motion
+  static float swayTime = 0.0f;
+  swayTime += dt;
+
+  Vector3 idleSway = {sinf(swayTime * 1.7f) * swayAmount * 0.08f,
+                      cosf(swayTime * 2.3f) * swayAmount * 0.06f, 0.0f};
+
+  gun->offset = Vector3Add((Vector3){0, -0.9f, 0},
+                           Vector3Add(playerWeaponSway, idleSway));
 }
