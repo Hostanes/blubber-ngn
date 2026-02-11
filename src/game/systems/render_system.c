@@ -1,6 +1,9 @@
+#include "../game.h"
 #include "systems.h"
+#include <raylib.h>
 
-void RenderSystem(world_t *world, archetype_t *arch) {
+void RenderArchetype(world_t *world, archetype_t *arch) {
+
 #pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
     entity_t e = arch->entities[i];
@@ -32,4 +35,20 @@ void RenderSystem(world_t *world, archetype_t *arch) {
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
     }
   }
+}
+
+void RenderSystem(world_t *world, GameWorld *game, Camera *camera) {
+
+  BeginDrawing();
+  ClearBackground(SKYBLUE);
+  BeginMode3D(*camera);
+
+  DrawGrid(50, 5.0f);
+
+  RenderArchetype(world, game->playerArch);
+  RenderArchetype(world, game->boxArch);
+
+  EndMode3D();
+  DrawFPS(10, 10);
+  EndDrawing();
 }

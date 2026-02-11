@@ -9,7 +9,6 @@
 #include "game.h"
 #include "raylib.h"
 #include "raymath.h"
-#include "systems/systems.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,7 +22,7 @@ typedef struct {
   componentPool_t modelPool;
 } Engine;
 
-typedef struct {
+typedef struct GameWorld {
   entity_t player;
   archetype_t *playerArch;
   archetype_t *boxArch;

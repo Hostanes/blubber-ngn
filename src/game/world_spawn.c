@@ -71,7 +71,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(gw.boxArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddHandle(gw.boxArch, COMP_MODEL, &engine->modelPool);
 
-  for (int i = 0; i < 1; ++i) {
+  for (int i = 0; i < 100; ++i) {
     entity_t box = WorldCreateEntity(world, &boxMask);
     ECS_GET(world, box, Position, COMP_POSITION)->value =
         (Vector3){i * 2.0f, 0.5f, 5.0f};

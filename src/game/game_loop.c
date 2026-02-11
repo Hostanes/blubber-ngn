@@ -49,15 +49,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                                          cosf(ori->pitch) * cosf(ori->yaw)});
     camera->up = (Vector3){0, 1, 0};
 
-    BeginDrawing();
-    ClearBackground(SKYBLUE);
-    BeginMode3D(*camera);
-
-    RenderSystem(world, game->boxArch);
-    RenderSystem(world, game->playerArch);
-
-    EndMode3D();
-    DrawFPS(10, 10);
-    EndDrawing();
+    RenderSystem(world, game, camera);
+    RenderSystem(world, game, camera);
   }
 }

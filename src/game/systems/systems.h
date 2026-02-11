@@ -1,3 +1,4 @@
+#pragma once
 
 #include "../../engine/ecs/world.h"
 #include "../components/components.h"
@@ -8,8 +9,10 @@
 #include "raymath.h"
 #include <stdint.h>
 
+typedef struct GameWorld GameWorld;
+
 void PlayerControlSystem(world_t *world, entity_t player);
 void PlayerWeaponSystem(world_t *world, entity_t player);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);
-void RenderSystem(world_t *world, archetype_t *arch);
+void RenderSystem(world_t *world, GameWorld *game, Camera *camera);
 void TimerSystem(componentPool_t *timerPool, float dt);
