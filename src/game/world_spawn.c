@@ -22,16 +22,19 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ComponentPoolInit(&modelPool, sizeof(ModelCollection_t));
   ComponentPoolInit(&timerPool, sizeof(Timer));
 
-  Model cube = LoadModelFromMesh(GenMeshCube(1, 1, 1));
+  Model cube = LoadModelFromMesh(GenMeshCube(5, 5, 5));
   Model gun = LoadModel("assets/models/gun1.glb");
 
   /* ---------- Player archetype ---------- */
 
-  uint32_t playerBits[] = {COMP_POSITION, COMP_VELOCITY, COMP_ORIENTATION,
-                           COMP_MODEL,    COMP_TIMER,    COMP_GRAVITY,
-                           COMP_ACTIVE};
+  uint32_t playerBits[] = {COMP_POSITION,        COMP_VELOCITY,
+                           COMP_ORIENTATION,     COMP_MODEL,
+                           COMP_TIMER,           COMP_GRAVITY,
+                           COMP_ACTIVE,          COMP_COLLISION_INSTANCE,
+                           COMP_CAPSULE_COLLIDER};
 
-  bitset_t playerMask = MakeMask(playerBits, 6);
+  bitset_t playerMask = MakeMask(playerBits, 8);
+
   gw.playerArchId = WorldCreateArchetype(world, &playerMask);
   archetype_t *playerArch = WorldGetArchetype(world, gw.playerArchId);
 
@@ -42,6 +45,10 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddHandle(playerArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(playerArch, COMP_TIMER, &engine->timerPool);
   ArchetypeAddHandle(playerArch, COMP_COYOTETIMER, &engine->timerPool);
+  ArchetypeAddInline(playerArch, COMP_COLLISION_INSTANCE,
+                     sizeof(CollisionInstance));
+  ArchetypeAddInline(playerArch, COMP_CAPSULE_COLLIDER,
+                     sizeof(CapsuleCollider));
 
   gw.player = WorldCreateEntity(world, &playerMask);
 
@@ -57,14 +64,31 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ModelCollectionInit(mc, 2);
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = cube,
-                                           .offset = (Vector3){0, 2, 0},
+                                           .offset = (Vector3){0, -2.0f, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = gun,
-                                           .offset = (Vector3){0, -0.9f, 0},
+                                           .offset = (Vector3){0, 0, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL});
+
+  CapsuleCollider *cap =
+      ECS_GET(world, gw.player, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+  cap->radius = 0.35f;
+  cap->a = (Vector3){0, 0, 0}; // will be updated per-frame
+  cap->b = (Vector3){0, 1.8f, 0};
+
+  CollisionInstance *ci =
+      ECS_GET(world, gw.player, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+  ci->owner = gw.player;
+  ci->type = COLLIDER_CAPSULE;
+  ci->shape = cap;
+  ci->layerMask = 1 << 0;   // PLAYER
+  ci->collideMask = 1 << 1; // WORLD
+  ci->worldBounds = Capsule_ComputeAABB(cap);
 
   /* ---------- Bullet archetype ---------- */
 
@@ -83,6 +107,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(bulletArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddInline(bulletArch, COMP_BULLETTYPE, sizeof(int));
   ArchetypeAddInline(bulletArch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(bulletArch, COMP_ACTIVE, sizeof(SphereCollider));
 
   ArchetypeAddHandle(bulletArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(bulletArch, COMP_TIMER, &engine->timerPool);
@@ -109,9 +134,11 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   /* ---------- Box archetype ---------- */
 
-  uint32_t boxBits[] = {COMP_POSITION, COMP_ORIENTATION, COMP_MODEL,
-                        COMP_ACTIVE};
-  bitset_t boxMask = MakeMask(boxBits, 3);
+  uint32_t boxBits[] = {
+      COMP_POSITION, COMP_ORIENTATION,        COMP_MODEL,
+      COMP_ACTIVE,   COMP_COLLISION_INSTANCE, COMP_AABB_COLLIDER};
+
+  bitset_t boxMask = MakeMask(boxBits, 6);
 
   gw.obstacleArchId = WorldCreateArchetype(world, &boxMask);
   archetype_t *obsatcleArch = WorldGetArchetype(world, gw.obstacleArchId);
@@ -119,9 +146,12 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(obsatcleArch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(obsatcleArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddInline(obsatcleArch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(obsatcleArch, COMP_COLLISION_INSTANCE,
+                     sizeof(CollisionInstance));
+  ArchetypeAddInline(obsatcleArch, COMP_AABB_COLLIDER, sizeof(AABBCollider));
   ArchetypeAddHandle(obsatcleArch, COMP_MODEL, &engine->modelPool);
 
-  for (int i = 0; i < 5000; ++i) {
+  for (int i = 0; i < 1; ++i) {
     entity_t box = WorldCreateEntity(world, &boxMask);
     ECS_GET(world, box, Position, COMP_POSITION)->value =
         (Vector3){i * 2.0f, 0.5f, 5.0f};
@@ -130,17 +160,24 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
     active->value = true;
 
     ModelCollection_t *mc = ECS_GET(world, box, ModelCollection_t, COMP_MODEL);
-    ModelCollectionInit(mc, 2);
+    ModelCollectionInit(mc, 1);
     ModelCollectionAdd(mc, (ModelInstance_t){.model = cube,
                                              .offset = (Vector3){0, 0, 0},
                                              .rotation = (Vector3){0, 0, 0},
                                              .scale = (Vector3){1, 1, 1},
                                              .rotationMode = MODEL_ROT_FULL});
-    ModelCollectionAdd(mc, (ModelInstance_t){.model = gun,
-                                             .offset = (Vector3){0, 0, 0},
-                                             .rotation = (Vector3){0, 0, 0},
-                                             .scale = (Vector3){1, 1, 1},
-                                             .rotationMode = MODEL_ROT_FULL});
+
+    AABBCollider *aabb = ECS_GET(world, box, AABBCollider, COMP_AABB_COLLIDER);
+
+    aabb->halfExtents = (Vector3){2.5f, 2.5f, 2.5f};
+
+    CollisionInstance *ci =
+        ECS_GET(world, box, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+    ci->type = COLLIDER_AABB;
+    ci->shape = aabb;
+    ci->layerMask = 1 << 1;   // WORLD
+    ci->collideMask = 1 << 0; // PLAYER
   }
 
   return gw;

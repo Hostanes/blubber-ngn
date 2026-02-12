@@ -42,17 +42,18 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
     } break;
 
     case GAMESTATE_INLEVEL: {
+      TimerSystem(&engine->timerPool, dt);
       PlayerControlSystem(world, game, game->player, dt);
       PlayerShootSystem(world, game, game->player);
       PlayerWeaponSystem(world, game->player, dt);
-
-      ApplyGravity(world, game, dt);
-
       BulletSystem(world, WorldGetArchetype(world, game->bulletArchId), dt);
 
+      ApplyGravity(world, game, dt);
       MovementSystem(world, WorldGetArchetype(world, game->playerArchId), dt);
-
-      TimerSystem(&engine->timerPool, dt);
+      UpdatePlayerCollision(world, game->player);
+      UpdateObstacleCollision(world,
+                              WorldGetArchetype(world, game->obstacleArchId));
+      PlayerObstacleCollisionSystem(world, game);
 
       Orientation *ori =
           ECS_GET(world, game->player, Orientation, COMP_ORIENTATION);

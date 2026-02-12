@@ -19,7 +19,9 @@ enum {
   COMP_BULLETTYPE,
   COMP_LIFETIME,
   COMP_ACTIVE,
-  COMP_COLLIDER,
+  COMP_COLLISION_INSTANCE,
+  COMP_CAPSULE_COLLIDER,
+  COMP_AABB_COLLIDER,
   COMP_GRAVITY, // for gravity and colliding with terrain and obstacles from
                 // below
 };

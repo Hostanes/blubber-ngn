@@ -19,6 +19,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define PLAYER_RADIUS 0.35f
+#define PLAYER_HEIGHT 5.0f
+
 enum gameState {
   GAMESTATE_MAINMENU = 0,
   GAMESTATE_INLEVEL,
