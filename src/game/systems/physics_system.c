@@ -30,9 +30,7 @@ void ApplyGravity(world_t *world, GameWorld *game, float dt) {
       Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
       Velocity *vel = ECS_GET(world, entity, Velocity, COMP_VELOCITY);
 
-      printf("decrementing gravity for archetype %d, entity Index:%d\n", i,
-             entity.id);
-      vel->value.y -= 2 * 10.0f * dt;
+      vel->value.y -= 2.5 * 10.0f * dt;
 
       float halfHeight = 2.0f; // capsule half height
       float groundY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,

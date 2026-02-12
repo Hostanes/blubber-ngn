@@ -15,6 +15,19 @@ static void EnsureModelMask(void) {
   modelMaskInit = true;
 }
 
+static bitset_t activeMask;
+static bool activeMaskInit = false;
+
+static void EnsureActiveMask(void) {
+  if (activeMaskInit)
+    return;
+
+  BitsetInit(&activeMask, 64);
+  BitsetSet(&activeMask, COMP_ACTIVE);
+
+  activeMaskInit = true;
+}
+
 void RenderMainMenu(GameWorld *game) {
   BeginDrawing();
   ClearBackground(DARKGRAY);
@@ -36,15 +49,22 @@ void RenderMainMenu(GameWorld *game) {
 
 void RenderArchetype(world_t *world, archetype_t *arch) {
 
+  bool hasActive = BitsetContainsAll(&arch->mask, &activeMask);
+
 #pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
     entity_t e = arch->entities[i];
+
+    if (hasActive) {
+      Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+      if (!active->value)
+        continue;
+    }
 
     Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
     Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
     ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
 
-    // Entity yaw (world-space)
     Matrix T_world = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
     Matrix R_entityYaw = MatrixRotateY(ori->yaw);
     Matrix entityTransform = MatrixMultiply(R_entityYaw, T_world);
@@ -52,7 +72,6 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
     for (uint32_t m = 0; m < mc->count; ++m) {
       ModelInstance_t *mi = &mc->models[m];
 
-      // Local model transform
       Matrix local =
           MatrixMultiply(MatrixScale(mi->scale.x, mi->scale.y, mi->scale.z),
                          MatrixRotateXYZ(mi->rotation));
@@ -60,7 +79,6 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       local = MatrixMultiply(
           MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z), local);
 
-      // Final transform
       Matrix transform = MatrixMultiply(local, entityTransform);
 
       mi->model.transform = transform;

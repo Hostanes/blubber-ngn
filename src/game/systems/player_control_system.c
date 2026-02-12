@@ -1,15 +1,95 @@
+#include "../../engine/util/bitset.h"
 #include "../game.h"
 #include "systems.h"
+#include <raymath.h>
 
 static Vector3 playerWeaponSway;
 const float swayAmount = .05f;
 const float swaySpeed = 15.0f;
 
-const float speed = 20.0f;
+const float speed = 15.0f;
 const float mouseSensitivity = 0.002f;
 
-const float jumpVelocity = 10.0f;
+const float jumpVelocity = 15.0f;
 const float jumpCoyoteTimeMax = 0.3f;
+
+static Vector3 GetForwardFromOrientation(const Orientation *ori) {
+  return (Vector3){
+      cosf(ori->pitch) * sinf(ori->yaw),
+      sinf(ori->pitch),
+      cosf(ori->pitch) * cosf(ori->yaw),
+  };
+}
+
+void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player) {
+  if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    return;
+
+  Position *playerPos = ECS_GET(world, player, Position, COMP_POSITION);
+  Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
+  ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
+
+  ModelInstance_t *gun = &mc->models[1];
+
+  Vector3 forward = {
+      cosf(ori->pitch) * sinf(ori->yaw),
+      sinf(ori->pitch),
+      cosf(ori->pitch) * cosf(ori->yaw),
+  };
+
+  Vector3 right = {
+      cosf(ori->yaw),
+      0.0f,
+      -sinf(ori->yaw),
+  };
+
+  Vector3 up = {0.0f, 1.0f, 0.0f};
+
+  // Start at player position
+  Vector3 muzzlePos = playerPos->value;
+
+  // Apply gun offset in world space
+  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(right, gun->offset.x));
+  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(up, gun->offset.y));
+  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(forward, gun->offset.z));
+
+  // Push forward to barrel tip
+  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(forward, 0.4f));
+
+  // --- Find inactive bullet ---
+  archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
+
+  for (uint32_t i = 0; i < bulletArch->count; i++) {
+    entity_t b = bulletArch->entities[i];
+
+    Active *active = ECS_GET(world, b, Active, COMP_ACTIVE);
+    if (active->value)
+      continue;
+
+    // --- Initialize bullet ---
+    active->value = true;
+
+    ECS_GET(world, b, Position, COMP_POSITION)->value = muzzlePos;
+    ECS_GET(world, b, Velocity, COMP_VELOCITY)->value =
+        Vector3Scale(forward, 220.0f);
+
+    // Orientation
+    Orientation *bori = ECS_GET(world, b, Orientation, COMP_ORIENTATION);
+    bori->yaw = ori->yaw;
+    bori->pitch = ori->pitch;
+
+    // Model rotation = orientation
+    ModelCollection_t *bmc = ECS_GET(world, b, ModelCollection_t, COMP_MODEL);
+    bmc->models[0].rotation = (Vector3){-bori->pitch, 0.0f, 0.0f};
+
+    ECS_GET(world, b, BulletType, COMP_BULLETTYPE)->type = 0;
+
+    Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
+    life->value = 5.0f; // seconds
+    printf("spawned bullet\n");
+    break;
+  }
+}
 
 void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
                          float dt) {

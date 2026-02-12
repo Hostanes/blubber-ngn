@@ -43,9 +43,15 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
     case GAMESTATE_INLEVEL: {
       PlayerControlSystem(world, game, game->player, dt);
-      MovementSystem(world, WorldGetArchetype(world, game->playerArchId), dt);
-      ApplyGravity(world, game, dt);
+      PlayerShootSystem(world, game, game->player);
       PlayerWeaponSystem(world, game->player, dt);
+
+      ApplyGravity(world, game, dt);
+
+      BulletSystem(world, WorldGetArchetype(world, game->bulletArchId), dt);
+
+      MovementSystem(world, WorldGetArchetype(world, game->playerArchId), dt);
+
       TimerSystem(&engine->timerPool, dt);
 
       Orientation *ori =

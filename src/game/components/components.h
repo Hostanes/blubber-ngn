@@ -1,5 +1,7 @@
 
 #pragma once
+#include "Active.h"
+#include "bullets.h"
 #include "collision.h"
 #include "movement.h"
 #include "renderable.h"
@@ -14,6 +16,10 @@ enum {
   COMP_COYOTETIMER,
   COMP_TIMER,
   COMP_AABB,
+  COMP_BULLETTYPE,
+  COMP_LIFETIME,
+  COMP_ACTIVE,
+  COMP_COLLIDER,
   COMP_GRAVITY, // for gravity and colliding with terrain and obstacles from
                 // below
 };

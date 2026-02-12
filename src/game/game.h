@@ -36,8 +36,11 @@ typedef struct GameWorld {
   entity_t player;
   enum gameState gameState;
 
+  int nextBulletIndex;
+
   uint32_t playerArchId;
   uint32_t obstacleArchId;
+  uint32_t bulletArchId;
 
   HeightMap terrainHeightMap;
   Model terrainModel;
