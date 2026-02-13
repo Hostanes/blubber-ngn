@@ -27,11 +27,16 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   /* ---------- Player archetype ---------- */
 
-  uint32_t playerBits[] = {COMP_POSITION,        COMP_VELOCITY,
-                           COMP_ORIENTATION,     COMP_MODEL,
-                           COMP_TIMER,           COMP_GRAVITY,
-                           COMP_ACTIVE,          COMP_COLLISION_INSTANCE,
-                           COMP_CAPSULE_COLLIDER};
+  uint32_t playerBits[] = {COMP_POSITION,
+                           COMP_VELOCITY,
+                           COMP_ORIENTATION,
+                           COMP_MODEL,
+                           COMP_TIMER,
+                           COMP_GRAVITY,
+                           COMP_ACTIVE,
+                           COMP_COLLISION_INSTANCE,
+                           COMP_CAPSULE_COLLIDER,
+                           COMP_ISGROUNDED};
 
   bitset_t playerMask = MakeMask(playerBits, 8);
 
@@ -42,6 +47,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(playerArch, COMP_VELOCITY, sizeof(Velocity));
   ArchetypeAddInline(playerArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddInline(playerArch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(playerArch, COMP_ISGROUNDED, sizeof(bool));
   ArchetypeAddHandle(playerArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(playerArch, COMP_TIMER, &engine->timerPool);
   ArchetypeAddHandle(playerArch, COMP_COYOTETIMER, &engine->timerPool);
@@ -63,18 +69,23 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   ModelCollectionInit(mc, 2);
 
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = cube,
+  Model playerBody = LoadModelFromMesh(GenMeshCube(1, 2, 1));
+
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = playerBody,
                                            .offset = (Vector3){0, -2.0f, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = gun,
-                                           .offset = (Vector3){0, 0, 0},
+                                           .offset = (Vector3){0, 5, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL});
 
   CapsuleCollider *cap =
       ECS_GET(world, gw.player, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+  bool *isgrounded = ECS_GET(world, gw.player, bool, COMP_ISGROUNDED);
+  *isgrounded = false;
 
   cap->radius = 0.35f;
   cap->a = (Vector3){0, 0, 0}; // will be updated per-frame
@@ -151,25 +162,43 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(obsatcleArch, COMP_AABB_COLLIDER, sizeof(AABBCollider));
   ArchetypeAddHandle(obsatcleArch, COMP_MODEL, &engine->modelPool);
 
-  for (int i = 0; i < 1; ++i) {
+  for (int i = 0; i < 150; ++i) {
+
     entity_t box = WorldCreateEntity(world, &boxMask);
+
+    // --- Random position ---
+    float x = GetRandomValue(-150, 150);
+    float z = GetRandomValue(-150, 150);
+    float y = GetRandomValue(0, 10);
+
+    // --- Random height ---
+    float height = GetRandomValue(2, 2); // box height range
+    float width = GetRandomValue(2, 6);
+    float depth = GetRandomValue(2, 6);
+
+    float halfHeight = height * 0.5f;
+
     ECS_GET(world, box, Position, COMP_POSITION)->value =
-        (Vector3){i * 2.0f, 0.5f, 5.0f};
+        (Vector3){x, y, z};
 
     Active *active = ECS_GET(world, box, Active, COMP_ACTIVE);
     active->value = true;
 
     ModelCollection_t *mc = ECS_GET(world, box, ModelCollection_t, COMP_MODEL);
     ModelCollectionInit(mc, 1);
-    ModelCollectionAdd(mc, (ModelInstance_t){.model = cube,
-                                             .offset = (Vector3){0, 0, 0},
-                                             .rotation = (Vector3){0, 0, 0},
-                                             .scale = (Vector3){1, 1, 1},
-                                             .rotationMode = MODEL_ROT_FULL});
 
+    ModelCollectionAdd(
+        mc, (ModelInstance_t){
+                .model = cube,
+                .offset = (Vector3){0, 0, 0},
+                .rotation = (Vector3){0, 0, 0},
+                .scale = (Vector3){width / 5.0f, height / 5.0f, depth / 5.0f},
+                .rotationMode = MODEL_ROT_FULL});
+
+    // --- Collider ---
     AABBCollider *aabb = ECS_GET(world, box, AABBCollider, COMP_AABB_COLLIDER);
 
-    aabb->halfExtents = (Vector3){2.5f, 2.5f, 2.5f};
+    aabb->halfExtents = (Vector3){width * 0.5f, height * 0.5f, depth * 0.5f};
 
     CollisionInstance *ci =
         ECS_GET(world, box, CollisionInstance, COMP_COLLISION_INSTANCE);

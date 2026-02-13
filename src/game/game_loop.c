@@ -43,29 +43,33 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
     case GAMESTATE_INLEVEL: {
       TimerSystem(&engine->timerPool, dt);
+
       PlayerControlSystem(world, game, game->player, dt);
       PlayerShootSystem(world, game, game->player);
       PlayerWeaponSystem(world, game->player, dt);
-      BulletSystem(world, WorldGetArchetype(world, game->bulletArchId), dt);
 
       ApplyGravity(world, game, dt);
       MovementSystem(world, WorldGetArchetype(world, game->playerArchId), dt);
+
       UpdatePlayerCollision(world, game->player);
       UpdateObstacleCollision(world,
                               WorldGetArchetype(world, game->obstacleArchId));
       PlayerObstacleCollisionSystem(world, game);
+
+      BulletSystem(world, WorldGetArchetype(world, game->bulletArchId), dt);
 
       Orientation *ori =
           ECS_GET(world, game->player, Orientation, COMP_ORIENTATION);
       Position *pos = ECS_GET(world, game->player, Position, COMP_POSITION);
 
       camera->position = pos->value;
+      camera->position.y += PLAYER_HEIGHT;
       camera->target =
-          Vector3Add(pos->value, (Vector3){
-                                     cosf(ori->pitch) * sinf(ori->yaw),
-                                     sinf(ori->pitch),
-                                     cosf(ori->pitch) * cosf(ori->yaw),
-                                 });
+          Vector3Add(camera->position, (Vector3){
+                                           cosf(ori->pitch) * sinf(ori->yaw),
+                                           sinf(ori->pitch),
+                                           cosf(ori->pitch) * cosf(ori->yaw),
+                                       });
       camera->up = (Vector3){0, 1, 0};
 
       RenderLevelSystem(world, game, camera);

@@ -29,22 +29,16 @@ void ApplyGravity(world_t *world, GameWorld *game, float dt) {
 
       Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
       Velocity *vel = ECS_GET(world, entity, Velocity, COMP_VELOCITY);
+      bool *isgrounded = ECS_GET(world, game->player, bool, COMP_ISGROUNDED);
+
+      if (*isgrounded) {
+        continue;
+      }
 
       vel->value.y -= 2.5 * 10.0f * dt;
 
-      float halfHeight = 2.0f; // capsule half height
-      float groundY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
-                                                pos->value.x, pos->value.z);
 
-      float footY = pos->value.y - halfHeight;
 
-      if (footY < groundY) {
-        pos->value.y = groundY + halfHeight;
-
-        if (vel->value.y < 0.0f) {
-          vel->value.y = 0.0f;
-        }
-      }
     }
   }
 }

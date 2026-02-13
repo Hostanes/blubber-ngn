@@ -99,12 +99,13 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
 
   Timer *coyoteTimer = ECS_GET(world, player, Timer, COMP_COYOTETIMER);
 
-  float groundY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
-                                            pos->value.x, pos->value.z);
-  float footY = pos->value.y - 2.0f;
-  bool isOnGround = (footY <= groundY + 0.02f);
+  // float groundY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
+  //                                           pos->value.x, pos->value.z);
+  // float footY = pos->value.y - 2.0f;
+  bool *isgrounded = ECS_GET(world, game->player, bool, COMP_ISGROUNDED);
+  // *isgrounded = (footY <= groundY + 0.02f);
 
-  if (isOnGround) {
+  if (*isgrounded) {
     // Refresh coyote time while grounded
     coyoteTimer->value = jumpCoyoteTimeMax;
   } else {
@@ -191,7 +192,6 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
 
   Vector3 idleSway = {sinf(swayTime * 1.7f) * swayAmount * 0.08f,
                       cosf(swayTime * 2.3f) * swayAmount * 0.06f, 0.0f};
-
-  gun->offset = Vector3Add((Vector3){0, -0.9f, 0},
+  gun->offset = Vector3Add((Vector3){0, 0, 0},
                            Vector3Add(playerWeaponSway, idleSway));
 }

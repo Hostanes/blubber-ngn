@@ -79,7 +79,33 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       local = MatrixMultiply(
           MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z), local);
 
-      Matrix transform = MatrixMultiply(local, entityTransform);
+      Matrix transform;
+
+      if (m == 1) // gun index
+      {
+        Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+        Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+
+        Vector3 eyePos = pos->value;
+        eyePos.y += PLAYER_HEIGHT;
+
+        Matrix T = MatrixTranslate(eyePos.x, eyePos.y, eyePos.z);
+        Matrix R_yaw = MatrixRotateY(ori->yaw);
+        Matrix R_pitch = MatrixRotateX(-ori->pitch);
+
+        // Apply offset AFTER rotation
+        Matrix T_offset =
+            MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z);
+
+        Matrix S = MatrixScale(mi->scale.x, mi->scale.y, mi->scale.z);
+
+        transform = MatrixMultiply(
+            S,
+            MatrixMultiply(T_offset,
+                           MatrixMultiply(R_pitch, MatrixMultiply(R_yaw, T))));
+      } else {
+        transform = MatrixMultiply(local, entityTransform);
+      }
 
       mi->model.transform = transform;
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
