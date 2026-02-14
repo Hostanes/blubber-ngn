@@ -40,11 +40,25 @@ static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
 
     // Only resolve vertical during vertical phase
     if (verticalPhase) {
-      if (fabsf(hit.normal.y) > 0.5f && vel->value.y <= 0) {
-        pos->value =
-            Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
-        *isgrounded = true;
-        vel->value.y = 0.0f;
+      if (verticalPhase) {
+        // LANDING
+        if (vel->value.y < 0.0f && hit.normal.y > 0.5f) {
+          pos->value =
+              Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
+
+          vel->value.y = 0.0f;
+          *isgrounded = true;
+        }
+
+        // CEILING HIT
+        else if (vel->value.y > 0.0f && hit.normal.y < -0.5f) {
+          pos->value =
+              Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
+
+          vel->value.y = 0.0f;
+        }
+
+        // Ignore side contacts in vertical phase
       }
     } else {
       if (fabsf(hit.normal.y) < 0.5f) {
