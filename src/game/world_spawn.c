@@ -1,4 +1,5 @@
 #include "components/components.h"
+#include "components/transform.h"
 #include "game.h"
 #include <raylib.h>
 #include <raymath.h>
@@ -69,15 +70,15 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   ModelCollectionInit(mc, 2);
 
-  Model playerBody = LoadModelFromMesh(GenMeshCube(1, 2, 1));
+  Model playerBody = LoadModelFromMesh(GenMeshCube(.2f, 2, .2f));
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = playerBody,
-                                           .offset = (Vector3){0, -2.0f, 0},
+                                           .offset = (Vector3){0, -1.5f, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = gun,
-                                           .offset = (Vector3){0, 5, 0},
+                                           .offset = (Vector3){0, -0.5f, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL});
 
@@ -88,8 +89,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   *isgrounded = false;
 
   cap->radius = 0.35f;
-  cap->a = (Vector3){0, 0, 0}; // will be updated per-frame
-  cap->b = (Vector3){0, 1.8f, 0};
+  cap->a = (Vector3){0, -1.55f, 0}; // will be updated per-frame
+  cap->b = (Vector3){0, 0, 0};
 
   CollisionInstance *ci =
       ECS_GET(world, gw.player, CollisionInstance, COMP_COLLISION_INSTANCE);
@@ -178,8 +179,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
     float halfHeight = height * 0.5f;
 
-    ECS_GET(world, box, Position, COMP_POSITION)->value =
-        (Vector3){x, y, z};
+    ECS_GET(world, box, Position, COMP_POSITION)->value = (Vector3){x, y, z};
 
     Active *active = ECS_GET(world, box, Active, COMP_ACTIVE);
     active->value = true;

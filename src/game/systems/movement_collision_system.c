@@ -1,45 +1,35 @@
 #include "../game.h"
 #include "systems.h"
 
-void PlayerObstacleCollisionSystem(world_t *world, GameWorld *game) {
-  entity_t player = game->player;
+static void BuildPlayerCapsule(Position *pos, CapsuleCollider *cap,
+                               CollisionInstance *ci) {
+  float eyeHeight = 1.65f;
+  float totalHeight = 1.8f;
 
-  Position *playerPos = ECS_GET(world, player, Position, COMP_POSITION);
-  Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
-  bool *isgrounded = ECS_GET(world, player, bool, COMP_ISGROUNDED);
+  float bottom = eyeHeight;
+  float top = totalHeight - eyeHeight;
 
-  CollisionInstance *playerCI =
-      ECS_GET(world, player, CollisionInstance, COMP_COLLISION_INSTANCE);
+  cap->a = Vector3Add(pos->value, (Vector3){0, -bottom + cap->radius, 0});
 
-  if (!playerCI)
-    return;
+  cap->b = Vector3Add(pos->value, (Vector3){0, top - cap->radius, 0});
 
-  CapsuleCollider *cap = (CapsuleCollider *)playerCI->shape;
+  ci->worldBounds = Capsule_ComputeAABB(cap);
+}
 
-  // ------------------------------------------------------------
-  // 1️⃣ Update capsule from current position
-  // ------------------------------------------------------------
+static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
+                                      Position *pos, Velocity *vel,
+                                      CapsuleCollider *cap,
+                                      CollisionInstance *playerCI,
+                                      bool verticalPhase) {
 
-  cap->a = Vector3Add(playerPos->value, (Vector3){0, PLAYER_RADIUS, 0});
-  cap->b = Vector3Add(playerPos->value,
-                      (Vector3){0, PLAYER_HEIGHT - PLAYER_RADIUS, 0});
+  bool *isgrounded = ECS_GET(world, game->player, bool, COMP_ISGROUNDED);
+  archetype_t *arch = WorldGetArchetype(world, game->obstacleArchId);
 
-  playerCI->worldBounds = Capsule_ComputeAABB(cap);
-
-  // ------------------------------------------------------------
-  // 2️⃣ Resolve penetration (horizontal + general collision)
-  // ------------------------------------------------------------
-
-  archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
-
-  for (int i = 0; i < obstacleArch->count; ++i) {
-    entity_t obstacle = obstacleArch->entities[i];
+  for (int i = 0; i < arch->count; ++i) {
+    entity_t obstacle = arch->entities[i];
 
     CollisionInstance *obsCI =
         ECS_GET(world, obstacle, CollisionInstance, COMP_COLLISION_INSTANCE);
-
-    if (!obsCI)
-      continue;
 
     if (!AABB_Overlap(playerCI->worldBounds, obsCI->worldBounds))
       continue;
@@ -48,76 +38,74 @@ void PlayerObstacleCollisionSystem(world_t *world, GameWorld *game) {
     if (!CollisionTest(playerCI, obsCI, &hit))
       continue;
 
-    // Push player out
-    Vector3 correction = Vector3Scale(hit.normal, hit.penetration);
-    playerPos->value = Vector3Add(playerPos->value, correction);
+    // Only resolve vertical during vertical phase
+    if (verticalPhase) {
+      if (fabsf(hit.normal.y) > 0.5f && vel->value.y <= 0) {
+        pos->value =
+            Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
+        *isgrounded = true;
+        vel->value.y = 0.0f;
+      }
+    } else {
+      if (fabsf(hit.normal.y) < 0.5f) {
+        pos->value =
+            Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
 
-    // Rebuild capsule after correction
-    cap->a = Vector3Add(playerPos->value, (Vector3){0, PLAYER_RADIUS, 0});
-    cap->b = Vector3Add(playerPos->value,
-                        (Vector3){0, PLAYER_HEIGHT - PLAYER_RADIUS, 0});
-    playerCI->worldBounds = Capsule_ComputeAABB(cap);
-
-    // If we hit something below us, cancel downward velocity
-    if (hit.normal.y > 0.5f && vel->value.y < 0.0f) {
-      vel->value.y = 0.0f;
+        vel->value.x = 0.0f;
+        vel->value.z = 0.0f;
+      }
     }
-  }
 
-  // ------------------------------------------------------------
-  // 3️⃣ Unified Ground Check (Terrain + Obstacles)
-  // ------------------------------------------------------------
+    BuildPlayerCapsule(pos, cap, playerCI);
+  }
+}
+
+void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
+  entity_t player = game->player;
+
+  Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
+  Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
+  bool *isgrounded = ECS_GET(world, player, bool, COMP_ISGROUNDED);
+  CapsuleCollider *cap =
+      ECS_GET(world, player, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+  CollisionInstance *ci =
+      ECS_GET(world, player, CollisionInstance, COMP_COLLISION_INSTANCE);
 
   *isgrounded = false;
 
-  float bestGroundY = -FLT_MAX;
+  Vector3 delta = Vector3Scale(vel->value, dt);
 
-  // --- Terrain ground ---
-  float terrainY = HeightMap_GetHeightSmooth(
-      &game->terrainHeightMap, playerPos->value.x, playerPos->value.z);
+  // ------------------------------------
+  // HORIZONTAL MOVE
+  // ------------------------------------
+  pos->value.x += delta.x;
+  pos->value.z += delta.z;
 
-  bestGroundY = terrainY;
+  BuildPlayerCapsule(pos, cap, ci);
+  ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, false);
 
-  // --- Obstacle ray ground ---
-  Vector3 rayOrigin = Vector3Add(playerPos->value, (Vector3){0, 0.05f, 0});
-  Ray ray = {rayOrigin, (Vector3){0, -1, 0}};
-  float rayLength = 0.6f;
+  // ------------------------------------
+  // VERTICAL MOVE
+  // ------------------------------------
+  pos->value.y += delta.y;
 
-  for (int i = 0; i < obstacleArch->count; ++i) {
-    entity_t obstacle = obstacleArch->entities[i];
+  BuildPlayerCapsule(pos, cap, ci);
+  ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, true);
 
-    CollisionInstance *obsCI =
-        ECS_GET(world, obstacle, CollisionInstance, COMP_COLLISION_INSTANCE);
+  // ------------------------------------
+  // TERRAIN COLLISION
+  // ------------------------------------
+  float terrainY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
+                                             pos->value.x, pos->value.z);
 
-    if (!obsCI)
-      continue;
+  float eyeHeight = 1.65f;
+  float footY = pos->value.y - eyeHeight;
 
-    RayCollision rc = GetRayCollisionBox(ray, obsCI->worldBounds);
-
-    if (rc.hit && rc.distance <= rayLength && rc.normal.y > 0.5f) {
-      if (rc.point.y > bestGroundY) {
-        bestGroundY = rc.point.y;
-      }
-    }
+  if (footY < terrainY) {
+    pos->value.y = terrainY + eyeHeight;
+    vel->value.y = 0.0f;
+    *isgrounded = true;
   }
 
-  // ------------------------------------------------------------
-  // 4️⃣ Snap to ground (ONLY if falling or resting)
-  // ------------------------------------------------------------
-
-  if (vel->value.y <= 0.0f) {
-    float footY = playerPos->value.y;
-
-    if (footY <= bestGroundY + 0.05f) {
-      playerPos->value.y = bestGroundY;
-      vel->value.y = 0.0f;
-      *isgrounded = true;
-
-      // Rebuild capsule after snap
-      cap->a = Vector3Add(playerPos->value, (Vector3){0, PLAYER_RADIUS, 0});
-      cap->b = Vector3Add(playerPos->value,
-                          (Vector3){0, PLAYER_HEIGHT - PLAYER_RADIUS, 0});
-      playerCI->worldBounds = Capsule_ComputeAABB(cap);
-    }
-  }
+  BuildPlayerCapsule(pos, cap, ci);
 }

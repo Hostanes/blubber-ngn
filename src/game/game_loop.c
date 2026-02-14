@@ -49,12 +49,11 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       PlayerWeaponSystem(world, game->player, dt);
 
       ApplyGravity(world, game, dt);
-      MovementSystem(world, WorldGetArchetype(world, game->playerArchId), dt);
 
-      UpdatePlayerCollision(world, game->player);
       UpdateObstacleCollision(world,
                               WorldGetArchetype(world, game->obstacleArchId));
-      PlayerObstacleCollisionSystem(world, game);
+
+      PlayerMoveAndCollide(world, game, dt);
 
       BulletSystem(world, WorldGetArchetype(world, game->bulletArchId), dt);
 
@@ -63,7 +62,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       Position *pos = ECS_GET(world, game->player, Position, COMP_POSITION);
 
       camera->position = pos->value;
-      camera->position.y += PLAYER_HEIGHT;
+      // camera->position.y += PLAYER_HEIGHT;
       camera->target =
           Vector3Add(camera->position, (Vector3){
                                            cosf(ori->pitch) * sinf(ori->yaw),

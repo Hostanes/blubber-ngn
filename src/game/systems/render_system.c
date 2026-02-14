@@ -87,7 +87,6 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
         Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
 
         Vector3 eyePos = pos->value;
-        eyePos.y += PLAYER_HEIGHT;
 
         Matrix T = MatrixTranslate(eyePos.x, eyePos.y, eyePos.z);
         Matrix R_yaw = MatrixRotateY(ori->yaw);

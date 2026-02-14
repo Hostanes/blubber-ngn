@@ -161,7 +161,6 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
   Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
   Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
   ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
-
   ModelInstance_t *gun = &mc->models[1];
 
   gun->rotation.x = -ori->pitch;
@@ -192,6 +191,6 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
 
   Vector3 idleSway = {sinf(swayTime * 1.7f) * swayAmount * 0.08f,
                       cosf(swayTime * 2.3f) * swayAmount * 0.06f, 0.0f};
-  gun->offset = Vector3Add((Vector3){0, 0, 0},
+  gun->offset = Vector3Add((Vector3){0, -0.25f, 0},
                            Vector3Add(playerWeaponSway, idleSway));
 }

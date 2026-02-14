@@ -16,14 +16,22 @@ static void EnsureActiveMask(void) {
 }
 
 void UpdatePlayerCollision(world_t *world, entity_t e) {
-  Position *p = ECS_GET(world, e, Position, COMP_POSITION);
+  Position *playerPos = ECS_GET(world, e, Position, COMP_POSITION);
   CapsuleCollider *cap =
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
   CollisionInstance *ci =
       ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
 
-  cap->a = p->value;
-  cap->b = Vector3Add(p->value, (Vector3){0, 1.8f, 0});
+  float eyeHeight = 1.65f;  // distance from feet to eyes
+  float totalHeight = 1.8f; // total capsule height
+
+  float bottom = eyeHeight;            // how far down to feet
+  float top = totalHeight - eyeHeight; // how far up to top
+
+  cap->a =
+      Vector3Add(playerPos->value, (Vector3){0, -bottom + PLAYER_RADIUS, 0});
+
+  cap->b = Vector3Add(playerPos->value, (Vector3){0, top - PLAYER_RADIUS, 0});
 
   ci->worldBounds = Capsule_ComputeAABB(cap);
 }

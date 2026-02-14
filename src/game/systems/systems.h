@@ -22,7 +22,7 @@ void BulletSystem(world_t *world, archetype_t *arch, float dt);
 void ApplyGravity(world_t *world, GameWorld *game, float dt);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);
 
-void PlayerObstacleCollisionSystem(world_t *world, GameWorld *game);
+void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt);
 void UpdatePlayerCollision(world_t *world, entity_t e);
 void UpdateObstacleCollision(world_t *world, archetype_t *obstacleArch);
 
