@@ -108,6 +108,22 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
 
       mi->model.transform = transform;
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
+
+      // ------------------------------------------------------------
+      // Debug Render Muzzles (if present)
+      // ------------------------------------------------------------
+      // if (ArchetypeHas(arch, COMP_MUZZLES)) {
+      //   MuzzleCollection_t *muzzles =
+      //       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+
+      //   if (muzzles) {
+      //     for (int k = 0; k < muzzles->count; ++k) {
+      //       Muzzle_t *m = &muzzles->Muzzles[k];
+
+      //       DrawSphereWires(m->worldPosition, 0.1f, 6, 6, RED);
+      //     }
+      //   }
+      // }
     }
   }
 }
@@ -135,14 +151,38 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   EndMode3D();
   DrawFPS(10, 10);
 
+  int screenW = GetScreenWidth();
+  int screenH = GetScreenHeight();
+
+  int centerX = screenW / 2;
+  int centerY = screenH / 2;
+
+  int size = 6; // half-length of crosshair lines
+  int gap = 4;  // space in center
+  int thickness = 2;
+
+  // Horizontal left
+  DrawLineEx((Vector2){centerX - gap - size, centerY},
+             (Vector2){centerX - gap, centerY}, thickness, RED);
+
+  // Horizontal right
+  DrawLineEx((Vector2){centerX + gap, centerY},
+             (Vector2){centerX + gap + size, centerY}, thickness, RED);
+
+  // Vertical top
+  DrawLineEx((Vector2){centerX, centerY - gap - size},
+             (Vector2){centerX, centerY - gap}, thickness, RED);
+
+  // Vertical bottom
+  DrawLineEx((Vector2){centerX, centerY + gap},
+             (Vector2){centerX, centerY + gap + size}, thickness, RED);
+
   // --- Player debug info (top-right) ---
   archetype_t *playerArch = &world->archetypes[0];
   entity_t player = playerArch->entities[0];
 
   Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
   Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
-
-  int screenW = GetScreenWidth();
 
   char buf[256];
   snprintf(buf, sizeof(buf),

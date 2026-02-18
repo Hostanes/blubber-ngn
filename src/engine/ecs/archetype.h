@@ -20,3 +20,7 @@ void ArchetypeAddInline(archetype_t *arch, componentId_t id, size_t size);
 
 void ArchetypeAddHandle(archetype_t *arch, componentId_t id,
                         componentPool_t *pool);
+
+static inline bool ArchetypeHas(archetype_t *arch, uint32_t comp) {
+  return BitsetTest(&arch->mask, comp);
+}

@@ -58,7 +58,6 @@ static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
           vel->value.y = 0.0f;
         }
 
-        // Ignore side contacts in vertical phase
       }
     } else {
       if (fabsf(hit.normal.y) < 0.5f) {

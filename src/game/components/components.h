@@ -1,9 +1,10 @@
 
 #pragma once
 #include "Active.h"
-#include "bullets.h"
 #include "collision.h"
+#include "health.h"
 #include "movement.h"
+#include "muzzle.h"
 #include "renderable.h"
 #include "timer.h"
 #include "transform.h"
@@ -22,7 +23,8 @@ enum {
   COMP_COLLISION_INSTANCE,
   COMP_CAPSULE_COLLIDER,
   COMP_AABB_COLLIDER,
+  COMP_SPHERE_COLLIDER,
   COMP_ISGROUNDED,
   COMP_GRAVITY, // for gravity and colliding with terrain and obstacles from
-                // below
+  COMP_MUZZLES,
 };

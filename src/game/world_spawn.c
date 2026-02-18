@@ -1,5 +1,7 @@
 #include "components/components.h"
+#include "components/muzzle.h"
 #include "components/transform.h"
+#include "ecs_get.h"
 #include "game.h"
 #include <raylib.h>
 #include <raymath.h>
@@ -37,9 +39,11 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                            COMP_ACTIVE,
                            COMP_COLLISION_INSTANCE,
                            COMP_CAPSULE_COLLIDER,
-                           COMP_ISGROUNDED};
+                           COMP_ISGROUNDED,
+                           COMP_MUZZLES};
 
-  bitset_t playerMask = MakeMask(playerBits, 8);
+  bitset_t playerMask =
+      MakeMask(playerBits, sizeof(playerBits) / sizeof(uint32_t));
 
   gw.playerArchId = WorldCreateArchetype(world, &playerMask);
   archetype_t *playerArch = WorldGetArchetype(world, gw.playerArchId);
@@ -56,6 +60,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                      sizeof(CollisionInstance));
   ArchetypeAddInline(playerArch, COMP_CAPSULE_COLLIDER,
                      sizeof(CapsuleCollider));
+  ArchetypeAddInline(playerArch, COMP_MUZZLES, sizeof(MuzzleCollection_t));
 
   gw.player = WorldCreateEntity(world, &playerMask);
 
@@ -102,13 +107,24 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ci->collideMask = 1 << 1; // WORLD
   ci->worldBounds = Capsule_ComputeAABB(cap);
 
+  MuzzleCollection_t *muzzles =
+      ECS_GET(world, gw.player, MuzzleCollection_t, COMP_MUZZLES);
+
+  muzzles->count = 1;
+  muzzles->Muzzles = malloc(sizeof(Muzzle_t) * 1);
+
+  muzzles->Muzzles[0] = (Muzzle_t){
+      .positionOffset = {.value = {0.25f, -0.3f, 1.5}}, 
+      .oriOffset = {.yaw = 0.0f, .pitch = 0.0f},
+      .bulletType = 1};
+
   /* ---------- Bullet archetype ---------- */
 
   Model bulletModel = LoadModel("assets/models/bullet.glb");
 
-  uint32_t bulletBits[] = {COMP_POSITION, COMP_VELOCITY,   COMP_ORIENTATION,
-                           COMP_MODEL,    COMP_BULLETTYPE, COMP_TIMER,
-                           COMP_ACTIVE};
+  uint32_t bulletBits[] = {COMP_POSITION, COMP_VELOCITY,       COMP_ORIENTATION,
+                           COMP_MODEL,    COMP_BULLETTYPE,     COMP_TIMER,
+                           COMP_ACTIVE,   COMP_SPHERE_COLLIDER};
 
   bitset_t bulletMask = MakeMask(bulletBits, 7);
   gw.bulletArchId = WorldCreateArchetype(world, &bulletMask);
@@ -117,9 +133,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(bulletArch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(bulletArch, COMP_VELOCITY, sizeof(Velocity));
   ArchetypeAddInline(bulletArch, COMP_ORIENTATION, sizeof(Orientation));
-  ArchetypeAddInline(bulletArch, COMP_BULLETTYPE, sizeof(int));
+  ArchetypeAddInline(bulletArch, COMP_BULLETTYPE, sizeof(BulletType));
   ArchetypeAddInline(bulletArch, COMP_ACTIVE, sizeof(Active));
-  ArchetypeAddInline(bulletArch, COMP_ACTIVE, sizeof(SphereCollider));
+  ArchetypeAddInline(bulletArch, COMP_SPHERE_COLLIDER, sizeof(SphereCollider));
 
   ArchetypeAddHandle(bulletArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(bulletArch, COMP_TIMER, &engine->timerPool);
@@ -128,6 +144,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
     entity_t b = WorldCreateEntity(world, &bulletMask);
 
     ECS_GET(world, b, Active, COMP_ACTIVE)->value = false;
+
+    ECS_GET(world, b, BulletType, COMP_BULLETTYPE)->type = 0;
 
     Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
     Active *active = ECS_GET(world, b, Active, COMP_ACTIVE);

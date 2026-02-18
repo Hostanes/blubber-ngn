@@ -11,7 +11,7 @@ const float speed = 15.0f;
 const float mouseSensitivity = 0.002f;
 
 const float jumpVelocity = 15.0f;
-const float jumpCoyoteTimeMax = 0.3f;
+const float jumpCoyoteTimeMax = 0.15f;
 
 static Vector3 GetForwardFromOrientation(const Orientation *ori) {
   return (Vector3){
@@ -25,67 +25,60 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player) {
   if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     return;
 
-  Position *playerPos = ECS_GET(world, player, Position, COMP_POSITION);
-  Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
-  ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
+  MuzzleCollection_t *muzzles =
+      ECS_GET(world, player, MuzzleCollection_t, COMP_MUZZLES);
 
-  ModelInstance_t *gun = &mc->models[1];
+  if (!muzzles || muzzles->count == 0)
+    return;
 
-  Vector3 forward = {
-      cosf(ori->pitch) * sinf(ori->yaw),
-      sinf(ori->pitch),
-      cosf(ori->pitch) * cosf(ori->yaw),
-  };
+  Muzzle_t *m = &muzzles->Muzzles[0]; // single muzzle for now
 
-  Vector3 right = {
-      cosf(ori->yaw),
-      0.0f,
-      -sinf(ori->yaw),
-  };
+  Vector3 muzzlePos = m->worldPosition;
+  Vector3 forward = m->forward;
 
-  Vector3 up = {0.0f, 1.0f, 0.0f};
-
-  // Start at player position
-  Vector3 muzzlePos = playerPos->value;
-
-  // Apply gun offset in world space
-  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(right, gun->offset.x));
-  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(up, gun->offset.y));
-  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(forward, gun->offset.z));
-
-  // Push forward to barrel tip
-  muzzlePos = Vector3Add(muzzlePos, Vector3Scale(forward, 0.4f));
-
-  // --- Find inactive bullet ---
   archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
 
   for (uint32_t i = 0; i < bulletArch->count; i++) {
     entity_t b = bulletArch->entities[i];
 
     Active *active = ECS_GET(world, b, Active, COMP_ACTIVE);
+
     if (active->value)
       continue;
 
-    // --- Initialize bullet ---
+    // --- Activate bullet ---
     active->value = true;
 
+    BulletType *bt = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
+
+    bt->type = m->bulletType;
+
+    float muzzleVelocity = muzzleVelocities[bt->type];
+
+    // --- Position ---
     ECS_GET(world, b, Position, COMP_POSITION)->value = muzzlePos;
+
+    // --- Velocity ---
     ECS_GET(world, b, Velocity, COMP_VELOCITY)->value =
-        Vector3Scale(forward, 220.0f);
+        Vector3Scale(forward, muzzleVelocity);
 
-    // Orientation
+    // --- Orientation ---
     Orientation *bori = ECS_GET(world, b, Orientation, COMP_ORIENTATION);
-    bori->yaw = ori->yaw;
-    bori->pitch = ori->pitch;
 
-    // Model rotation = orientation
+    // derive yaw/pitch from forward if needed
+    bori->yaw = atan2f(forward.x, forward.z);
+    bori->pitch = asinf(forward.y);
+
+    // --- Model rotation ---
     ModelCollection_t *bmc = ECS_GET(world, b, ModelCollection_t, COMP_MODEL);
+
     bmc->models[0].rotation = (Vector3){-bori->pitch, 0.0f, 0.0f};
 
-    ECS_GET(world, b, BulletType, COMP_BULLETTYPE)->type = 0;
-
+    // --- Lifetime ---
     Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
-    life->value = 5.0f; // seconds
+
+    life->value = 5.0f;
+
     printf("spawned bullet\n");
     break;
   }
@@ -193,4 +186,31 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
                       cosf(swayTime * 2.3f) * swayAmount * 0.06f, 0.0f};
   gun->offset = Vector3Add((Vector3){0, -0.25f, 0},
                            Vector3Add(playerWeaponSway, idleSway));
+
+  MuzzleCollection_t *muzzles =
+      ECS_GET(world, player, MuzzleCollection_t, COMP_MUZZLES);
+
+  Position *playerPos = ECS_GET(world, player, Position, COMP_POSITION);
+
+  Vector3 forward3D = {cosf(ori->pitch) * sinf(ori->yaw), sinf(ori->pitch),
+                       cosf(ori->pitch) * cosf(ori->yaw)};
+
+  Vector3 right3D =
+      Vector3Normalize(Vector3CrossProduct(forward3D, (Vector3){0, 1, 0}));
+
+  Vector3 up3D = Vector3Normalize(Vector3CrossProduct(right3D, forward3D));
+
+  for (int i = 0; i < muzzles->count; i++) {
+    Muzzle_t *m = &muzzles->Muzzles[i];
+
+    Vector3 offset = m->positionOffset.value;
+
+    Vector3 worldOffset =
+        Vector3Add(Vector3Scale(right3D, offset.x),
+                   Vector3Add(Vector3Scale(up3D, offset.y),
+                              Vector3Scale(forward3D, offset.z)));
+
+    m->worldPosition = Vector3Add(playerPos->value, worldOffset);
+    m->forward = forward3D;
+  }
 }
