@@ -51,6 +51,12 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
 
   bool hasActive = BitsetContainsAll(&arch->mask, &activeMask);
 
+  bool hasAABB = ArchetypeHas(arch, COMP_AABB_COLLIDER);
+
+  bool hasCapsule = ArchetypeHas(arch, COMP_CAPSULE_COLLIDER);
+
+  bool hasSphere = ArchetypeHas(arch, COMP_SPHERE_COLLIDER);
+
 #pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < arch->count; ++i) {
     entity_t e = arch->entities[i];
@@ -109,21 +115,62 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       mi->model.transform = transform;
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
 
-      // ------------------------------------------------------------
       // Debug Render Muzzles (if present)
-      // ------------------------------------------------------------
-      // if (ArchetypeHas(arch, COMP_MUZZLES)) {
-      //   MuzzleCollection_t *muzzles =
-      //       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+      if (ArchetypeHas(arch, COMP_MUZZLES)) {
+        MuzzleCollection_t *muzzles =
+            ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
-      //   if (muzzles) {
-      //     for (int k = 0; k < muzzles->count; ++k) {
-      //       Muzzle_t *m = &muzzles->Muzzles[k];
+        if (muzzles) {
+          for (int k = 0; k < muzzles->count; ++k) {
+            Muzzle_t *m = &muzzles->Muzzles[k];
 
-      //       DrawSphereWires(m->worldPosition, 0.1f, 6, 6, RED);
-      //     }
-      //   }
-      // }
+            DrawSphereWires(m->worldPosition, 0.1f, 4, 6, RED);
+          }
+        }
+      }
+
+      // Debug Collider Rendering
+      if (hasAABB) {
+        // printf("drawing aabb\n");
+        AABBCollider *aabb =
+            ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
+
+        Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+        Vector3 center = pos->value;
+        Vector3 size = Vector3Scale(aabb->halfExtents, 2.0f);
+
+        DrawCubeWires(center, size.x, size.y, size.z, GREEN);
+      }
+
+      if (hasSphere) {
+        // printf("drawing sphere\n");
+        SphereCollider *sphere =
+            ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+
+        Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+        DrawSphereWires(pos->value, sphere->radius, 8, 8, BLUE);
+      }
+
+      if (hasCapsule) {
+        CapsuleCollider *cap =
+            ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+        Vector3 a = cap->a;
+        Vector3 b = cap->b;
+
+        float radius = cap->radius;
+
+        // draw line
+        DrawLine3D(a, b, YELLOW);
+
+        // draw spheres at ends
+        DrawSphereWires(a, radius, 8, 8, RED);
+        DrawSphereWires(b, radius, 8, 8, RED);
+      }
+
+      //
     }
   }
 }

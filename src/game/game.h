@@ -42,8 +42,12 @@ typedef struct GameWorld {
   int nextBulletIndex;
 
   uint32_t playerArchId;
-  uint32_t obstacleArchId;
   uint32_t bulletArchId;
+
+  uint32_t enemyAABBArchId;
+  uint32_t enemyCapsuleArchId;
+
+  uint32_t obstacleArchId;
 
   HeightMap terrainHeightMap;
   Model terrainModel;
