@@ -16,6 +16,8 @@ typedef struct {
   Vector3 rotation;
   Vector3 scale;
   ModelRotationMode rotationMode;
+
+  Matrix finalTransform;
 } ModelInstance_t;
 
 typedef struct {

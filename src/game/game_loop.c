@@ -45,16 +45,18 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       TimerSystem(&engine->timerPool, dt);
 
       PlayerControlSystem(world, game, game->player, dt);
-      BulletSystem(world, WorldGetArchetype(world, game->bulletArchId), dt);
-      PlayerShootSystem(world, game, game->player);
-      PlayerWeaponSystem(world, game->player, dt);
 
       ApplyGravity(world, game, dt);
+
+      BulletSystem(world, WorldGetArchetype(world, game->bulletArchId), dt);
 
       UpdateObstacleCollision(world,
                               WorldGetArchetype(world, game->obstacleArchId));
 
       PlayerMoveAndCollide(world, game, dt);
+
+      PlayerWeaponSystem(world, game->player, dt);
+      PlayerShootSystem(world, game, game->player);
 
       Orientation *ori =
           ECS_GET(world, game->player, Orientation, COMP_ORIENTATION);

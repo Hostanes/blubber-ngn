@@ -332,13 +332,13 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(obsatcleArch, COMP_AABB_COLLIDER, sizeof(AABBCollider));
   ArchetypeAddHandle(obsatcleArch, COMP_MODEL, &engine->modelPool);
 
-  for (int i = 0; i < 0; ++i) {
+  for (int i = 0; i < 250; ++i) {
 
     entity_t box = WorldCreateEntity(world, &boxMask);
 
     // --- Random position ---
-    float x = GetRandomValue(-150, 150);
-    float z = GetRandomValue(-150, 150);
+    float x = GetRandomValue(-200, 200);
+    float z = GetRandomValue(-200, 200);
     float y = GetRandomValue(0, 10);
 
     // --- Random height ---
