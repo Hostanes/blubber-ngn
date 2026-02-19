@@ -67,7 +67,7 @@ entity_t SpawnEnemyAABB(world_t *world, GameWorld *game, Vector3 position,
   // --- Collider component ---
   AABBCollider *aabb = ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
 
-  aabb->halfExtents = (Vector3){1.0f, 4.0f, 1.0f};
+  aabb->halfExtents = (Vector3){1.5f, 4.0f, 1.5f};
 
   CollisionInstance *ci =
       ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
@@ -112,7 +112,7 @@ entity_t SpawnEnemyCapsule(world_t *world, GameWorld *game, Vector3 position,
   CapsuleCollider *cap =
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
-  cap->radius = 1.0f;
+  cap->radius = 1.2f;
   cap->a = Vector3Add(position, (Vector3){0, 0.5f, 0});
   cap->b = Vector3Add(position, (Vector3){0, 3.5f, 0});
 
@@ -244,10 +244,10 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                  .bulletType = 1};
 
   /* ---------- Bullet archetype ---------- */
-
-  uint32_t bulletBits[] = {COMP_POSITION, COMP_VELOCITY,   COMP_ORIENTATION,
-                           COMP_MODEL,    COMP_BULLETTYPE, COMP_TIMER,
-                           COMP_ACTIVE};
+  uint32_t bulletBits[] = {
+      COMP_POSITION, COMP_VELOCITY,        COMP_ORIENTATION,
+      COMP_MODEL,    COMP_BULLETTYPE,      COMP_TIMER,
+      COMP_ACTIVE,   COMP_SPHERE_COLLIDER, COMP_COLLISION_INSTANCE};
 
   bitset_t bulletMask =
       MakeMask(bulletBits, sizeof(bulletBits) / sizeof(uint32_t));
@@ -259,6 +259,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(bulletArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddInline(bulletArch, COMP_BULLETTYPE, sizeof(BulletType));
   ArchetypeAddInline(bulletArch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(bulletArch, COMP_SPHERE_COLLIDER, sizeof(SphereCollider));
+  ArchetypeAddInline(bulletArch, COMP_COLLISION_INSTANCE,
+                     sizeof(CollisionInstance));
 
   ArchetypeAddHandle(bulletArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(bulletArch, COMP_TIMER, &engine->timerPool);
@@ -283,6 +286,18 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                                              .rotationMode = MODEL_ROT_FULL});
     mc->models[0].offset = (Vector3){0, 0, 0};
     mc->models[0].rotation = (Vector3){0, 0, 0};
+
+    SphereCollider *sphere =
+        ECS_GET(world, b, SphereCollider, COMP_SPHERE_COLLIDER);
+
+    sphere->radius = 0.25f; // bullet radius
+
+    CollisionInstance *ci =
+        ECS_GET(world, b, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+    ci->type = COLLIDER_SPHERE;
+    ci->layerMask = 1 << LAYER_BULLET;
+    ci->collideMask = (1 << LAYER_ENEMY) | (1 << LAYER_WORLD);
   }
 
   /* ---------- enemy archetype ---------- */
@@ -402,8 +417,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
         ECS_GET(world, box, CollisionInstance, COMP_COLLISION_INSTANCE);
 
     ci->type = COLLIDER_AABB;
-    ci->layerMask = 1 << LAYER_WORLD;    // WORLD
-    ci->collideMask = 1 << LAYER_PLAYER; // PLAYER
+    ci->layerMask = 1 << LAYER_WORLD; // WORLD
+    ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
   }
 
   return gw;
