@@ -68,3 +68,103 @@ void UpdateObstacleCollision(world_t *world, archetype_t *obstacleArch) {
                                     }};
   }
 }
+
+void UpdateBulletCollision(world_t *world, archetype_t *bulletArch) {
+  for (int i = 0; i < bulletArch->count; i++) {
+    entity_t e = bulletArch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    SphereCollider *sphere =
+        ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+    CollisionInstance *ci =
+        ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+    // Update sphere center from position
+    sphere->center = pos->value;
+
+    // Update broadphase bounds
+    ci->worldBounds = Sphere_ComputeAABB(sphere);
+    // printf("Bullet AABB min: %.2f %.2f %.2f\n", ci->worldBounds.min.x,
+    //        ci->worldBounds.min.y, ci->worldBounds.min.z);
+  }
+}
+
+void UpdateCollisionBounds(world_t *world) {
+  for (int a = 0; a < world->archetypeCount; a++) {
+    archetype_t *arch = &world->archetypes[a];
+
+    if (!ArchetypeHas(arch, COMP_COLLISION_INSTANCE))
+      continue;
+
+    for (int i = 0; i < arch->count; i++) {
+      entity_t e = arch->entities[i];
+
+      // Skip inactive
+      if (ArchetypeHas(arch, COMP_ACTIVE)) {
+        Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+        if (!active || !active->value)
+          continue;
+      }
+
+      CollisionInstance *ci =
+          ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+      if (!ci)
+        continue;
+
+      Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+      if (!pos)
+        continue;
+
+      switch (ci->type) {
+      case COLLIDER_SPHERE: {
+        SphereCollider *sphere =
+            ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+
+        if (!sphere)
+          break;
+
+        sphere->center = pos->value;
+        ci->worldBounds = Sphere_ComputeAABB(sphere);
+      } break;
+
+      case COLLIDER_AABB: {
+        AABBCollider *aabb =
+            ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
+
+        if (!aabb)
+          break;
+
+        ci->worldBounds.min = (Vector3){pos->value.x - aabb->halfExtents.x,
+                                        pos->value.y - aabb->halfExtents.y,
+                                        pos->value.z - aabb->halfExtents.z};
+
+        ci->worldBounds.max = (Vector3){pos->value.x + aabb->halfExtents.x,
+                                        pos->value.y + aabb->halfExtents.y,
+                                        pos->value.z + aabb->halfExtents.z};
+      } break;
+
+      case COLLIDER_CAPSULE: {
+        CapsuleCollider *cap =
+            ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+        if (!cap)
+          break;
+
+        // If capsule endpoints depend on position, rebuild them here
+        // (only if not already done in movement system)
+
+        ci->worldBounds = Capsule_ComputeAABB(cap);
+      } break;
+
+      default:
+        break;
+      }
+    }
+  }
+}

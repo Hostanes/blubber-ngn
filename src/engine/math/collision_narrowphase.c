@@ -16,11 +16,9 @@ static Vector3 ClosestPointOnSegment(Vector3 a, Vector3 b, Vector3 p) {
   return Vector3Add(a, Vector3Scale(ab, t));
 }
 
-bool SphereVsSphere(const CollisionInstance *a, const CollisionInstance *b,
+bool SphereVsSphere(const CollisionInstance *a, const SphereCollider *sa,
+                    const CollisionInstance *b, const SphereCollider *sb,
                     CollisionHit *outHit) {
-  const SphereCollider *sa = a->shape;
-  const SphereCollider *sb = b->shape;
-
   Vector3 delta = Vector3Subtract(sb->center, sa->center);
   float dist2 = Vector3LengthSqr(delta);
   float r = sa->radius + sb->radius;
@@ -43,9 +41,35 @@ bool SphereVsSphere(const CollisionInstance *a, const CollisionInstance *b,
   return true;
 }
 
-bool SphereVsAABB(const CollisionInstance *a, const CollisionInstance *b,
-                  CollisionHit *outHit) {
-  const SphereCollider *s = a->shape;
+bool SphereVsCapsule(const CollisionInstance *a, const SphereCollider *s,
+                     const CollisionInstance *b, const CapsuleCollider *cap,
+                     CollisionHit *outHit) {
+  Vector3 closest = ClosestPointOnSegment(cap->a, cap->b, s->center);
+
+  Vector3 delta = Vector3Subtract(s->center, closest);
+  float radiusSum = s->radius + cap->radius;
+  float dist2 = Vector3LengthSqr(delta);
+
+  if (dist2 > radiusSum * radiusSum)
+    return false;
+
+  float dist = sqrtf(dist2);
+
+  if (outHit) {
+    outHit->a = a->owner;
+    outHit->b = b->owner;
+    outHit->normal =
+        (dist > 0.0f) ? Vector3Scale(delta, 1.0f / dist) : (Vector3){0, 1, 0};
+    outHit->penetration = radiusSum - dist;
+    outHit->point =
+        Vector3Subtract(s->center, Vector3Scale(outHit->normal, s->radius));
+  }
+
+  return true;
+}
+
+bool SphereVsAABB(const CollisionInstance *a, const SphereCollider *s,
+                  const CollisionInstance *b, CollisionHit *outHit) {
   const BoundingBox *box = &b->worldBounds;
 
   Vector3 closest = {
@@ -89,7 +113,7 @@ bool AABBVsAABB(const CollisionInstance *a, const CollisionInstance *b,
   if (outHit) {
     outHit->a = a->owner;
     outHit->b = b->owner;
-    outHit->normal = (Vector3){0, 1, 0}; // refine later
+    outHit->normal = (Vector3){0, 1, 0};
     outHit->penetration = 0.0f;
     outHit->point = Vector3Scale(Vector3Add(A->min, A->max), 0.5f);
   }
@@ -97,32 +121,19 @@ bool AABBVsAABB(const CollisionInstance *a, const CollisionInstance *b,
   return true;
 }
 
-bool CapsuleVsAABB(const CollisionInstance *a, const CollisionInstance *b,
-                   CollisionHit *outHit) {
-  const CapsuleCollider *cap = a->shape;
+bool CapsuleVsAABB(const CollisionInstance *a, const CapsuleCollider *cap,
+                   const CollisionInstance *b, CollisionHit *outHit) {
   const BoundingBox *box = &b->worldBounds;
-
-  /* --------------------------------------------------
-     1. Closest point on capsule segment to box center
-  -------------------------------------------------- */
 
   Vector3 boxCenter = Vector3Scale(Vector3Add(box->min, box->max), 0.5f);
 
   Vector3 closestSeg = ClosestPointOnSegment(cap->a, cap->b, boxCenter);
-
-  /* --------------------------------------------------
-     2. Closest point on AABB to that point
-  -------------------------------------------------- */
 
   Vector3 closestBox = {
       Clamp(closestSeg.x, box->min.x, box->max.x),
       Clamp(closestSeg.y, box->min.y, box->max.y),
       Clamp(closestSeg.z, box->min.z, box->max.z),
   };
-
-  /* --------------------------------------------------
-     3. Sphere test (radius = capsule radius)
-  -------------------------------------------------- */
 
   Vector3 delta = Vector3Subtract(closestSeg, closestBox);
   float dist2 = Vector3LengthSqr(delta);
@@ -135,10 +146,8 @@ bool CapsuleVsAABB(const CollisionInstance *a, const CollisionInstance *b,
   if (outHit) {
     outHit->a = a->owner;
     outHit->b = b->owner;
-
     outHit->normal =
         (dist > 0.0f) ? Vector3Scale(delta, 1.0f / dist) : (Vector3){0, 1, 0};
-
     outHit->penetration = cap->radius - dist;
     outHit->point = closestBox;
   }
@@ -146,37 +155,46 @@ bool CapsuleVsAABB(const CollisionInstance *a, const CollisionInstance *b,
   return true;
 }
 
-bool CollisionTest(const CollisionInstance *a, const CollisionInstance *b,
+bool CollisionTest(const CollisionInstance *a, const void *shapeA,
+                   const CollisionInstance *b, const void *shapeB,
                    CollisionHit *outHit) {
-  // Layer filtering
   if ((a->collideMask & b->layerMask) == 0)
     return false;
 
   switch (a->type) {
+  case COLLIDER_SPHERE: {
+    const SphereCollider *sa = shapeA;
 
-  case COLLIDER_SPHERE:
     if (b->type == COLLIDER_SPHERE)
-      return SphereVsSphere(a, b, outHit);
-    if (b->type == COLLIDER_AABB)
-      return SphereVsAABB(a, b, outHit);
-    break;
+      return SphereVsSphere(a, sa, b, shapeB, outHit);
 
-  case COLLIDER_CAPSULE:
     if (b->type == COLLIDER_AABB)
-      return CapsuleVsAABB(a, b, outHit);
-    break;
+      return SphereVsAABB(a, sa, b, outHit);
 
-  case COLLIDER_AABB:
+    if (b->type == COLLIDER_CAPSULE)
+      return SphereVsCapsule(a, sa, b, shapeB, outHit);
+  } break;
+
+  case COLLIDER_CAPSULE: {
+    const CapsuleCollider *capA = shapeA;
+
+    if (b->type == COLLIDER_AABB)
+      return CapsuleVsAABB(a, capA, b, outHit);
+
+    if (b->type == COLLIDER_SPHERE)
+      return SphereVsCapsule(b, shapeB, a, capA, outHit);
+  } break;
+
+  case COLLIDER_AABB: {
     if (b->type == COLLIDER_AABB)
       return AABBVsAABB(a, b, outHit);
-    if (b->type == COLLIDER_SPHERE)
-      return SphereVsAABB(b, a, outHit); // flip
-    if (b->type == COLLIDER_CAPSULE)
-      return CapsuleVsAABB(b, a, outHit); // flip
-    break;
 
-  default:
-    break;
+    if (b->type == COLLIDER_SPHERE)
+      return SphereVsAABB(b, shapeB, a, outHit);
+
+    if (b->type == COLLIDER_CAPSULE)
+      return CapsuleVsAABB(b, shapeB, a, outHit);
+  } break;
   }
 
   return false;

@@ -1,28 +1,19 @@
 #include "collision_instance.h"
 
-void Collision_UpdateInstance(CollisionInstance *ci, Vector3 position,
-                              Quaternion rotation) {
-  (void)rotation; // AABB ignores rotation for now
+void Collision_UpdateAABB(CollisionInstance *ci, AABBCollider *aabb,
+                          Vector3 position) {
+  ci->worldBounds = AABB_ComputeWorld(aabb, position);
+}
 
-  switch (ci->type) {
-  case COLLIDER_AABB: {
-    AABBCollider *aabb = (AABBCollider *)ci->shape;
-    ci->worldBounds = AABB_ComputeWorld(aabb, position);
-  } break;
+void Collision_UpdateCapsule(CollisionInstance *ci, CapsuleCollider *cap,
+                             Vector3 position) {
+  cap->a = position;
+  cap->b = Vector3Add(position, (Vector3){0, 1.8f, 0});
+  ci->worldBounds = Capsule_ComputeAABB(cap);
+}
 
-  case COLLIDER_CAPSULE: {
-    CapsuleCollider *cap = (CapsuleCollider *)ci->shape;
-
-    cap->a = position;
-    cap->b = Vector3Add(position, (Vector3){0, 1.8f, 0});
-
-    ci->worldBounds = Capsule_ComputeAABB(cap);
-  } break;
-
-  case COLLIDER_SPHERE: {
-    SphereCollider *s = (SphereCollider *)ci->shape;
-    s->center = position;
-    ci->worldBounds = Sphere_ComputeAABB(s);
-  } break;
-  }
+void Collision_UpdateSphere(CollisionInstance *ci, SphereCollider *sphere,
+                            Vector3 position) {
+  sphere->center = position;
+  ci->worldBounds = Sphere_ComputeAABB(sphere);
 }

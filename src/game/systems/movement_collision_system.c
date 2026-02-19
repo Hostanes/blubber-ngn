@@ -1,6 +1,23 @@
 #include "../game.h"
 #include "systems.h"
 
+static void *GetColliderShape(world_t *world, entity_t e,
+                              CollisionInstance *ci) {
+  switch (ci->type) {
+  case COLLIDER_SPHERE:
+    return ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+
+  case COLLIDER_AABB:
+    return ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
+
+  case COLLIDER_CAPSULE:
+    return ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+  default:
+    return NULL;
+  }
+}
+
 static void BuildPlayerCapsule(Position *pos, CapsuleCollider *cap,
                                CollisionInstance *ci) {
   float eyeHeight = 1.65f;
@@ -21,7 +38,6 @@ static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
                                       CapsuleCollider *cap,
                                       CollisionInstance *playerCI,
                                       bool verticalPhase) {
-
   bool *isgrounded = ECS_GET(world, game->player, bool, COMP_ISGROUNDED);
   archetype_t *arch = WorldGetArchetype(world, game->obstacleArchId);
 
@@ -31,35 +47,44 @@ static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
     CollisionInstance *obsCI =
         ECS_GET(world, obstacle, CollisionInstance, COMP_COLLISION_INSTANCE);
 
+    if (!obsCI)
+      continue;
+
+    // Broadphase
     if (!AABB_Overlap(playerCI->worldBounds, obsCI->worldBounds))
       continue;
 
     CollisionHit hit;
-    if (!CollisionTest(playerCI, obsCI, &hit))
+
+    void *shapeA = cap;
+    void *shapeB = ECS_GET(world, obstacle, AABBCollider, COMP_AABB_COLLIDER);
+
+    if (!shapeB)
       continue;
 
-    // Only resolve vertical during vertical phase
+    if (!CollisionTest(playerCI, shapeA, obsCI, shapeB, &hit))
+      continue;
+
+    // -------- Resolution --------
+
     if (verticalPhase) {
-      if (verticalPhase) {
-        // LANDING
-        if (vel->value.y < 0.0f && hit.normal.y > 0.5f) {
-          pos->value =
-              Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
+      // LANDING
+      if (vel->value.y < 0.0f && hit.normal.y > 0.5f) {
+        pos->value =
+            Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
 
-          vel->value.y = 0.0f;
-          *isgrounded = true;
-        }
+        vel->value.y = 0.0f;
+        *isgrounded = true;
+      }
+      // CEILING
+      else if (vel->value.y > 0.0f && hit.normal.y < -0.5f) {
+        pos->value =
+            Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
 
-        // CEILING HIT
-        else if (vel->value.y > 0.0f && hit.normal.y < -0.5f) {
-          pos->value =
-              Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
-
-          vel->value.y = 0.0f;
-        }
-
+        vel->value.y = 0.0f;
       }
     } else {
+      // Horizontal resolve
       if (fabsf(hit.normal.y) < 0.5f) {
         pos->value =
             Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
@@ -122,3 +147,4 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
 
   BuildPlayerCapsule(pos, cap, ci);
 }
+

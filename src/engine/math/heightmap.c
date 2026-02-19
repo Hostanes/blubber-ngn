@@ -31,7 +31,8 @@ HeightMap HeightMap_FromMesh(Mesh mesh, Matrix transform) {
   }
 
   // ---- 3. Grid resolution ----
-  hm.cellSize = 1.0f; // you can tweak this later
+   
+  hm.cellSize = 0.5f; // you can tweak this later
   hm.origin = (Vector3){min.x, 0.0f, min.z};
 
   hm.width = (uint32_t)ceilf((max.x - min.x) / hm.cellSize) + 1;

@@ -17,17 +17,21 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
 void PlayerWeaponSystem(world_t *world, entity_t player, float dt);
 void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player);
 
-void BulletSystem(world_t *world, archetype_t *arch, float dt);
+void BulletSystem(world_t *world, archetype_t *bulletArch,
+                  archetype_t *enemyArch, float dt);
 
 void ApplyGravity(world_t *world, GameWorld *game, float dt);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);
 
 void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt);
+void UpdateCollisionBounds(world_t *world);
 void UpdatePlayerCollision(world_t *world, entity_t e);
 void UpdateObstacleCollision(world_t *world, archetype_t *obstacleArch);
+void UpdateBulletCollision(world_t *world, archetype_t *bulletArch);
 
 void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera);
 
 void RenderMainMenu(GameWorld *game);
 
 void TimerSystem(componentPool_t *timerPool, float dt);
+void CollisionSystem(world_t *world);

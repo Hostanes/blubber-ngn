@@ -6,9 +6,6 @@
 #include "../engine/math/heightmap.h"
 #include "../engine/util/bitset.h"
 #include "components/components.h"
-#include "components/movement.h"
-#include "components/renderable.h"
-#include "components/transform.h"
 #include "ecs_get.h"
 #include "game.h"
 #include "raylib.h"
@@ -21,6 +18,13 @@
 
 #define PLAYER_RADIUS 0.35f
 #define PLAYER_HEIGHT 2.0f
+
+enum CollisionLayer {
+  LAYER_PLAYER = 0,
+  LAYER_WORLD = 1,
+  LAYER_ENEMY = 2,
+  LAYER_BULLET = 3
+};
 
 enum gameState {
   GAMESTATE_MAINMENU = 0,
@@ -48,6 +52,10 @@ typedef struct GameWorld {
   uint32_t enemyCapsuleArchId;
 
   uint32_t obstacleArchId;
+
+  Model bulletModel;
+  Model enemyModel;
+  Model gunModel;
 
   HeightMap terrainHeightMap;
   Model terrainModel;

@@ -6,6 +6,9 @@
 #include "world_internal.h"
 #include <stdint.h>
 
+#define ECS_GET(world, entity, Type, ID)                                       \
+  ((Type *)WorldGetComponent(world, entity, ID))
+
 typedef struct world_t world_t;
 
 world_t *WorldCreate(void);

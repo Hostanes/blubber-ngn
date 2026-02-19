@@ -1,5 +1,7 @@
 
 #pragma once
+#include "../../engine/ecs/world.h"
+#include "../../engine/math/heightmap.h"
 #include "Active.h"
 #include "collision.h"
 #include "health.h"
@@ -28,4 +30,11 @@ enum {
   COMP_ISGROUNDED,
   COMP_GRAVITY, // for gravity and colliding with terrain and obstacles from
   COMP_MUZZLES,
+  COMP_ON_COLLISION,
 };
+
+typedef void (*OnCollision)(world_t *world, entity_t self, entity_t other);
+
+typedef struct CollisionResponse {
+  OnCollision onCollision;
+} CollisionResponse;
