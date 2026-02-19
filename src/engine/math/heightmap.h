@@ -18,3 +18,4 @@ typedef struct {
 
 HeightMap HeightMap_FromMesh(Mesh mesh, Matrix transform);
 float HeightMap_GetHeightSmooth(const HeightMap *hm, float x, float z);
+float HeightMap_GetHeightCatmullRom(const HeightMap *hm, float x, float z);

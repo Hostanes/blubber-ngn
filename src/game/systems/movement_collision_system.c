@@ -138,7 +138,7 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
     BuildPlayerCapsule(pos, cap, ci);
     ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, true);
 
-    float terrainY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
+    float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
                                                pos->value.x, pos->value.z);
 
     float eyeHeight = 1.65f;

@@ -8,37 +8,7 @@
 
 #define MAX_BULLETS 2048
 
-void Enemy_OnCollision(world_t *world, entity_t self, entity_t other) {
-  CollisionInstance *otherCI =
-      ECS_GET(world, other, CollisionInstance, COMP_COLLISION_INSTANCE);
-
-  if (!otherCI)
-    return;
-
-  if (otherCI->layerMask & (1 << LAYER_BULLET)) {
-    Health *hp = ECS_GET(world, self, Health, COMP_HEALTH);
-    if (!hp)
-      return;
-
-    hp->current -= 25.0f;
-
-    printf("Enemy hit! HP: %.1f\n", hp->current);
-
-    // deactivate bullet
-    Active *bulletActive = ECS_GET(world, other, Active, COMP_ACTIVE);
-
-    if (bulletActive)
-      bulletActive->value = false;
-
-    if (hp->current <= 0.0f) {
-      Active *active = ECS_GET(world, self, Active, COMP_ACTIVE);
-
-      active->value = false;
-
-      printf("Enemy died\n");
-    }
-  }
-}
+void Enemy_OnCollision(world_t *world, entity_t self, entity_t other) {}
 
 entity_t SpawnEnemyAABB(world_t *world, GameWorld *game, Vector3 position,
                         bitset_t *mask) {
@@ -136,7 +106,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
   gw.gameState = GAMESTATE_MAINMENU;
 
-  gw.terrainModel = LoadModel("assets/models/terrain-tutorial.glb");
+  gw.terrainModel = LoadModel("assets/models/terrain-level1.glb");
   // gw.terrainModel = LoadModel("assets/models/terrain-level1.glb");
   gw.terrainHeightMap =
       HeightMap_FromMesh(gw.terrainModel.meshes[0], MatrixIdentity());
@@ -168,7 +138,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                            COMP_ISGROUNDED,
                            COMP_MUZZLES,
                            COMP_DASHTIMER,
-                           COMP_ISDASHING, COMP_DASHCOOLDOWN};
+                           COMP_ISDASHING,
+                           COMP_DASHCOOLDOWN};
 
   bitset_t playerMask =
       MakeMask(playerBits, sizeof(playerBits) / sizeof(uint32_t));
@@ -383,7 +354,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(obsatcleArch, COMP_AABB_COLLIDER, sizeof(AABBCollider));
   ArchetypeAddHandle(obsatcleArch, COMP_MODEL, &engine->modelPool);
 
-  for (int i = 0; i < 65; ++i) {
+  for (int i = 0; i < 0; ++i) {
 
     entity_t box = WorldCreateEntity(world, &boxMask);
 
@@ -393,9 +364,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
     float y = GetRandomValue(0, 10);
 
     // --- Random height ---
-    float height = GetRandomValue(5, 10); // box height range
-    float width = GetRandomValue(10, 15);
-    float depth = GetRandomValue(10, 15);
+    float height = GetRandomValue(2, 2); // box height range
+    float width = GetRandomValue(2, 6);
+    float depth = GetRandomValue(2, 6);
 
     float halfHeight = height * 0.5f;
 
@@ -427,6 +398,77 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
     ci->layerMask = 1 << LAYER_WORLD; // WORLD
     ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
   }
+
+  float width = 3;
+  float height = 13;
+  float length = 160;
+
+  Model rampWall = LoadModelFromMesh(GenMeshCube(width, height, length));
+
+  entity_t rampCollider1 = WorldCreateEntity(world, &boxMask);
+
+  Active *rampActive = ECS_GET(world, rampCollider1, Active, COMP_ACTIVE);
+  rampActive->value = true;
+
+  ECS_GET(world, rampCollider1, Position, COMP_POSITION)->value =
+      (Vector3){80, -5, 0};
+
+  ModelCollection_t *rampmc =
+      ECS_GET(world, rampCollider1, ModelCollection_t, COMP_MODEL);
+  ModelCollectionInit(rampmc, 1);
+
+  ModelCollectionAdd(rampmc, (ModelInstance_t){.model = rampWall,
+                                               .offset = (Vector3){0, 0, 0},
+                                               .rotation = (Vector3){0, 0, 0},
+                                               .scale = (Vector3){1, 1, 1},
+                                               .rotationMode = MODEL_ROT_FULL});
+
+  // --- Collider ---
+  AABBCollider *aabb =
+      ECS_GET(world, rampCollider1, AABBCollider, COMP_AABB_COLLIDER);
+
+  aabb->halfExtents = (Vector3){width * 0.5f, height * 0.5f, length * 0.5f};
+
+  CollisionInstance *rampCI =
+      ECS_GET(world, rampCollider1, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+  rampCI->type = COLLIDER_AABB;
+  rampCI->layerMask = 1 << LAYER_WORLD; // WORLD
+  rampCI->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
+
+  //
+
+  entity_t rampCollider2 = WorldCreateEntity(world, &boxMask);
+
+  Active *rampActive2 = ECS_GET(world, rampCollider2, Active, COMP_ACTIVE);
+  rampActive2->value = true;
+
+  ECS_GET(world, rampCollider2, Position, COMP_POSITION)->value =
+      (Vector3){125, -5, 0};
+
+  ModelCollection_t *rampmc2 =
+      ECS_GET(world, rampCollider2, ModelCollection_t, COMP_MODEL);
+  ModelCollectionInit(rampmc2, 1);
+
+  ModelCollectionAdd(rampmc2,
+                     (ModelInstance_t){.model = rampWall,
+                                       .offset = (Vector3){0, 0, 0},
+                                       .rotation = (Vector3){0, 0, 0},
+                                       .scale = (Vector3){1, 1, 1},
+                                       .rotationMode = MODEL_ROT_FULL});
+
+  // --- Collider ---
+  AABBCollider *aabb2 =
+      ECS_GET(world, rampCollider2, AABBCollider, COMP_AABB_COLLIDER);
+
+  aabb2->halfExtents = (Vector3){width * 0.5f, height * 0.5f, length * 0.5f};
+
+  CollisionInstance *rampCI2 =
+      ECS_GET(world, rampCollider2, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+  rampCI2->type = COLLIDER_AABB;
+  rampCI2->layerMask = 1 << LAYER_WORLD; // WORLD
+  rampCI2->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
 
   return gw;
 }

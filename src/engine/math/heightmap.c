@@ -31,8 +31,8 @@ HeightMap HeightMap_FromMesh(Mesh mesh, Matrix transform) {
   }
 
   // ---- 3. Grid resolution ----
-   
-  hm.cellSize = 0.5f; // you can tweak this later
+
+  hm.cellSize = 0.25f; // you can tweak this later
   hm.origin = (Vector3){min.x, 0.0f, min.z};
 
   hm.width = (uint32_t)ceilf((max.x - min.x) / hm.cellSize) + 1;
@@ -132,4 +132,39 @@ float HeightMap_GetHeightSmooth(const HeightMap *hm, float x, float z) {
   float h1 = Lerp(h01, h11, tx);
 
   return Lerp(h0, h1, tz);
+}
+
+static float catmullRomInterpolate(float p0, float p1, float p2, float p3,
+                                   float t) {
+  return 0.5f *
+         ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+          (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+}
+
+float HeightMap_GetHeightCatmullRom(const HeightMap *hm, float x, float z) {
+  float fx = (x - hm->origin.x) / hm->cellSize;
+  float fz = (z - hm->origin.z) / hm->cellSize;
+
+  int ix = (int)floorf(fx);
+  int iz = (int)floorf(fz);
+
+  if (ix < 1 || iz < 1 || ix >= (int)hm->width - 2 || iz >= (int)hm->height - 2)
+    return HeightMap_GetHeightSmooth(hm, x, z);
+
+  float tx = fx - ix;
+  float tz = fz - iz;
+
+  float p[4][4];
+  for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < 4; i++) {
+      p[j][i] = hm->samples[(iz - 1 + j) * hm->width + (ix - 1 + i)];
+    }
+  }
+
+  float col[4];
+  for (int j = 0; j < 4; j++) {
+    col[j] = catmullRomInterpolate(p[j][0], p[j][1], p[j][2], p[j][3], tx);
+  }
+
+  return catmullRomInterpolate(col[0], col[1], col[2], col[3], tz);
 }

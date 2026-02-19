@@ -72,6 +72,8 @@ void BulletSystem(world_t *world, archetype_t *bulletArch,
     Vector3 nextPos = Vector3Add(prevPos, Vector3Scale(vel->value, dt));
     Vector3 delta = Vector3Subtract(nextPos, prevPos);
 
+    BulletType *bulletType = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
+
     float length = Vector3Length(delta);
 
     if (length > 0.0001f) {
@@ -105,6 +107,17 @@ void BulletSystem(world_t *world, archetype_t *bulletArch,
           printf("HIT\n");
           pos->value = prevPos;
           active->value = false;
+
+          // handle collision
+          if (ArchetypeHas(enemyArch, COMP_HEALTH)) {
+            Health *hp = ECS_GET(world, enemy, Health, COMP_HEALTH);
+            hp->current -= bulletDamages[bulletType->type];
+            if (hp->current <= 0.0f) {
+              Active *active = ECS_GET(world, enemy, Active, COMP_ACTIVE);
+              active->value = false;
+              printf("Enemy died\n");
+            }
+          }
           break;
         }
       }
