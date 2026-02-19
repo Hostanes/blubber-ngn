@@ -39,6 +39,7 @@ static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
                                       CollisionInstance *playerCI,
                                       bool verticalPhase) {
   bool *isgrounded = ECS_GET(world, game->player, bool, COMP_ISGROUNDED);
+  bool *isdashing = ECS_GET(world, game->player, bool, COMP_ISDASHING);
   archetype_t *arch = WorldGetArchetype(world, game->obstacleArchId);
 
   for (int i = 0; i < arch->count; ++i) {
@@ -64,7 +65,6 @@ static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
 
     if (!CollisionTest(playerCI, shapeA, obsCI, shapeB, &hit))
       continue;
-
     // -------- Resolution --------
 
     if (verticalPhase) {
@@ -111,40 +111,45 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
 
   *isgrounded = false;
 
-  Vector3 delta = Vector3Scale(vel->value, dt);
+  // SUBSTEP SETTINGS
+  float maxStepDistance = 0.2f; // max movement per substep
+  float totalDistance = Vector3Length(Vector3Scale(vel->value, dt));
 
-  // ------------------------------------
-  // HORIZONTAL MOVE
-  // ------------------------------------
-  pos->value.x += delta.x;
-  pos->value.z += delta.z;
+  int steps = (int)ceilf(totalDistance / maxStepDistance);
+  if (steps < 1)
+    steps = 1;
+  if (steps > 8)
+    steps = 8; // safety clamp
 
-  BuildPlayerCapsule(pos, cap, ci);
-  ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, false);
+  float subDt = dt / steps;
 
-  // ------------------------------------
-  // VERTICAL MOVE
-  // ------------------------------------
-  pos->value.y += delta.y;
+  // SUBSTEPPED MOVEMENT
+  for (int s = 0; s < steps; s++) {
+    Vector3 delta = Vector3Scale(vel->value, subDt);
 
-  BuildPlayerCapsule(pos, cap, ci);
-  ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, true);
+    pos->value.x += delta.x;
+    pos->value.z += delta.z;
 
-  // ------------------------------------
-  // TERRAIN COLLISION
-  // ------------------------------------
-  float terrainY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
-                                             pos->value.x, pos->value.z);
+    BuildPlayerCapsule(pos, cap, ci);
+    ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, false);
 
-  float eyeHeight = 1.65f;
-  float footY = pos->value.y - eyeHeight;
+    pos->value.y += delta.y;
 
-  if (footY < terrainY) {
-    pos->value.y = terrainY + eyeHeight;
-    vel->value.y = 0.0f;
-    *isgrounded = true;
+    BuildPlayerCapsule(pos, cap, ci);
+    ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, true);
+
+    float terrainY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
+                                               pos->value.x, pos->value.z);
+
+    float eyeHeight = 1.65f;
+    float footY = pos->value.y - eyeHeight;
+
+    if (footY < terrainY) {
+      pos->value.y = terrainY + eyeHeight;
+      vel->value.y = 0.0f;
+      *isgrounded = true;
+    }
+
+    BuildPlayerCapsule(pos, cap, ci);
   }
-
-  BuildPlayerCapsule(pos, cap, ci);
 }
-

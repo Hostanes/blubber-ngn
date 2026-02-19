@@ -3,6 +3,10 @@
 #include "ecs_types.h"
 #include "stdbool.h"
 
+#ifndef INVALID_ENTITY
+#define INVALID_ENTITY ((entity_t){UINT32_MAX, UINT32_MAX})
+#endif
+
 typedef struct entityManager_t entityManager_t;
 
 void EntityManagerInit(entityManager_t *entityManager);

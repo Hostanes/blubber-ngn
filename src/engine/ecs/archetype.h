@@ -21,6 +21,9 @@ void ArchetypeAddInline(archetype_t *arch, componentId_t id, size_t size);
 void ArchetypeAddHandle(archetype_t *arch, componentId_t id,
                         componentPool_t *pool);
 
+void ArchetypeRemoveEntity(archetype_t *arch, uint32_t index);
+void ArchetypeClear(archetype_t *arch);
+
 static inline bool ArchetypeHas(archetype_t *arch, uint32_t comp) {
   return BitsetTest(&arch->mask, comp);
 }

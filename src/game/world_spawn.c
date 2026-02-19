@@ -393,9 +393,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
     float y = GetRandomValue(0, 10);
 
     // --- Random height ---
-    float height = GetRandomValue(2, 2); // box height range
-    float width = GetRandomValue(2, 6);
-    float depth = GetRandomValue(2, 6);
+    float height = GetRandomValue(5, 10); // box height range
+    float width = GetRandomValue(10, 15);
+    float depth = GetRandomValue(10, 15);
 
     float halfHeight = height * 0.5f;
 

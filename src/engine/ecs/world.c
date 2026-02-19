@@ -87,12 +87,33 @@ entity_t WorldCreateEntity(world_t *world, const bitset_t *mask) {
 }
 
 void WorldDestroyEntity(world_t *world, entity_t entity) {
+
   if (!EntityIsAlive(&world->entityManager, entity)) {
     return;
   }
 
-  /* removal not implemented yet */
+  // Get entity location
+  entityLocation_t loc = world->entityLocations[entity.id];
+  archetype_t *arch = &world->archetypes[loc.archetype];
 
+  // Store the last entity in this archetype BEFORE removal
+  entity_t lastEntity = (loc.index < arch->count - 1)
+                            ? arch->entities[arch->count - 1]
+                            : INVALID_ENTITY;
+
+  // Remove entity from archetype (this handles component cleanup)
+  ArchetypeRemoveEntity(arch, loc.index);
+
+  // If we moved an entity, update its location
+  if (lastEntity.id != UINT32_MAX && loc.index != arch->count) {
+    world->entityLocations[lastEntity.id].index = loc.index;
+  }
+
+  // Clear this entity's location
+  world->entityLocations[entity.id].archetype = UINT32_MAX;
+  world->entityLocations[entity.id].index = UINT32_MAX;
+
+  // Finally, destroy the entity in the entity manager
   EntityDestroy(&world->entityManager, entity);
 }
 

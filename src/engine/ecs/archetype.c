@@ -106,3 +106,37 @@ archetypeColumn_t *ArchetypeFindColumn(archetype_t *arch,
   }
   return NULL;
 }
+
+void ArchetypeRemoveEntity(archetype_t *arch, uint32_t index) {
+  if (index >= arch->count)
+    return;
+
+  uint32_t lastIndex = arch->count - 1;
+  entity_t lastEntity = arch->entities[lastIndex];
+
+  for (uint32_t i = 0; i < arch->columnCount; ++i) {
+    archetypeColumn_t *col = &arch->columns[i];
+    void *data = (char *)col->data + index * col->elementSize;
+
+    if (col->storageType == ArchetypeStorageHandle) {
+      uint32_t handle = *(uint32_t *)data;
+      if (handle != UINT32_MAX) {
+        ComponentRemove(col->pool, handle);
+      }
+    }
+  }
+
+  if (index != lastIndex) {
+    arch->entities[index] = lastEntity;
+
+    for (uint32_t i = 0; i < arch->columnCount; ++i) {
+      archetypeColumn_t *col = &arch->columns[i];
+      void *src = (char *)col->data + lastIndex * col->elementSize;
+      void *dst = (char *)col->data + index * col->elementSize;
+
+      memcpy(dst, src, col->elementSize);
+    }
+  }
+
+  arch->count--;
+}
