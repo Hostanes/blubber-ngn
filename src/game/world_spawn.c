@@ -166,7 +166,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                            COMP_COLLISION_INSTANCE,
                            COMP_CAPSULE_COLLIDER,
                            COMP_ISGROUNDED,
-                           COMP_MUZZLES};
+                           COMP_MUZZLES,
+                           COMP_DASHTIMER,
+                           COMP_ISDASHING, COMP_DASHCOOLDOWN};
 
   bitset_t playerMask =
       MakeMask(playerBits, sizeof(playerBits) / sizeof(uint32_t));
@@ -179,9 +181,14 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(playerArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddInline(playerArch, COMP_ACTIVE, sizeof(Active));
   ArchetypeAddInline(playerArch, COMP_ISGROUNDED, sizeof(bool));
+  ArchetypeAddInline(playerArch, COMP_ISDASHING, sizeof(bool));
+
   ArchetypeAddHandle(playerArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(playerArch, COMP_TIMER, &engine->timerPool);
   ArchetypeAddHandle(playerArch, COMP_COYOTETIMER, &engine->timerPool);
+  ArchetypeAddHandle(playerArch, COMP_DASHTIMER, &engine->timerPool);
+  ArchetypeAddHandle(playerArch, COMP_DASHCOOLDOWN, &engine->timerPool);
+
   ArchetypeAddInline(playerArch, COMP_COLLISION_INSTANCE,
                      sizeof(CollisionInstance));
   ArchetypeAddInline(playerArch, COMP_CAPSULE_COLLIDER,

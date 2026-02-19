@@ -7,6 +7,9 @@ static Vector3 playerWeaponSway;
 const float swayAmount = .05f;
 const float swaySpeed = 15.0f;
 
+const float dashSpeed = 50.0f;
+const float dashDuration = 0.18f;
+const float dashCooldownMax = 0.4f;
 const float speed = 15.0f;
 const float mouseSensitivity = 0.002f;
 
@@ -91,34 +94,43 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
   Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
 
   Timer *coyoteTimer = ECS_GET(world, player, Timer, COMP_COYOTETIMER);
+  Timer *dashTimer = ECS_GET(world, player, Timer, COMP_DASHTIMER);
+  Timer *dashCooldown = ECS_GET(world, player, Timer, COMP_DASHCOOLDOWN);
 
-  // float groundY = HeightMap_GetHeightSmooth(&game->terrainHeightMap,
-  //                                           pos->value.x, pos->value.z);
-  // float footY = pos->value.y - 2.0f;
   bool *isgrounded = ECS_GET(world, game->player, bool, COMP_ISGROUNDED);
-  // *isgrounded = (footY <= groundY + 0.02f);
+  bool *isDashing = ECS_GET(world, game->player, bool, COMP_ISDASHING);
 
-  if (*isgrounded) {
-    // Refresh coyote time while grounded
-    coyoteTimer->value = jumpCoyoteTimeMax;
-  } else {
-    if (coyoteTimer->value < 0.0f)
-      coyoteTimer->value = 0.0f;
+  // DASH ACTIVE
+  if (*isDashing) {
+    if (dashTimer->value <= 0.0f) {
+      *isDashing = false;
+    }
+    return;
   }
 
+  // COYOTE TIME
+  if (*isgrounded)
+    coyoteTimer->value = jumpCoyoteTimeMax;
+  else if (coyoteTimer->value < 0.0f)
+    coyoteTimer->value = 0.0f;
+
+  // CAMERA (only when NOT dashing)
   Vector2 mouse = GetMouseDelta();
   ori->yaw -= mouse.x * mouseSensitivity;
   ori->pitch -= mouse.y * mouseSensitivity;
+  ori->pitch = Clamp(ori->pitch, -PI / 2 + 0.001f, PI / 2 - 0.001f);
 
-  ori->pitch = Clamp(ori->pitch, -PI / 2 + 0.001, PI / 2 - 0.001);
-
+  // -------------------------------------
+  // MOVEMENT INPUT
+  // -------------------------------------
   Vector3 forward = {
       cosf(ori->pitch) * sinf(ori->yaw),
-      // sinf(ori->pitch),
       0,
       cosf(ori->pitch) * cosf(ori->yaw),
   };
-  Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
+
+  Vector3 right = {cosf(ori->yaw), 0, -sinf(ori->yaw)};
+
   float vy = vel->value.y;
   vel->value = (Vector3){0, vy, 0};
 
@@ -131,20 +143,36 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
   if (IsKeyDown(KEY_D))
     vel->value = Vector3Subtract(vel->value, right);
 
+  // DASH TRIGGER
+  if (IsKeyPressed(KEY_LEFT_SHIFT) && dashCooldown->value <= 0) {
+    Vector3 horiz = {vel->value.x, 0.0f, vel->value.z};
+    dashCooldown->value = dashCooldownMax;
+    if (Vector3Length(horiz) > 0.01f) {
+      horiz = Vector3Normalize(horiz);
+
+      vel->value.x = horiz.x * dashSpeed;
+      vel->value.z = horiz.z * dashSpeed;
+
+      dashTimer->value = dashDuration;
+      *isDashing = true;
+
+      return; // skip rest of input
+    }
+  }
+
+  // JUMP
   bool canJump = (coyoteTimer->value > 0.0f);
 
   if (IsKeyPressed(KEY_SPACE) && canJump) {
     vel->value.y = jumpVelocity;
-
-    // Consume coyote time immediately
     coyoteTimer->value = 0.0f;
   }
 
+  // NORMAL MOVE SPEED
   Vector3 horiz = {vel->value.x, 0.0f, vel->value.z};
 
-  if (Vector3Length(horiz) > 0.0f) {
+  if (Vector3Length(horiz) > 0.0f)
     horiz = Vector3Scale(Vector3Normalize(horiz), speed);
-  }
 
   vel->value.x = horiz.x;
   vel->value.z = horiz.z;

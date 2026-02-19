@@ -31,6 +31,9 @@ enum {
   COMP_GRAVITY, // for gravity and colliding with terrain and obstacles from
   COMP_MUZZLES,
   COMP_ON_COLLISION,
+  COMP_DASHTIMER,
+  COMP_DASHCOOLDOWN,
+  COMP_ISDASHING,
 };
 
 typedef void (*OnCollision)(world_t *world, entity_t self, entity_t other);
