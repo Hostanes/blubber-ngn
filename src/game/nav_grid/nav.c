@@ -94,6 +94,9 @@ bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
   int startX, startY;
   int goalX, goalY;
 
+  outPath->count = 0;
+  outPath->currentIndex = 0;
+
   if (!NavGrid_WorldToCell(grid, startWorld, &startX, &startY))
     return false;
 
@@ -214,6 +217,14 @@ bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
     current = n->parentIndex;
   }
 
+  // reverse so its easier to work with in AI movement
+  // now its [start, .... ,goal]
+  for (int i = 0; i < outPath->count / 2; i++) {
+    Vector3 tmp = outPath->points[i];
+    outPath->points[i] = outPath->points[outPath->count - 1 - i];
+    outPath->points[outPath->count - 1 - i] = tmp;
+  }
   free(nodes);
+
   return true;
 }

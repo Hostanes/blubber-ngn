@@ -99,6 +99,9 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
               ECS_GET(world, enemyArch->entities[0], NavPath, COMP_NAVPATH);
           Position *enemyPos =
               ECS_GET(world, enemyArch->entities[0], Position, COMP_POSITION);
+          printf("Enemy start pos: %.2f %.2f\n", enemyPos->value.x,
+                 enemyPos->value.z);
+
           NavGrid_FindPath(&game->navGrid, enemyPos->value, pos->value,
                            navpath);
         }

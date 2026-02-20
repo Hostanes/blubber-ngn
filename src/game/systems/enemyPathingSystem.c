@@ -22,6 +22,8 @@ void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
       vel->value.z = 0;
       continue;
     }
+    pos->value.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                                 pos->value.x, pos->value.z);
 
     Vector3 target = path->points[path->currentIndex];
 
@@ -29,13 +31,24 @@ void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
     toTarget.y = 0.0f;
 
     float distance = Vector3Length(toTarget);
-
+    // printf("target = %f, %f\n:", toTarget.x, toTarget.z);
     const float arriveThreshold = 0.5f;
     const float moveSpeed = 15.0f;
 
     // If close to waypoint -> advance
     if (distance < arriveThreshold) {
       path->currentIndex++;
+
+      // If that was the final node -> STOP completely
+      if (path->currentIndex >= path->count) {
+        vel->value.x = 0;
+        vel->value.z = 0;
+        path->count = 0;        // clear path
+        path->currentIndex = 0; // reset
+
+        continue;
+      }
+
       continue;
     }
 
