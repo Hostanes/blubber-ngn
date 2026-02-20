@@ -62,6 +62,7 @@ void BulletSystem(world_t *world, archetype_t *bulletArch,
     Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
     if (life->value <= 0.0f) {
       active->value = false;
+      printf("bullet died\n");
       continue;
     }
 
@@ -125,7 +126,5 @@ void BulletSystem(world_t *world, archetype_t *bulletArch,
 
     // Move bullet after sweep
     pos->value = nextPos;
-
-    life->value -= dt;
   }
 }

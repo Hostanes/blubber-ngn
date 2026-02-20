@@ -1,4 +1,5 @@
 #include "../game.h"
+#include "rlgl.h"
 #include "systems.h"
 #include <raylib.h>
 
@@ -45,6 +46,53 @@ void RenderMainMenu(GameWorld *game) {
            20, LIGHTGRAY);
 
   EndDrawing();
+}
+
+void DrawNavGridBatched(NavGrid *grid) {
+  rlBegin(RL_LINES);
+
+  float half = grid->cellSize * 0.5f;
+  float yOffset = 0.3f;
+
+  for (int y = 0; y < grid->height; y++) {
+    for (int x = 0; x < grid->width; x++) {
+      NavCell *cell = &grid->cells[NavGrid_Index(grid, x, y)];
+
+      Color c = GREEN;
+      if (cell->type == NAV_CELL_WALL)
+        c = RED;
+      else if (cell->type == NAV_CELL_COVER_LOW)
+        c = BLUE;
+
+      rlColor4ub(c.r, c.g, c.b, 255);
+
+      Vector3 center = NavGrid_CellCenter(grid, x, y);
+
+      float x0 = center.x - half;
+      float x1 = center.x + half;
+      float z0 = center.z - half;
+      float z1 = center.z + half;
+      float yPos = center.y + yOffset;
+
+      // Top edge
+      rlVertex3f(x0, yPos, z0);
+      rlVertex3f(x1, yPos, z0);
+
+      // Right edge
+      rlVertex3f(x1, yPos, z0);
+      rlVertex3f(x1, yPos, z1);
+
+      // Bottom edge
+      rlVertex3f(x1, yPos, z1);
+      rlVertex3f(x0, yPos, z1);
+
+      // Left edge
+      rlVertex3f(x0, yPos, z1);
+      rlVertex3f(x0, yPos, z0);
+    }
+  }
+
+  rlEnd();
 }
 
 void RenderArchetype(world_t *world, archetype_t *arch) {
@@ -214,6 +262,10 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
     RenderArchetype(world, arch);
   }
+
+  NavGrid *grid = &game->navGrid;
+
+  DrawNavGridBatched(grid);
 
   EndMode3D();
   DrawFPS(10, 10);

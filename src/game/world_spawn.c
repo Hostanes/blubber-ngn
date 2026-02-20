@@ -3,6 +3,7 @@
 #include "components/transform.h"
 #include "ecs_get.h"
 #include "game.h"
+#include "nav_grid/nav.h"
 #include <raylib.h>
 #include <raymath.h>
 
@@ -110,6 +111,12 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   // gw.terrainModel = LoadModel("assets/models/terrain-level1.glb");
   gw.terrainHeightMap =
       HeightMap_FromMesh(gw.terrainModel.meshes[0], MatrixIdentity());
+
+  float worldWidth = 360;
+  float cellSize = 2;
+  int cellCount = worldWidth / cellSize;
+
+  NavGrid_Init(&gw.navGrid, cellCount, cellCount, cellSize, (Vector3){-180, 0, -180});
 
   /* ---------- Component pools ---------- */
 
@@ -354,7 +361,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(obsatcleArch, COMP_AABB_COLLIDER, sizeof(AABBCollider));
   ArchetypeAddHandle(obsatcleArch, COMP_MODEL, &engine->modelPool);
 
-  for (int i = 0; i < 0; ++i) {
+  for (int i = 0; i < 150; ++i) {
 
     entity_t box = WorldCreateEntity(world, &boxMask);
 
@@ -411,7 +418,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   rampActive->value = true;
 
   ECS_GET(world, rampCollider1, Position, COMP_POSITION)->value =
-      (Vector3){80, -5, 0};
+      (Vector3){80, -6.0, 0};
 
   ModelCollection_t *rampmc =
       ECS_GET(world, rampCollider1, ModelCollection_t, COMP_MODEL);
@@ -444,7 +451,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   rampActive2->value = true;
 
   ECS_GET(world, rampCollider2, Position, COMP_POSITION)->value =
-      (Vector3){125, -5, 0};
+      (Vector3){125, -6.0, 0};
 
   ModelCollection_t *rampmc2 =
       ECS_GET(world, rampCollider2, ModelCollection_t, COMP_MODEL);

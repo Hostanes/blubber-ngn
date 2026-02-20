@@ -8,6 +8,7 @@
 #include "components/components.h"
 #include "ecs_get.h"
 #include "game.h"
+#include "nav_grid/nav.h"
 #include "raylib.h"
 #include "raymath.h"
 #include "systems/systems.h"
@@ -59,6 +60,8 @@ typedef struct GameWorld {
 
   HeightMap terrainHeightMap;
   Model terrainModel;
+
+  NavGrid navGrid;
 } GameWorld;
 
 void RunGameLoop(Engine *engine, GameWorld *game);
