@@ -1,6 +1,7 @@
 #pragma once
 #include "raylib.h"
 #include "raymath.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -13,9 +14,29 @@ typedef enum {
 } NavCellType;
 
 typedef struct {
+  Vector3 *points;
+  int count;
+  int capacity;
+  int currentIndex;
+} NavPath;
+
+typedef struct {
   NavCellType type;
   uint8_t cost;
 } NavCell;
+
+typedef struct {
+  int x, y;
+
+  int gCost;
+  int hCost;
+  int fCost;
+
+  int parentIndex;
+
+  bool open;
+  bool closed;
+} AStarNode;
 
 typedef struct {
   int width;
@@ -39,3 +60,9 @@ void NavGrid_SetCell(NavGrid *g, int x, int y, NavCellType type);
 void NavGrid_Init(NavGrid *grid, int width, int height, float cellSize,
                   Vector3 origin);
 void NavGrid_Destroy(NavGrid *grid);
+void NavPath_Init(NavPath *path, int initialCapacity);
+void NavPath_Clear(NavPath *path);
+void NavPath_Destroy(NavPath *path);
+
+bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
+                      NavPath *outPath);

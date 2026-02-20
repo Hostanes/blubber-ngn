@@ -34,6 +34,7 @@ enum {
   COMP_DASHTIMER,
   COMP_DASHCOOLDOWN,
   COMP_ISDASHING,
+  COMP_NAVPATH,
 };
 
 typedef void (*OnCollision)(world_t *world, entity_t self, entity_t other);

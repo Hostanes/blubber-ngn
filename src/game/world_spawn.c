@@ -1,4 +1,5 @@
 #include "components/components.h"
+#include "components/movement.h"
 #include "components/muzzle.h"
 #include "components/transform.h"
 #include "ecs_get.h"
@@ -10,51 +11,6 @@
 #define MAX_BULLETS 2048
 
 void Enemy_OnCollision(world_t *world, entity_t self, entity_t other) {}
-
-entity_t SpawnEnemyAABB(world_t *world, GameWorld *game, Vector3 position,
-                        bitset_t *mask) {
-  entity_t e = WorldCreateEntity(world, mask);
-
-  ECS_GET(world, e, Position, COMP_POSITION)->value = position;
-
-  Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
-  ori->yaw = 0.0f;
-  ori->pitch = 0.0f;
-
-  ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
-
-  Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
-  hp->max = 100.0f;
-  hp->current = 100.0f;
-
-  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
-
-  ModelCollectionInit(mc, 1);
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->enemyModel,
-                                           .scale = (Vector3){1, 1, 1},
-                                           .offset = (Vector3){0, 0, 0},
-                                           .rotationMode = MODEL_ROT_FULL});
-
-  // --- Collider component ---
-  AABBCollider *aabb = ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
-
-  aabb->halfExtents = (Vector3){1.5f, 4.0f, 1.5f};
-
-  CollisionInstance *ci =
-      ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
-
-  ci->owner = e;
-  ci->type = COLLIDER_AABB;
-  ci->layerMask = 1 << LAYER_ENEMY;
-  ci->collideMask = 1 << LAYER_BULLET;
-
-  CollisionResponse *resp =
-      ECS_GET(world, e, CollisionResponse, COMP_ON_COLLISION);
-
-  resp->onCollision = Enemy_OnCollision;
-
-  return e;
-}
 
 entity_t SpawnEnemyCapsule(world_t *world, GameWorld *game, Vector3 position,
                            bitset_t *mask) {
@@ -100,6 +56,9 @@ entity_t SpawnEnemyCapsule(world_t *world, GameWorld *game, Vector3 position,
 
   resp->onCollision = Enemy_OnCollision;
 
+  NavPath *navPath = ECS_GET(world, e, NavPath, COMP_NAVPATH);
+  NavPath_Init(navPath, 32);
+
   return e;
 }
 
@@ -116,7 +75,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   float cellSize = 2;
   int cellCount = worldWidth / cellSize;
 
-  NavGrid_Init(&gw.navGrid, cellCount, cellCount, cellSize, (Vector3){-180, 0, -180});
+  NavGrid_Init(&gw.navGrid, cellCount, cellCount, cellSize,
+               (Vector3){-180, 0, -180});
 
   /* ---------- Component pools ---------- */
 
@@ -287,33 +247,11 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   /* ---------- enemy archetype ---------- */
 
-  uint32_t enemyAABBBits[] = {
-      COMP_POSITION, COMP_ORIENTATION,        COMP_MODEL,
-      COMP_ACTIVE,   COMP_COLLISION_INSTANCE, COMP_AABB_COLLIDER,
-      COMP_HEALTH,   COMP_ON_COLLISION};
-
-  bitset_t enemyAABBMask =
-      MakeMask(enemyAABBBits, sizeof(enemyAABBBits) / sizeof(uint32_t));
-
-  gw.enemyAABBArchId = WorldCreateArchetype(world, &enemyAABBMask);
-  archetype_t *enemyAABBArch = WorldGetArchetype(world, gw.enemyAABBArchId);
-
-  ArchetypeAddInline(enemyAABBArch, COMP_POSITION, sizeof(Position));
-  ArchetypeAddInline(enemyAABBArch, COMP_ORIENTATION, sizeof(Orientation));
-  ArchetypeAddInline(enemyAABBArch, COMP_ACTIVE, sizeof(Active));
-  ArchetypeAddInline(enemyAABBArch, COMP_HEALTH, sizeof(Health));
-  ArchetypeAddInline(enemyAABBArch, COMP_COLLISION_INSTANCE,
-                     sizeof(CollisionInstance));
-  ArchetypeAddInline(enemyAABBArch, COMP_AABB_COLLIDER, sizeof(AABBCollider));
-  ArchetypeAddHandle(enemyAABBArch, COMP_MODEL, &engine->modelPool);
-
-  ArchetypeAddInline(enemyAABBArch, COMP_ON_COLLISION,
-                     sizeof(CollisionResponse));
-
-  uint32_t enemyCapsuleBits[] = {
-      COMP_POSITION, COMP_ORIENTATION,        COMP_MODEL,
-      COMP_ACTIVE,   COMP_COLLISION_INSTANCE, COMP_CAPSULE_COLLIDER,
-      COMP_HEALTH,   COMP_ON_COLLISION};
+  uint32_t enemyCapsuleBits[] = {COMP_POSITION,         COMP_VELOCITY,
+                                 COMP_ORIENTATION,      COMP_MODEL,
+                                 COMP_ACTIVE,           COMP_COLLISION_INSTANCE,
+                                 COMP_CAPSULE_COLLIDER, COMP_HEALTH,
+                                 COMP_ON_COLLISION,     COMP_NAVPATH};
 
   bitset_t enemyCapsuleMask =
       MakeMask(enemyCapsuleBits, sizeof(enemyCapsuleBits) / sizeof(uint32_t));
@@ -324,9 +262,11 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
       WorldGetArchetype(world, gw.enemyCapsuleArchId);
 
   ArchetypeAddInline(enemyCapsuleArch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(enemyCapsuleArch, COMP_VELOCITY, sizeof(Velocity));
   ArchetypeAddInline(enemyCapsuleArch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddInline(enemyCapsuleArch, COMP_ACTIVE, sizeof(Active));
   ArchetypeAddInline(enemyCapsuleArch, COMP_HEALTH, sizeof(Health));
+  ArchetypeAddInline(enemyCapsuleArch, COMP_NAVPATH, sizeof(NavPath));
 
   ArchetypeAddHandle(enemyCapsuleArch, COMP_MODEL, &engine->modelPool);
 
@@ -339,7 +279,6 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(enemyCapsuleArch, COMP_ON_COLLISION,
                      sizeof(CollisionResponse));
 
-  SpawnEnemyAABB(world, &gw, (Vector3){5, 1, 5}, &enemyAABBMask);
   SpawnEnemyCapsule(world, &gw, (Vector3){-5, 1, 5}, &enemyCapsuleMask);
 
   /* ---------- Box archetype ---------- */

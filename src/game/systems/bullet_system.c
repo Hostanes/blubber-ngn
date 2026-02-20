@@ -50,7 +50,7 @@ static bool SweptSphereVsAABB(Vector3 start, Vector3 end, float radius,
   return (tMin >= -EPS && tMin <= 1.0f + EPS);
 }
 
-void BulletSystem(world_t *world, archetype_t *bulletArch,
+void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
                   archetype_t *enemyArch, float dt) {
   for (uint32_t i = 0; i < bulletArch->count; i++) {
     entity_t b = bulletArch->entities[i];
@@ -73,6 +73,9 @@ void BulletSystem(world_t *world, archetype_t *bulletArch,
     Vector3 nextPos = Vector3Add(prevPos, Vector3Scale(vel->value, dt));
     Vector3 delta = Vector3Subtract(nextPos, prevPos);
 
+    float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                                   pos->value.x, pos->value.z);
+
     BulletType *bulletType = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
 
     float length = Vector3Length(delta);
@@ -86,6 +89,21 @@ void BulletSystem(world_t *world, archetype_t *bulletArch,
           ECS_GET(world, b, SphereCollider, COMP_SPHERE_COLLIDER);
 
       float radius = bulletSphere->radius;
+
+      if (pos->value.y <= terrainY) {
+        active->value = false;
+        printf("bullet Terrain collision\n");
+        if (ArchetypeHas(enemyArch, COMP_NAVPATH)) {
+          printf("--- Pathing to %f, %f\n", pos->value.x, pos->value.z);
+          NavPath *navpath =
+              ECS_GET(world, enemyArch->entities[0], NavPath, COMP_NAVPATH);
+          Position *enemyPos =
+              ECS_GET(world, enemyArch->entities[0], Position, COMP_POSITION);
+          NavGrid_FindPath(&game->navGrid, enemyPos->value, pos->value,
+                           navpath);
+        }
+        continue;
+      }
 
       for (uint32_t j = 0; j < enemyArch->count; j++) {
         entity_t enemy = enemyArch->entities[j];

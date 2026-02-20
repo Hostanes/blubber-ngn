@@ -17,8 +17,10 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
 void PlayerWeaponSystem(world_t *world, entity_t player, float dt);
 void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player);
 
-void BulletSystem(world_t *world, archetype_t *bulletArch,
+void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
                   archetype_t *enemyArch, float dt);
+void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
+                   float dt);
 
 void ApplyGravity(world_t *world, GameWorld *game, float dt);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);

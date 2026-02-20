@@ -52,7 +52,7 @@ void DrawNavGridBatched(NavGrid *grid) {
   rlBegin(RL_LINES);
 
   float half = grid->cellSize * 0.5f;
-  float yOffset = 0.3f;
+  float yOffset = 0.7f;
 
   for (int y = 0; y < grid->height; y++) {
     for (int x = 0; x < grid->width; x++) {
