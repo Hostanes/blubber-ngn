@@ -57,6 +57,10 @@ typedef struct GameWorld {
   Model enemyModel;
   Model gunModel;
 
+  Model gruntTorso;
+  Model gruntLegs;
+  Model gruntGun;
+
   HeightMap terrainHeightMap;
   Model terrainModel;
 

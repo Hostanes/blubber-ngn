@@ -66,3 +66,5 @@ void NavPath_Destroy(NavPath *path);
 
 bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
                       NavPath *outPath);
+bool NavGrid_LoadFromImage(NavGrid *grid, const char *fileName, float cellSize,
+                           Vector3 origin);

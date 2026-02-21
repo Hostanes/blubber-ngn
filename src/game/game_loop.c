@@ -50,6 +50,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       PlayerWeaponSystem(world, game->player, dt);
       PlayerShootSystem(world, game, game->player);
+      EnemyShootSystem(world, game,
+                       WorldGetArchetype(world, game->enemyCapsuleArchId), dt);
 
       UpdateCollisionBounds(world);
 

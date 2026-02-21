@@ -1,6 +1,7 @@
 #include "components/components.h"
 #include "components/movement.h"
 #include "components/muzzle.h"
+#include "components/renderable.h"
 #include "components/transform.h"
 #include "ecs_get.h"
 #include "game.h"
@@ -30,11 +31,19 @@ entity_t SpawnEnemyCapsule(world_t *world, GameWorld *game, Vector3 position,
 
   ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
 
-  ModelCollectionInit(mc, 1);
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->enemyModel,
+  ModelCollectionInit(mc, 3);
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntLegs,
                                            .scale = (Vector3){1, 1, 1},
                                            .offset = (Vector3){0, 0, 0},
-                                           .rotationMode = MODEL_ROT_FULL});
+                                           .rotationMode = MODEL_ROT_YAW_ONLY});
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntGun,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .offset = (Vector3){0, 0, 0},
+                                           .rotationMode = MODEL_ROT_WORLD});
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntTorso,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .offset = (Vector3){0, 0, 0},
+                                           .rotationMode = MODEL_ROT_WORLD});
 
   CapsuleCollider *cap =
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
@@ -75,8 +84,14 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   float cellSize = 2;
   int cellCount = worldWidth / cellSize;
 
-  NavGrid_Init(&gw.navGrid, cellCount, cellCount, cellSize,
-               (Vector3){-180, 0, -180});
+  NavGrid_LoadFromImage(&gw.navGrid, "navmap.png", 2, (Vector3){-180, 0, -180});
+
+  // NavGrid_Init(&gw.navGrid, cellCount, cellCount, cellSize,
+  //              (Vector3){-180, 0, -180});
+
+  // for (int i = 50; i < 100; i++) {
+  //   NavGrid_SetCell(&gw.navGrid, i, 50, NAV_CELL_WALL);
+  // }
 
   /* ---------- Component pools ---------- */
 
@@ -88,8 +103,13 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   Model cube = LoadModelFromMesh(GenMeshCube(5, 5, 5));
   gw.gunModel = LoadModel("assets/models/gun1.glb");
-  gw.enemyModel = LoadModel("assets/models/enemy-target.glb");
   gw.bulletModel = LoadModel("assets/models/bullet.glb");
+
+  gw.enemyModel = LoadModel("assets/models/enemy-target.glb");
+
+  gw.gruntGun = LoadModel("assets/models/enemies/grunt/grunt-gun.glb");
+  gw.gruntLegs = LoadModel("assets/models/enemies/grunt/grunt-legs.glb");
+  gw.gruntTorso = LoadModel("assets/models/enemies/grunt/grunt-torso.glb");
 
   /* ---------- Player archetype ---------- */
 
@@ -207,6 +227,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(bulletArch, COMP_SPHERE_COLLIDER, sizeof(SphereCollider));
   ArchetypeAddInline(bulletArch, COMP_COLLISION_INSTANCE,
                      sizeof(CollisionInstance));
+  ArchetypeAddInline(bulletArch, COMP_BULLET_OWNER, sizeof(BulletOwner));
 
   ArchetypeAddHandle(bulletArch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(bulletArch, COMP_TIMER, &engine->timerPool);
@@ -251,7 +272,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
                                  COMP_ORIENTATION,      COMP_MODEL,
                                  COMP_ACTIVE,           COMP_COLLISION_INSTANCE,
                                  COMP_CAPSULE_COLLIDER, COMP_HEALTH,
-                                 COMP_ON_COLLISION,     COMP_NAVPATH};
+                                 COMP_ON_COLLISION,     COMP_NAVPATH,
+                                 COMP_GRUNT_FIRE_TIMER};
 
   bitset_t enemyCapsuleMask =
       MakeMask(enemyCapsuleBits, sizeof(enemyCapsuleBits) / sizeof(uint32_t));
@@ -269,6 +291,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   ArchetypeAddInline(enemyCapsuleArch, COMP_NAVPATH, sizeof(NavPath));
 
   ArchetypeAddHandle(enemyCapsuleArch, COMP_MODEL, &engine->modelPool);
+
+  ArchetypeAddHandle(enemyCapsuleArch, COMP_GRUNT_FIRE_TIMER,
+                     &engine->timerPool);
 
   ArchetypeAddInline(enemyCapsuleArch, COMP_COLLISION_INSTANCE,
                      sizeof(CollisionInstance));

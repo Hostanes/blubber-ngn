@@ -228,3 +228,60 @@ bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
 
   return true;
 }
+
+/*
+  White (255,255,255)	NAV_CELL_EMPTY
+  Black (0,0,0)	NAV_CELL_WALL
+  Blue (0,0,255)	NAV_CELL_COVER_LOW
+  Green (0,255,0)	NAV_CELL_COVER_HIGH
+  Red (255,0,0)	NAV_CELL_BLOCKED
+*/
+bool NavGrid_LoadFromImage(NavGrid *grid, const char *fileName, float cellSize,
+                           Vector3 origin) {
+  Image img = LoadImage(fileName);
+
+  if (img.data == NULL)
+    return false;
+
+  int width = img.width;
+  int height = img.height;
+
+  NavGrid_Init(grid, width, height, cellSize, origin);
+
+  Color *pixels = LoadImageColors(img);
+
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      // Flip Y because image origin is top-left
+      int flippedY = height - 1 - y;
+
+      Color c = pixels[y * width + x];
+
+      NavCellType type = NAV_CELL_EMPTY;
+      uint8_t cost = 1;
+
+      if (c.r == 0 && c.g == 0 && c.b == 0) {
+        type = NAV_CELL_WALL;
+        cost = 255;
+      } else if (c.r == 0 && c.g == 0 && c.b == 255) {
+        type = NAV_CELL_COVER_LOW;
+        cost = 2;
+      } else if (c.r == 0 && c.g == 255 && c.b == 0) {
+        type = NAV_CELL_COVER_HIGH;
+        cost = 3;
+      } else if (c.r == 255 && c.g == 0 && c.b == 0) {
+        type = NAV_CELL_BLOCKED;
+        cost = 255;
+      }
+
+      int idx = NavGrid_Index(grid, x, flippedY);
+      grid->cells[idx].type = type;
+      grid->cells[idx].cost = cost;
+    }
+  }
+
+  UnloadImageColors(pixels);
+  UnloadImage(img);
+
+  return true;
+}

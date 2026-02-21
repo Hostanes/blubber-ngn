@@ -3,6 +3,7 @@
 #include "../../engine/ecs/world.h"
 #include "../../engine/math/heightmap.h"
 #include "Active.h"
+#include "bullet_owner.h"
 #include "collision.h"
 #include "health.h"
 #include "movement.h"
@@ -35,6 +36,8 @@ enum {
   COMP_DASHCOOLDOWN,
   COMP_ISDASHING,
   COMP_NAVPATH,
+  COMP_BULLET_OWNER,
+  COMP_GRUNT_FIRE_TIMER,
 };
 
 typedef void (*OnCollision)(world_t *world, entity_t self, entity_t other);

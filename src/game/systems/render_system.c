@@ -200,35 +200,53 @@ void ComputeArchetypeTransforms(world_t *world, archetype_t *arch) {
     for (uint32_t m = 0; m < mc->count; ++m) {
       ModelInstance_t *mi = &mc->models[m];
 
-      Matrix local =
-          MatrixMultiply(MatrixScale(mi->scale.x, mi->scale.y, mi->scale.z),
-                         MatrixRotateXYZ(mi->rotation));
+      // Base local transform (scale + local rotation + offset)
+      Matrix S = MatrixScale(mi->scale.x, mi->scale.y, mi->scale.z);
+      Matrix R_local = MatrixRotateXYZ(mi->rotation);
+      Matrix T_local =
+          MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z);
 
-      local = MatrixMultiply(
-          MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z), local);
+      Matrix local = MatrixMultiply(S, MatrixMultiply(R_local, T_local));
 
-      Matrix transform;
+      Matrix final;
 
-      if (m == 1) // gun
-      {
-        Vector3 eyePos = pos->value;
+      switch (mi->rotationMode) {
+      case MODEL_ROT_WORLD: {
+        // Only position, no entity rotation
+        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
 
-        Matrix T = MatrixTranslate(eyePos.x, eyePos.y, eyePos.z);
+        final = MatrixMultiply(local, T);
+      } break;
+
+      case MODEL_ROT_YAW_ONLY: {
+        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+
+        Matrix R_yaw = MatrixRotateY(ori->yaw);
+
+        final = MatrixMultiply(local, MatrixMultiply(R_yaw, T));
+      } break;
+
+      case MODEL_ROT_YAW_PITCH: {
+        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+
         Matrix R_yaw = MatrixRotateY(ori->yaw);
         Matrix R_pitch = MatrixRotateX(-ori->pitch);
-        Matrix T_offset =
-            MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z);
-        Matrix S = MatrixScale(mi->scale.x, mi->scale.y, mi->scale.z);
 
-        transform = MatrixMultiply(
-            S,
-            MatrixMultiply(T_offset,
-                           MatrixMultiply(R_pitch, MatrixMultiply(R_yaw, T))));
-      } else {
-        transform = MatrixMultiply(local, entityTransform);
+        final = MatrixMultiply(
+            local, MatrixMultiply(R_pitch, MatrixMultiply(R_yaw, T)));
+      } break;
+
+      case MODEL_ROT_FULL:
+      default: {
+        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+
+        Matrix R_yaw = MatrixRotateY(ori->yaw);
+
+        final = MatrixMultiply(local, MatrixMultiply(R_yaw, T));
+      } break;
       }
 
-      mi->finalTransform = transform; // <- store only
+      mi->finalTransform = final;
     }
   }
 }

@@ -68,6 +68,11 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player) {
     // --- Orientation ---
     Orientation *bori = ECS_GET(world, b, Orientation, COMP_ORIENTATION);
 
+    BulletOwner *owner = ECS_GET(world, b, BulletOwner, COMP_BULLET_OWNER);
+
+    owner->eId = player.id;
+    owner->archId = game->playerArchId;
+
     // derive yaw/pitch from forward if needed
     bori->yaw = atan2f(forward.x, forward.z);
     bori->pitch = asinf(forward.y);

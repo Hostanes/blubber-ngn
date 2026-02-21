@@ -93,20 +93,23 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
       if (pos->value.y <= terrainY) {
         active->value = false;
         printf("bullet Terrain collision\n");
-        if (ArchetypeHas(enemyArch, COMP_NAVPATH)) {
-          printf("--- Pathing to %f, %f\n", pos->value.x, pos->value.z);
-          NavPath *navpath =
-              ECS_GET(world, enemyArch->entities[0], NavPath, COMP_NAVPATH);
-          Position *enemyPos =
-              ECS_GET(world, enemyArch->entities[0], Position, COMP_POSITION);
-          printf("Enemy start pos: %.2f %.2f\n", enemyPos->value.x,
-                 enemyPos->value.z);
+        // if (ArchetypeHas(enemyArch, COMP_NAVPATH)) {
+        //   printf("--- Pathing to %f, %f\n", pos->value.x, pos->value.z);
+        //   NavPath *navpath =
+        //       ECS_GET(world, enemyArch->entities[0], NavPath, COMP_NAVPATH);
+        //   Position *enemyPos =
+        //       ECS_GET(world, enemyArch->entities[0], Position,
+        //       COMP_POSITION);
+        //   printf("Enemy start pos: %.2f %.2f\n", enemyPos->value.x,
+        //          enemyPos->value.z);
 
-          NavGrid_FindPath(&game->navGrid, enemyPos->value, pos->value,
-                           navpath);
-        }
+        //   NavGrid_FindPath(&game->navGrid, enemyPos->value, pos->value,
+        //                    navpath);
+        // }
         continue;
       }
+
+      BulletOwner *owner = ECS_GET(world, b, BulletOwner, COMP_BULLET_OWNER);
 
       for (uint32_t j = 0; j < enemyArch->count; j++) {
         entity_t enemy = enemyArch->entities[j];
@@ -123,6 +126,9 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
 
         // Layer filtering
         if (!(ci->collideMask & (1 << LAYER_BULLET)))
+          continue;
+
+        if (enemy.id == owner->eId)
           continue;
 
         if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {

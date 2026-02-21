@@ -21,6 +21,8 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
                   archetype_t *enemyArch, float dt);
 void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                    float dt);
+void EnemyShootSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
+                      float dt);
 
 void ApplyGravity(world_t *world, GameWorld *game, float dt);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);
