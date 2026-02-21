@@ -4,7 +4,7 @@
 #include <raymath.h>
 
 static Vector3 playerWeaponSway;
-const float swayAmount = .05f;
+const float swayAmount = .1f;
 const float swaySpeed = 15.0f;
 
 const float dashSpeed = 50.0f;
@@ -34,62 +34,9 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player) {
   if (!muzzles || muzzles->count == 0)
     return;
 
-  Muzzle_t *m = &muzzles->Muzzles[0]; // single muzzle for now
+  Muzzle_t *m = &muzzles->Muzzles[0];
 
-  Vector3 muzzlePos = m->worldPosition;
-  Vector3 forward = m->forward;
-
-  archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
-
-  for (uint32_t i = 0; i < bulletArch->count; i++) {
-    entity_t b = bulletArch->entities[i];
-
-    Active *active = ECS_GET(world, b, Active, COMP_ACTIVE);
-
-    if (active->value)
-      continue;
-
-    // --- Activate bullet ---
-    active->value = true;
-
-    BulletType *bt = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
-
-    bt->type = m->bulletType;
-
-    float muzzleVelocity = muzzleVelocities[bt->type];
-
-    // --- Position ---
-    ECS_GET(world, b, Position, COMP_POSITION)->value = muzzlePos;
-
-    // --- Velocity ---
-    ECS_GET(world, b, Velocity, COMP_VELOCITY)->value =
-        Vector3Scale(forward, muzzleVelocity);
-
-    // --- Orientation ---
-    Orientation *bori = ECS_GET(world, b, Orientation, COMP_ORIENTATION);
-
-    BulletOwner *owner = ECS_GET(world, b, BulletOwner, COMP_BULLET_OWNER);
-
-    owner->eId = player.id;
-    owner->archId = game->playerArchId;
-
-    // derive yaw/pitch from forward if needed
-    bori->yaw = atan2f(forward.x, forward.z);
-    bori->pitch = asinf(forward.y);
-
-    // --- Model rotation ---
-    ModelCollection_t *bmc = ECS_GET(world, b, ModelCollection_t, COMP_MODEL);
-
-    bmc->models[0].rotation = (Vector3){-bori->pitch, 0.0f, 0.0f};
-
-    // --- Lifetime ---
-    Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
-
-    life->value = 5.0f;
-
-    printf("spawned bullet\n");
-    break;
-  }
+  FireMuzzle(world, game, player, game->playerArchId, m);
 }
 
 void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,

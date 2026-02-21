@@ -50,20 +50,26 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       PlayerWeaponSystem(world, game->player, dt);
       PlayerShootSystem(world, game, game->player);
-      EnemyShootSystem(world, game,
-                       WorldGetArchetype(world, game->enemyCapsuleArchId), dt);
+      EnemyMuzzleUpdate_Grunt(world, WorldGetArchetype(world, game->enemyGruntArchId));
+      EnemyMuzzleUpdate_Grunt(world, WorldGetArchetype(world, game->enemyMissileArchId));
 
       UpdateCollisionBounds(world);
 
       PlayerMoveAndCollide(world, game, dt);
 
-      MovementSystem(world, WorldGetArchetype(world, game->enemyCapsuleArchId),
+      MovementSystem(world, WorldGetArchetype(world, game->enemyGruntArchId),
+                     dt);
+      MovementSystem(world, WorldGetArchetype(world, game->enemyMissileArchId),
                      dt);
 
+      CollisionSyncSystem(world);
+
       BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
-                   WorldGetArchetype(world, game->enemyCapsuleArchId), dt);
-      // BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
-      //              WorldGetArchetype(world, game->obstacleArchId), dt);
+                   WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
+                   WorldGetArchetype(world, game->enemyMissileArchId), dt);
+      BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
+                   WorldGetArchetype(world, game->obstacleArchId), dt);
 
       EnemyAISystem(world, game,
                     WorldGetArchetype(world, game->enemyCapsuleArchId), dt);

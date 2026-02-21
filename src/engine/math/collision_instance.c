@@ -8,7 +8,7 @@ void Collision_UpdateAABB(CollisionInstance *ci, AABBCollider *aabb,
 void Collision_UpdateCapsule(CollisionInstance *ci, CapsuleCollider *cap,
                              Vector3 position) {
   cap->a = position;
-  cap->b = Vector3Add(position, (Vector3){0, 1.8f, 0});
+  cap->b = Vector3Add(position, (Vector3){0, cap->b.y, 0});
   ci->worldBounds = Capsule_ComputeAABB(cap);
 }
 

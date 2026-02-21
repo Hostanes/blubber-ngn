@@ -17,6 +17,8 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
 void PlayerWeaponSystem(world_t *world, entity_t player, float dt);
 void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player);
 
+void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
+                int shooterArchId, Muzzle_t *m);
 void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
                   archetype_t *enemyArch, float dt);
 void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
@@ -39,3 +41,11 @@ void RenderMainMenu(GameWorld *game);
 
 void TimerSystem(componentPool_t *timerPool, float dt);
 void CollisionSystem(world_t *world);
+
+void Grunt_SetTargets(world_t *world, entity_t e, GameWorld *game);
+void Tank_SetTargets(world_t *world, entity_t e, GameWorld *game);
+void MissileBot_SetTargets(world_t *world, entity_t e, GameWorld *game);
+void EnemyMuzzleUpdate_Missile(world_t *world, archetype_t *arch);
+void EnemyMuzzleUpdate_Grunt(world_t *world, archetype_t *arch);
+
+void CollisionSyncSystem(world_t *world);

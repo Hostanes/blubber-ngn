@@ -50,6 +50,8 @@ typedef struct GameWorld {
   uint32_t bulletArchId;
 
   uint32_t enemyCapsuleArchId;
+  uint32_t enemyGruntArchId;
+  uint32_t enemyMissileArchId;
 
   uint32_t obstacleArchId;
 
@@ -57,6 +59,7 @@ typedef struct GameWorld {
   Model enemyModel;
   Model gunModel;
 
+  Model missileEnemyModel;
   Model gruntTorso;
   Model gruntLegs;
   Model gruntGun;

@@ -13,6 +13,137 @@
 
 void Enemy_OnCollision(world_t *world, entity_t self, entity_t other) {}
 
+entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
+  archetype_t *arch = WorldGetArchetype(world, game->enemyGruntArchId);
+
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  ECS_GET(world, e, Position, COMP_POSITION)->value = position;
+  ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
+
+  Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
+  hp->max = 150.0f;
+  hp->current = 150.0f;
+
+  Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+  ori->yaw = PI/4;
+  ori->pitch = 0;
+
+  // --- Model ---
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+
+  ModelCollectionInit(mc, 3);
+
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntLegs,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_YAW_ONLY});
+
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntGun,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_WORLD});
+
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntTorso,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_WORLD});
+
+  // --- Collider ---
+  CapsuleCollider *cap =
+      ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+  cap->radius = 1.2f;
+  cap->a = Vector3Add(position, (Vector3){0, 0.0f, 0});
+  cap->b = Vector3Add(position, (Vector3){0, 2.5f, 0});
+
+  CollisionInstance *ci =
+      ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+  ci->owner = e;
+  ci->type = COLLIDER_CAPSULE;
+  ci->layerMask = 1 << LAYER_ENEMY;
+  ci->collideMask = 1 << LAYER_BULLET;
+
+  // --- Fire Timer ---
+  Timer *fire = ECS_GET(world, e, Timer, COMP_GRUNT_FIRE_TIMER);
+  fire->value = 1.0f;
+
+  // --- Nav ---
+  NavPath *nav = ECS_GET(world, e, NavPath, COMP_NAVPATH);
+  NavPath_Init(nav, 32);
+
+  // --- Muzzle ---
+  MuzzleCollection_t *muzzles =
+      ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+
+  muzzles->count = 1;
+  muzzles->Muzzles = malloc(sizeof(Muzzle_t));
+
+  muzzles->Muzzles[0] =
+      (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 1.2f}},
+                 .oriOffset = {.yaw = 0.0f, .pitch = 0.0f},
+                 .bulletType = BULLET_TYPE_STANDARD};
+
+  return e;
+}
+
+entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
+  archetype_t *arch = WorldGetArchetype(world, game->enemyMissileArchId);
+
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  ECS_GET(world, e, Position, COMP_POSITION)->value = position;
+  ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
+
+  Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
+  hp->max = 250.0f;
+  hp->current = 250.0f;
+
+  Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+  ori->yaw = 0.0f;
+  ori->pitch = 0.0f;
+
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+
+  ModelCollectionInit(mc, 1);
+
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->missileEnemyModel,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_YAW_ONLY});
+
+  CapsuleCollider *cap =
+      ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+  cap->radius = 1.5f;
+  cap->a = Vector3Add(position, (Vector3){0, 0.5f, 0});
+  cap->b = Vector3Add(position, (Vector3){0, 1.0f, 0});
+
+  CollisionInstance *ci =
+      ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+  ci->owner = e;
+  ci->type = COLLIDER_CAPSULE;
+  ci->layerMask = 1 << LAYER_ENEMY;
+  ci->collideMask = 1 << LAYER_BULLET;
+
+  Timer *fire = ECS_GET(world, e, Timer, COMP_GRUNT_FIRE_TIMER);
+  fire->value = 2.5f;
+
+  NavPath *nav = ECS_GET(world, e, NavPath, COMP_NAVPATH);
+  NavPath_Init(nav, 32);
+
+  MuzzleCollection_t *muzzles =
+      ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+
+  muzzles->count = 1;
+  muzzles->Muzzles = malloc(sizeof(Muzzle_t));
+
+  muzzles->Muzzles[0] =
+      (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 0.0f}},
+                 .oriOffset = {.yaw = 0.0f, .pitch = 0.0f},
+                 .bulletType = BULLET_TYPE_STANDARD};
+
+  return e;
+}
+
 entity_t SpawnEnemyCapsule(world_t *world, GameWorld *game, Vector3 position,
                            bitset_t *mask) {
   entity_t e = WorldCreateEntity(world, mask);
@@ -110,6 +241,10 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.gruntGun = LoadModel("assets/models/enemies/grunt/grunt-gun.glb");
   gw.gruntLegs = LoadModel("assets/models/enemies/grunt/grunt-legs.glb");
   gw.gruntTorso = LoadModel("assets/models/enemies/grunt/grunt-torso.glb");
+
+  // TODO change to new model later
+  gw.missileEnemyModel =
+      LoadModel("assets/models/enemies/grunt/grunt-legs.glb");
 
   /* ---------- Player archetype ---------- */
 
@@ -268,43 +403,120 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   /* ---------- enemy archetype ---------- */
 
-  uint32_t enemyCapsuleBits[] = {COMP_POSITION,         COMP_VELOCITY,
+  // uint32_t enemyCapsuleBits[] = {COMP_POSITION,         COMP_VELOCITY,
+  //                                COMP_ORIENTATION,      COMP_MODEL,
+  //                                COMP_ACTIVE, COMP_COLLISION_INSTANCE,
+  //                                COMP_CAPSULE_COLLIDER, COMP_HEALTH,
+  //                                COMP_ON_COLLISION,     COMP_NAVPATH,
+  //                                COMP_GRUNT_FIRE_TIMER};
+
+  // bitset_t enemyCapsuleMask =
+  //     MakeMask(enemyCapsuleBits, sizeof(enemyCapsuleBits) /
+  //     sizeof(uint32_t));
+
+  // gw.enemyCapsuleArchId = WorldCreateArchetype(world, &enemyCapsuleMask);
+
+  // archetype_t *enemyCapsuleArch =
+  //     WorldGetArchetype(world, gw.enemyCapsuleArchId);
+
+  // ArchetypeAddInline(enemyCapsuleArch, COMP_POSITION, sizeof(Position));
+  // ArchetypeAddInline(enemyCapsuleArch, COMP_VELOCITY, sizeof(Velocity));
+  // ArchetypeAddInline(enemyCapsuleArch, COMP_ORIENTATION,
+  // sizeof(Orientation)); ArchetypeAddInline(enemyCapsuleArch, COMP_ACTIVE,
+  // sizeof(Active)); ArchetypeAddInline(enemyCapsuleArch, COMP_HEALTH,
+  // sizeof(Health)); ArchetypeAddInline(enemyCapsuleArch, COMP_NAVPATH,
+  // sizeof(NavPath));
+
+  // ArchetypeAddHandle(enemyCapsuleArch, COMP_MODEL, &engine->modelPool);
+
+  // ArchetypeAddHandle(enemyCapsuleArch, COMP_GRUNT_FIRE_TIMER,
+  //                    &engine->timerPool);
+
+  // ArchetypeAddInline(enemyCapsuleArch, COMP_COLLISION_INSTANCE,
+  //                    sizeof(CollisionInstance));
+
+  // ArchetypeAddInline(enemyCapsuleArch, COMP_CAPSULE_COLLIDER,
+  //                    sizeof(CapsuleCollider));
+
+  // ArchetypeAddInline(enemyCapsuleArch, COMP_ON_COLLISION,
+  //                    sizeof(CollisionResponse));
+
+  // SpawnEnemyCapsule(world, &gw, (Vector3){-5, 1, 5}, &enemyCapsuleMask);
+
+  /* ---------- GRUNT ENEMY ARCHETYPE ---------- */
+
+  uint32_t enemyGruntBits[] = {COMP_POSITION,         COMP_VELOCITY,
+                               COMP_ORIENTATION,      COMP_MODEL,
+                               COMP_ACTIVE,           COMP_COLLISION_INSTANCE,
+                               COMP_CAPSULE_COLLIDER, COMP_HEALTH,
+                               COMP_NAVPATH,          COMP_GRUNT_FIRE_TIMER,
+                               COMP_MUZZLES};
+
+  bitset_t enemyGruntMask =
+      MakeMask(enemyGruntBits, sizeof(enemyGruntBits) / sizeof(uint32_t));
+
+  gw.enemyGruntArchId = WorldCreateArchetype(world, &enemyGruntMask);
+
+  archetype_t *enemyGruntArch = WorldGetArchetype(world, gw.enemyGruntArchId);
+
+  ArchetypeAddInline(enemyGruntArch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(enemyGruntArch, COMP_VELOCITY, sizeof(Velocity));
+  ArchetypeAddInline(enemyGruntArch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddInline(enemyGruntArch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(enemyGruntArch, COMP_HEALTH, sizeof(Health));
+  ArchetypeAddInline(enemyGruntArch, COMP_NAVPATH, sizeof(NavPath));
+  ArchetypeAddInline(enemyGruntArch, COMP_MUZZLES, sizeof(MuzzleCollection_t));
+
+  ArchetypeAddHandle(enemyGruntArch, COMP_MODEL, &engine->modelPool);
+
+  ArchetypeAddHandle(enemyGruntArch, COMP_GRUNT_FIRE_TIMER, &engine->timerPool);
+
+  ArchetypeAddInline(enemyGruntArch, COMP_COLLISION_INSTANCE,
+                     sizeof(CollisionInstance));
+
+  ArchetypeAddInline(enemyGruntArch, COMP_CAPSULE_COLLIDER,
+                     sizeof(CapsuleCollider));
+
+  SpawnEnemyGrunt(world, &gw, (Vector3){10, 0, 10});
+
+  /* ---------- MISSILE ENEMY ARCHETYPE ---------- */
+
+  uint32_t enemyMissileBits[] = {COMP_POSITION,         COMP_VELOCITY,
                                  COMP_ORIENTATION,      COMP_MODEL,
                                  COMP_ACTIVE,           COMP_COLLISION_INSTANCE,
                                  COMP_CAPSULE_COLLIDER, COMP_HEALTH,
-                                 COMP_ON_COLLISION,     COMP_NAVPATH,
-                                 COMP_GRUNT_FIRE_TIMER};
+                                 COMP_NAVPATH,          COMP_GRUNT_FIRE_TIMER,
+                                 COMP_MUZZLES};
 
-  bitset_t enemyCapsuleMask =
-      MakeMask(enemyCapsuleBits, sizeof(enemyCapsuleBits) / sizeof(uint32_t));
+  bitset_t enemyMissileMask =
+      MakeMask(enemyMissileBits, sizeof(enemyMissileBits) / sizeof(uint32_t));
 
-  gw.enemyCapsuleArchId = WorldCreateArchetype(world, &enemyCapsuleMask);
+  gw.enemyMissileArchId = WorldCreateArchetype(world, &enemyMissileMask);
 
-  archetype_t *enemyCapsuleArch =
-      WorldGetArchetype(world, gw.enemyCapsuleArchId);
+  archetype_t *enemyMissileArch =
+      WorldGetArchetype(world, gw.enemyMissileArchId);
 
-  ArchetypeAddInline(enemyCapsuleArch, COMP_POSITION, sizeof(Position));
-  ArchetypeAddInline(enemyCapsuleArch, COMP_VELOCITY, sizeof(Velocity));
-  ArchetypeAddInline(enemyCapsuleArch, COMP_ORIENTATION, sizeof(Orientation));
-  ArchetypeAddInline(enemyCapsuleArch, COMP_ACTIVE, sizeof(Active));
-  ArchetypeAddInline(enemyCapsuleArch, COMP_HEALTH, sizeof(Health));
-  ArchetypeAddInline(enemyCapsuleArch, COMP_NAVPATH, sizeof(NavPath));
+  ArchetypeAddInline(enemyMissileArch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(enemyMissileArch, COMP_VELOCITY, sizeof(Velocity));
+  ArchetypeAddInline(enemyMissileArch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddInline(enemyMissileArch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(enemyMissileArch, COMP_HEALTH, sizeof(Health));
+  ArchetypeAddInline(enemyMissileArch, COMP_NAVPATH, sizeof(NavPath));
+  ArchetypeAddInline(enemyMissileArch, COMP_MUZZLES,
+                     sizeof(MuzzleCollection_t));
 
-  ArchetypeAddHandle(enemyCapsuleArch, COMP_MODEL, &engine->modelPool);
+  ArchetypeAddHandle(enemyMissileArch, COMP_MODEL, &engine->modelPool);
 
-  ArchetypeAddHandle(enemyCapsuleArch, COMP_GRUNT_FIRE_TIMER,
+  ArchetypeAddHandle(enemyMissileArch, COMP_GRUNT_FIRE_TIMER,
                      &engine->timerPool);
 
-  ArchetypeAddInline(enemyCapsuleArch, COMP_COLLISION_INSTANCE,
+  ArchetypeAddInline(enemyMissileArch, COMP_COLLISION_INSTANCE,
                      sizeof(CollisionInstance));
 
-  ArchetypeAddInline(enemyCapsuleArch, COMP_CAPSULE_COLLIDER,
+  ArchetypeAddInline(enemyMissileArch, COMP_CAPSULE_COLLIDER,
                      sizeof(CapsuleCollider));
 
-  ArchetypeAddInline(enemyCapsuleArch, COMP_ON_COLLISION,
-                     sizeof(CollisionResponse));
-
-  SpawnEnemyCapsule(world, &gw, (Vector3){-5, 1, 5}, &enemyCapsuleMask);
+  SpawnEnemyMissile(world, &gw, (Vector3){10, 0, 20});
 
   /* ---------- Box archetype ---------- */
 

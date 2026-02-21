@@ -3,6 +3,60 @@
 #include "systems.h"
 #include <stdint.h>
 
+void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
+                int shooterArchId, Muzzle_t *m) {
+  archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
+
+  for (uint32_t i = 0; i < bulletArch->count; i++) {
+    entity_t b = bulletArch->entities[i];
+
+    Active *active = ECS_GET(world, b, Active, COMP_ACTIVE);
+    if (active->value)
+      continue;
+
+    active->value = true;
+
+    BulletType *bt = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
+    bt->type = m->bulletType;
+
+    float muzzleVelocity = muzzleVelocities[bt->type];
+
+    Vector3 muzzlePos = m->worldPosition;
+    Vector3 forward = m->forward;
+
+    // --- Position ---
+    ECS_GET(world, b, Position, COMP_POSITION)->value = muzzlePos;
+
+    // --- Velocity ---
+    ECS_GET(world, b, Velocity, COMP_VELOCITY)->value =
+        Vector3Scale(forward, muzzleVelocity);
+
+    // --- Orientation ---
+    Orientation *bori = ECS_GET(world, b, Orientation, COMP_ORIENTATION);
+
+    bori->yaw = atan2f(forward.x, forward.z);
+    bori->pitch = asinf(forward.y);
+
+    // --- Model rotation ---
+    ModelCollection_t *bmc = ECS_GET(world, b, ModelCollection_t, COMP_MODEL);
+
+    bmc->models[0].rotation = (Vector3){-bori->pitch, 0.0f, 0.0f};
+
+    // --- Owner ---
+    BulletOwner *owner = ECS_GET(world, b, BulletOwner, COMP_BULLET_OWNER);
+
+    owner->eId = shooter.id;
+    owner->archId = shooterArchId;
+
+    // --- Lifetime ---
+    Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
+    life->value = 5.0f;
+
+    printf("spawned bullet\n");
+    break;
+  }
+}
+
 static bool SweptSphereVsAABB(Vector3 start, Vector3 end, float radius,
                               BoundingBox box) {
   Vector3 velocity = Vector3Subtract(end, start);
@@ -128,8 +182,6 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
         if (!(ci->collideMask & (1 << LAYER_BULLET)))
           continue;
 
-        if (enemy.id == owner->eId)
-          continue;
 
         if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {
           printf("HIT\n");

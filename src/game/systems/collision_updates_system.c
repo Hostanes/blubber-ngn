@@ -168,3 +168,63 @@ void UpdateCollisionBounds(world_t *world) {
     }
   }
 }
+
+void CollisionSyncSystem(world_t *world) {
+  for (int a = 0; a < world->archetypeCount; a++) {
+    archetype_t *arch = &world->archetypes[a];
+
+    if (!ArchetypeHas(arch, COMP_COLLISION_INSTANCE))
+      continue;
+
+    for (uint32_t i = 0; i < arch->count; i++) {
+      entity_t e = arch->entities[i];
+
+      // Skip inactive
+      if (ArchetypeHas(arch, COMP_ACTIVE)) {
+        Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+        if (!active || !active->value)
+          continue;
+      }
+
+      CollisionInstance *ci =
+          ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+      Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+      if (!ci || !pos)
+        continue;
+
+      switch (ci->type) {
+      case COLLIDER_AABB: {
+        AABBCollider *aabb =
+            ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
+
+        if (!aabb)
+          break;
+
+        Collision_UpdateAABB(ci, aabb, pos->value);
+      } break;
+
+      case COLLIDER_SPHERE: {
+        SphereCollider *sphere =
+            ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+
+        if (!sphere)
+          break;
+
+        Collision_UpdateSphere(ci, sphere, pos->value);
+      } break;
+
+      case COLLIDER_CAPSULE: {
+        CapsuleCollider *cap =
+            ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+
+        if (!cap)
+          break;
+
+        Collision_UpdateCapsule(ci, cap, pos->value);
+      } break;
+      }
+    }
+  }
+}

@@ -83,3 +83,74 @@ void EnemyShootSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
     }
   }
 }
+
+static void BuildBasisFromOrientation(Orientation *ori, Vector3 *forward,
+                                      Vector3 *right, Vector3 *up) {
+  *forward = (Vector3){cosf(ori->pitch) * sinf(ori->yaw), sinf(ori->pitch),
+                       cosf(ori->pitch) * cosf(ori->yaw)};
+
+  *right = Vector3Normalize(Vector3CrossProduct(*forward, (Vector3){0, 1, 0}));
+
+  *up = Vector3Normalize(Vector3CrossProduct(*right, *forward));
+}
+
+void EnemyMuzzleUpdate_Grunt(world_t *world, archetype_t *arch) {
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+    Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+
+    MuzzleCollection_t *muzzles =
+        ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+
+    if (!pos || !ori || !muzzles || muzzles->count == 0)
+      continue;
+
+    Vector3 forward, right, up;
+    BuildBasisFromOrientation(ori, &forward, &right, &up);
+
+    Muzzle_t *m = &muzzles->Muzzles[0];
+
+    Vector3 offset = m->positionOffset.value;
+
+    Vector3 worldOffset =
+        Vector3Add(Vector3Scale(right, offset.x),
+                   Vector3Add(Vector3Scale(up, offset.y),
+                              Vector3Scale(forward, offset.z)));
+
+    m->worldPosition = Vector3Add(pos->value, worldOffset);
+
+    // Force vertical firing
+    m->forward = (Vector3){0, 1, 0};
+  }
+}
+
+void EnemyMuzzleUpdate_Missile(world_t *world, archetype_t *arch) {
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+    MuzzleCollection_t *muzzles =
+        ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+
+    if (!pos || !muzzles || muzzles->count == 0)
+      continue;
+
+    Muzzle_t *m = &muzzles->Muzzles[0];
+
+    m->worldPosition = Vector3Add(pos->value, (Vector3){0, 1.5f, 0});
+
+    m->forward = (Vector3){0, 1, 0}; // straight up
+  }
+}
