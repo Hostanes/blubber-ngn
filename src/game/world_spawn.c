@@ -23,6 +23,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   uint32_t benchArchId = WorldCreateArchetype(world, &benchMask);
   archetype_t *benchArch = WorldGetArchetype(world, benchArchId);
 
+  gw.benchArchId = benchArchId;
+
   ArchetypeAddInline(benchArch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(benchArch, COMP_VELOCITY, sizeof(Velocity));
 
