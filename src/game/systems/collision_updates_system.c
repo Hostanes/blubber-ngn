@@ -175,6 +175,9 @@ void CollisionSyncSystem(world_t *world) {
 
     if (!ArchetypeHas(arch, COMP_COLLISION_INSTANCE))
       continue;
+    if (!ArchetypeHas(arch, COMP_VELOCITY)) {
+      continue;
+    }
 
     for (uint32_t i = 0; i < arch->count; i++) {
       entity_t e = arch->entities[i];

@@ -281,9 +281,9 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
     RenderArchetype(world, arch);
   }
 
-  NavGrid *grid = &game->navGrid;
+  // NavGrid *grid = &game->navGrid;
 
-  DrawNavGridBatched(grid);
+  // DrawNavGridBatched(grid);
 
   EndMode3D();
   DrawFPS(10, 10);
