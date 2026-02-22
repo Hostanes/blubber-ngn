@@ -20,6 +20,9 @@
 #define PLAYER_RADIUS 0.35f
 #define PLAYER_HEIGHT 2.0f
 
+#define NUM_ARCHETYPES 1024
+#define TOTAL_ENTITIES 1000000
+
 enum CollisionLayer {
   LAYER_PLAYER = 0,
   LAYER_WORLD = 1,
@@ -46,16 +49,8 @@ typedef struct GameWorld {
 
   int nextBulletIndex;
 
-  uint32_t benchArchId;
-
-  uint32_t playerArchId;
-  uint32_t bulletArchId;
-
-  uint32_t enemyCapsuleArchId;
-  uint32_t enemyGruntArchId;
-  uint32_t enemyMissileArchId;
-
-  uint32_t obstacleArchId;
+  uint32_t archIds[NUM_ARCHETYPES];
+  uint32_t archCount;
 
   Model bulletModel;
   Model enemyModel;

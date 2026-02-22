@@ -1,43 +1,47 @@
 #include "components/components.h"
 #include "components/movement.h"
-#include "components/muzzle.h"
-#include "components/renderable.h"
 #include "components/transform.h"
 #include "ecs_get.h"
 #include "game.h"
-#include "nav_grid/nav.h"
 #include <raylib.h>
 #include <raymath.h>
 
-#define BENCHMARK_ENTITY_COUNT 200000
-
 GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
-  gw.gameState = GAMESTATE_MAINMENU;
+  gw.archCount = NUM_ARCHETYPES;
 
-  uint32_t benchBits[] = {COMP_POSITION, COMP_VELOCITY};
+  uint32_t bits[] = {COMP_POSITION, COMP_VELOCITY, COMP_TIMER};
+  bitset_t mask = MakeMask(bits, 3);
 
-  bitset_t benchMask =
-      MakeMask(benchBits, sizeof(benchBits) / sizeof(uint32_t));
+  int ENTITIES_PER_ARCHETYPE = TOTAL_ENTITIES / NUM_ARCHETYPES;
 
-  uint32_t benchArchId = WorldCreateArchetype(world, &benchMask);
-  archetype_t *benchArch = WorldGetArchetype(world, benchArchId);
+  for (uint32_t a = 0; a < NUM_ARCHETYPES; ++a) {
 
-  gw.benchArchId = benchArchId;
+    uint32_t archId = WorldCreateArchetype(world, &mask);
+    gw.archIds[a] = archId;
 
-  ArchetypeAddInline(benchArch, COMP_POSITION, sizeof(Position));
-  ArchetypeAddInline(benchArch, COMP_VELOCITY, sizeof(Velocity));
+    archetype_t *arch = WorldGetArchetype(world, archId);
 
-  for (uint32_t i = 0; i < BENCHMARK_ENTITY_COUNT; i++) {
-    entity_t e = WorldCreateEntity(world, &benchMask);
+    ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
+    ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
+    ArchetypeAddInline(arch, COMP_TIMER, sizeof(Timer));
+    // ArchetypeAddHandle(arch, COMP_TIMER, sizeof(Timer));
 
-    Position *p = ECS_GET(world, e, Position, COMP_POSITION);
-    Velocity *v = ECS_GET(world, e, Velocity, COMP_VELOCITY);
+    for (uint32_t i = 0; i < ENTITIES_PER_ARCHETYPE; ++i) {
+      entity_t e = WorldCreateEntity(world, &mask);
 
-    p->value = (Vector3){0, 0, 0};
+      Position *p = ECS_GET(world, e, Position, COMP_POSITION);
+      Velocity *v = ECS_GET(world, e, Velocity, COMP_VELOCITY);
+      Timer *t = ECS_GET(world, e, Timer, COMP_TIMER);
 
-    v->value =
-        (Vector3){(float)(i % 10) * 0.1f, 0.0f, (float)((i * 7) % 10) * 0.1f};
+      p->x = 0;
+      p->y = 0;
+      p->z = 0;
+      v->x = (float)(i % 10) * 0.1f;
+      v->y = 0;
+      v->z = (float)((i * 7) % 10) * 0.1f;
+      t->value = 5.0f;
+    }
   }
 
   return gw;

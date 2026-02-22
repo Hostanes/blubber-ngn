@@ -2,8 +2,6 @@
 #include "game.h"
 #include "systems/systems.h"
 
-
-
 void RunGameLoop(Engine *engine, GameWorld *game) {
   world_t *world = engine->world;
   Camera3D *camera = &engine->camera;
@@ -19,7 +17,6 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
         DisableCursor();
       }
 
-      RenderMainMenu(game);
     } break;
 
     case GAMESTATE_INLEVEL: {

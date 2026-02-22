@@ -1,12 +1,10 @@
-
 #pragma once
-#include "raylib.h"
+#include "../../engine/memory/memory_aligned.h"
+#include <immintrin.h>
 
-typedef struct {
-  Vector3 value;
+typedef struct ECS_ALIGN(16) {
+  float x;
+  float y;
+  float z;
+  float w; // padding
 } Position;
-
-typedef struct {
-  float yaw;
-  float pitch;
-} Orientation;
