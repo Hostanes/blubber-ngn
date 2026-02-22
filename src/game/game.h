@@ -46,6 +46,8 @@ typedef struct GameWorld {
 
   int nextBulletIndex;
 
+  uint32_t benchArchId;
+
   uint32_t playerArchId;
   uint32_t bulletArchId;
 
