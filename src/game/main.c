@@ -1,10 +1,52 @@
 #include "game.h"
 #include "omp.h"
+#include <float.h>
 #include <immintrin.h>
+#include <math.h>
 
 /* ================= Main ================= */
 
-void BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
+typedef struct {
+  double mean;
+  double stddev;
+  double min;
+  double max;
+} Stats;
+
+static Stats ComputeStats(double *values, int count) {
+  Stats s = {0};
+  if (count == 0)
+    return s;
+
+  double sum = 0.0;
+  s.min = DBL_MAX;
+  s.max = -DBL_MAX;
+
+  for (int i = 0; i < count; i++) {
+    double v = values[i];
+    sum += v;
+
+    if (v < s.min)
+      s.min = v;
+    if (v > s.max)
+      s.max = v;
+  }
+
+  s.mean = sum / count;
+
+  double variance = 0.0;
+  for (int i = 0; i < count; i++) {
+    double diff = values[i] - s.mean;
+    variance += diff * diff;
+  }
+
+  variance /= count;
+  s.stddev = sqrt(variance);
+
+  return s;
+}
+
+double BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
   double start = GetTime();
 
   bool hasTimer = ArchetypeHas(arch, COMP_TIMER);
@@ -83,14 +125,12 @@ void BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
     if (hasTimer && timers[i].value <= 0.0f)
       timers[i].value = 5.0f;
   }
-
   double end = GetTime();
-
-  printf("Entities: %u | %.2f M updates/sec\n", count,
-         (count / (end - start)) / 1000000.0);
+  double updatesPerSec = count / (end - start);
+  return updatesPerSec;
 }
 
-void BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
+double BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
   archetypeColumn_t *timerCol = ArchetypeFindColumn(arch, COMP_TIMER);
 
   Timer *timers = (Timer *)timerCol->data;
@@ -99,6 +139,8 @@ void BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
   uint32_t i = 0;
 
   __m128 dtVec = _mm_set1_ps(dt);
+
+  double start = GetTime();
 
   for (; i + 3 < count; i += 4) {
     __m128 t0 = _mm_load_ps((float *)&timers[i + 0]);
@@ -119,19 +161,54 @@ void BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
 
   for (; i < count; ++i)
     timers[i].value -= dt;
+
+  double end = GetTime();
+  return count / (end - start);
 }
 
 void RunBenchmark(world_t *world, archetype_t *moveArch,
                   archetype_t *timerArch) {
   const float dt = 0.016f;
+  const int iterations = 10000;
 
-  for (int i = 0; i < 1000; i++) {
+  double *moveResults = malloc(sizeof(double) * iterations * 2);
+  double *timerResults = malloc(sizeof(double) * iterations);
 
+  int moveIndex = 0;
+
+  // warm up 200 iterations
+  for (int i = 0; i < 200; i++) {
     BenchmarkTimerSystem(world, timerArch, dt);
-
     BenchmarkMovementSystem(world, moveArch, dt);
     BenchmarkMovementSystem(world, timerArch, dt);
   }
+
+  for (int i = 0; i < iterations; i++) {
+
+    timerResults[i] = BenchmarkTimerSystem(world, timerArch, dt);
+
+    moveResults[moveIndex++] = BenchmarkMovementSystem(world, moveArch, dt);
+
+    moveResults[moveIndex++] = BenchmarkMovementSystem(world, timerArch, dt);
+  }
+
+  Stats moveStats = ComputeStats(moveResults, moveIndex);
+  Stats timerStats = ComputeStats(timerResults, iterations);
+
+  printf("\n=== Movement System ===\n");
+  printf("Mean:    %.2f M updates/sec\n", moveStats.mean / 1e6);
+  printf("StdDev:  %.2f M\n", moveStats.stddev / 1e6);
+  printf("Min:     %.2f M\n", moveStats.min / 1e6);
+  printf("Max:     %.2f M\n", moveStats.max / 1e6);
+
+  printf("\n=== Timer System ===\n");
+  printf("Mean:    %.2f M updates/sec\n", timerStats.mean / 1e6);
+  printf("StdDev:  %.2f M\n", timerStats.stddev / 1e6);
+  printf("Min:     %.2f M\n", timerStats.min / 1e6);
+  printf("Max:     %.2f M\n", timerStats.max / 1e6);
+
+  free(moveResults);
+  free(timerResults);
 }
 
 int main(void) {
