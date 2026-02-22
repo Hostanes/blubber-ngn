@@ -8,7 +8,6 @@
 #include "collision.h"
 #include "health.h"
 #include "movement.h"
-#include "muzzle.h"
 #include "renderable.h"
 #include "timer.h"
 #include "transform.h"

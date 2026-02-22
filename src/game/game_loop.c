@@ -19,7 +19,6 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
         DisableCursor();
       }
 
-      RenderMainMenu(game);
     } break;
 
     case GAMESTATE_INLEVEL: {

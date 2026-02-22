@@ -1,7 +1,11 @@
-
 #pragma once
+#include "../../engine/memory/memory_aligned.h"
 #include "raylib.h"
+#include <immintrin.h>
 
-typedef struct {
-  Vector3 value;
+typedef struct ECS_ALIGN(16) {
+  float x;
+  float y;
+  float z;
+  float w; // padding
 } Velocity;

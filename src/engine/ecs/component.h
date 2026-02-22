@@ -1,5 +1,6 @@
 
 #pragma once
+#include "../memory/memory_aligned.h"
 #include "component_internal.h"
 #include "ecs_types.h"
 #include "stdbool.h"

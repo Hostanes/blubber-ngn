@@ -6,7 +6,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 
-
 # ------------------- OpenMP-------------------
 find_package(OpenMP)
 
@@ -25,6 +24,12 @@ add_executable(Game ${SOURCES})
 # ------------------- Include Directories -------------------
 target_include_directories(Game PRIVATE
     ${CMAKE_SOURCE_DIR}/src
+)
+
+target_compile_options(Game PRIVATE
+    -O3
+    -march=native
+    -ffast-math
 )
 
 # ------------------- Link Libraries -------------------

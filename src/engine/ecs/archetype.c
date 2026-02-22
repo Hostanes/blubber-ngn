@@ -24,6 +24,36 @@ static void ArchetypeGrow(archetype_t *arch) {
   arch->capacity = newCap;
 }
 
+static void ArchetypeGrowAligned(archetype_t *arch) {
+  uint32_t oldCap = arch->capacity;
+  uint32_t newCap = oldCap == 0 ? 64 : oldCap * 2;
+
+  size_t oldEntitySize = oldCap * sizeof(entity_t);
+  size_t newEntitySize = newCap * sizeof(entity_t);
+
+  arch->entities =
+      ECS_AlignedRealloc(arch->entities, oldEntitySize, newEntitySize);
+
+  for (uint32_t i = 0; i < arch->columnCount; ++i) {
+    archetypeColumn_t *col = &arch->columns[i];
+
+    if (col->elementSize > 0) {
+      size_t oldSize = oldCap * col->elementSize;
+      size_t newSize = newCap * col->elementSize;
+
+      col->data = ECS_AlignedRealloc(col->data, oldSize, newSize);
+
+      /* Zero newly added portion */
+      if (newCap > oldCap) {
+        void *start = (char *)col->data + oldCap * col->elementSize;
+        memset(start, 0, (newCap - oldCap) * col->elementSize);
+      }
+    }
+  }
+
+  arch->capacity = newCap;
+}
+
 void ArchetypeInit(archetype_t *arch, bitset_t mask) {
   arch->mask = mask;
   arch->entities = NULL;
@@ -44,6 +74,17 @@ void ArchetypeShutdown(archetype_t *arch) {
   memset(arch, 0, sizeof(*arch));
 }
 
+void ArchetypeShutdownAligned(archetype_t *arch) {
+  for (uint32_t i = 0; i < arch->columnCount; ++i) {
+    ECS_AlignedFree(arch->columns[i].data);
+  }
+
+  ECS_AlignedFree(arch->columns);
+  ECS_AlignedFree(arch->entities);
+
+  memset(arch, 0, sizeof(*arch));
+}
+
 static archetypeColumn_t *ArchetypeAddColumn(archetype_t *arch,
                                              componentId_t componentId,
                                              archetypeStorageType_t storageType,
@@ -53,6 +94,29 @@ static archetypeColumn_t *ArchetypeAddColumn(archetype_t *arch,
                           (arch->columnCount + 1) * sizeof(archetypeColumn_t));
 
   archetypeColumn_t *col = &arch->columns[arch->columnCount++];
+  memset(col, 0, sizeof(*col));
+
+  col->componentId = componentId;
+  col->storageType = storageType;
+  col->elementSize = elementSize;
+  col->data = NULL;
+  col->externalStore = NULL;
+
+  return col;
+}
+
+static archetypeColumn_t *
+ArchetypeAddColumnAligned(archetype_t *arch, componentId_t componentId,
+                          archetypeStorageType_t storageType,
+                          size_t elementSize) {
+
+  size_t oldSize = arch->columnCount * sizeof(archetypeColumn_t);
+  size_t newSize = (arch->columnCount + 1) * sizeof(archetypeColumn_t);
+
+  arch->columns = ECS_AlignedRealloc(arch->columns, oldSize, newSize);
+
+  archetypeColumn_t *col = &arch->columns[arch->columnCount++];
+
   memset(col, 0, sizeof(*col));
 
   col->componentId = componentId;

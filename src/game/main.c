@@ -1,86 +1,136 @@
 #include "game.h"
 #include "omp.h"
-
-/* ================= Utilities ================= */
-
-void ModelCollectionInit(ModelCollection_t *mc, uint32_t initialCapacity) {
-  mc->count = 0;
-  mc->capacity = initialCapacity;
-  mc->models = malloc(sizeof(ModelInstance_t) * initialCapacity);
-}
-
-void ModelCollectionAdd(ModelCollection_t *mc, ModelInstance_t instance) {
-  if (mc->count >= mc->capacity) {
-    mc->capacity = mc->capacity ? mc->capacity * 2 : 2;
-    mc->models = realloc(mc->models, sizeof(ModelInstance_t) * mc->capacity);
-  }
-  mc->models[mc->count++] = instance;
-}
-
-void ModelCollectionFree(ModelCollection_t *mc) {
-  free(mc->models);
-  mc->models = NULL;
-  mc->count = mc->capacity = 0;
-}
-
-static Vector3 ResolveModelRotation(const Orientation *entityOri,
-                                    const ModelInstance_t *mi) {
-  Vector3 result = mi->rotation;
-
-  switch (mi->rotationMode) {
-  case MODEL_ROT_WORLD:
-    // no entity rotation
-    break;
-
-  case MODEL_ROT_YAW_ONLY:
-    result.y += entityOri->yaw;
-    break;
-
-  case MODEL_ROT_YAW_PITCH:
-    result.y += entityOri->yaw;
-    result.x += entityOri->pitch;
-    break;
-
-  case MODEL_ROT_FULL:
-    result.x += entityOri->pitch;
-    result.y += entityOri->yaw;
-    break;
-  }
-
-  return result;
-}
+#include <immintrin.h>
 
 /* ================= Main ================= */
 
 void BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
   double start = GetTime();
 
-#pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
-  for (uint32_t i = 0; i < arch->count; i++) {
-    entity_t e = arch->entities[i];
+  bool hasTimer = ArchetypeHas(arch, COMP_TIMER);
 
-    Position *p = ECS_GET(world, e, Position, COMP_POSITION);
-    Velocity *v = ECS_GET(world, e, Velocity, COMP_VELOCITY);
+  archetypeColumn_t *posCol = ArchetypeFindColumn(arch, COMP_POSITION);
 
-    p->value.x += v->value.x * dt;
-    p->value.y += v->value.y * dt;
-    p->value.z += v->value.z * dt;
+  archetypeColumn_t *velCol = ArchetypeFindColumn(arch, COMP_VELOCITY);
+
+  archetypeColumn_t *timerCol =
+      hasTimer ? ArchetypeFindColumn(arch, COMP_TIMER) : NULL;
+
+  Position *positions = (Position *)posCol->data;
+  Velocity *velocities = (Velocity *)velCol->data;
+  Timer *timers = hasTimer ? (Timer *)timerCol->data : NULL;
+
+  uint32_t count = arch->count;
+  uint32_t i = 0;
+
+  __m128 dtVec = _mm_set1_ps(dt);
+  __m128 zero = _mm_setzero_ps();
+  __m128 reset = _mm_set1_ps(5.0f);
+
+  for (; i + 3 < count; i += 4) {
+    // load 4 positions
+    __m128 p0 = _mm_load_ps((float *)&positions[i + 0]);
+    __m128 p1 = _mm_load_ps((float *)&positions[i + 1]);
+    __m128 p2 = _mm_load_ps((float *)&positions[i + 2]);
+    __m128 p3 = _mm_load_ps((float *)&positions[i + 3]);
+
+    // load 4 velocities
+    __m128 v0 = _mm_load_ps((float *)&velocities[i + 0]);
+    __m128 v1 = _mm_load_ps((float *)&velocities[i + 1]);
+    __m128 v2 = _mm_load_ps((float *)&velocities[i + 2]);
+    __m128 v3 = _mm_load_ps((float *)&velocities[i + 3]);
+
+    // p += v * dt
+    p0 = _mm_add_ps(p0, _mm_mul_ps(v0, dtVec));
+    p1 = _mm_add_ps(p1, _mm_mul_ps(v1, dtVec));
+    p2 = _mm_add_ps(p2, _mm_mul_ps(v2, dtVec));
+    p3 = _mm_add_ps(p3, _mm_mul_ps(v3, dtVec));
+
+    _mm_store_ps((float *)&positions[i + 0], p0);
+    _mm_store_ps((float *)&positions[i + 1], p1);
+    _mm_store_ps((float *)&positions[i + 2], p2);
+    _mm_store_ps((float *)&positions[i + 3], p3);
+
+    if (hasTimer) {
+      __m128 t0 = _mm_load_ps((float *)&timers[i + 0]);
+      __m128 t1 = _mm_load_ps((float *)&timers[i + 1]);
+      __m128 t2 = _mm_load_ps((float *)&timers[i + 2]);
+      __m128 t3 = _mm_load_ps((float *)&timers[i + 3]);
+
+      __m128 m0 = _mm_cmple_ps(t0, zero);
+      __m128 m1 = _mm_cmple_ps(t1, zero);
+      __m128 m2 = _mm_cmple_ps(t2, zero);
+      __m128 m3 = _mm_cmple_ps(t3, zero);
+
+      t0 = _mm_blendv_ps(t0, reset, m0);
+      t1 = _mm_blendv_ps(t1, reset, m1);
+      t2 = _mm_blendv_ps(t2, reset, m2);
+      t3 = _mm_blendv_ps(t3, reset, m3);
+
+      _mm_store_ps((float *)&timers[i + 0], t0);
+      _mm_store_ps((float *)&timers[i + 1], t1);
+      _mm_store_ps((float *)&timers[i + 2], t2);
+      _mm_store_ps((float *)&timers[i + 3], t3);
+    }
+  }
+
+  // scalar tail
+  for (; i < count; ++i) {
+    positions[i].x += velocities[i].x * dt;
+    positions[i].y += velocities[i].y * dt;
+    positions[i].z += velocities[i].z * dt;
+
+    if (hasTimer && timers[i].value <= 0.0f)
+      timers[i].value = 5.0f;
   }
 
   double end = GetTime();
 
-  double ms = (end - start) * 1000.0;
-  double updatesPerSecond = arch->count / (end - start);
-
-  printf("Entities: %u | Time: %.3f ms | %.2f M updates/sec\n", arch->count, ms,
-         updatesPerSecond / 1000000.0);
+  printf("Entities: %u | %.2f M updates/sec\n", count,
+         (count / (end - start)) / 1000000.0);
 }
 
-void RunBenchmark(world_t *world, archetype_t *arch) {
+void BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
+  archetypeColumn_t *timerCol = ArchetypeFindColumn(arch, COMP_TIMER);
+
+  Timer *timers = (Timer *)timerCol->data;
+
+  uint32_t count = arch->count;
+  uint32_t i = 0;
+
+  __m128 dtVec = _mm_set1_ps(dt);
+
+  for (; i + 3 < count; i += 4) {
+    __m128 t0 = _mm_load_ps((float *)&timers[i + 0]);
+    __m128 t1 = _mm_load_ps((float *)&timers[i + 1]);
+    __m128 t2 = _mm_load_ps((float *)&timers[i + 2]);
+    __m128 t3 = _mm_load_ps((float *)&timers[i + 3]);
+
+    t0 = _mm_sub_ps(t0, dtVec);
+    t1 = _mm_sub_ps(t1, dtVec);
+    t2 = _mm_sub_ps(t2, dtVec);
+    t3 = _mm_sub_ps(t3, dtVec);
+
+    _mm_store_ps((float *)&timers[i + 0], t0);
+    _mm_store_ps((float *)&timers[i + 1], t1);
+    _mm_store_ps((float *)&timers[i + 2], t2);
+    _mm_store_ps((float *)&timers[i + 3], t3);
+  }
+
+  for (; i < count; ++i)
+    timers[i].value -= dt;
+}
+
+void RunBenchmark(world_t *world, archetype_t *moveArch,
+                  archetype_t *timerArch) {
   const float dt = 0.016f;
 
-  for (int i = 0; i < 10000; i++) {
-    BenchmarkMovementSystem(world, arch, dt);
+  for (int i = 0; i < 1000; i++) {
+
+    BenchmarkTimerSystem(world, timerArch, dt);
+
+    BenchmarkMovementSystem(world, moveArch, dt);
+    BenchmarkMovementSystem(world, timerArch, dt);
   }
 }
 
@@ -90,7 +140,8 @@ int main(void) {
 
   Engine engine = EngineInit();
   GameWorld game = GameWorldCreate(&engine, engine.world);
-  RunBenchmark(engine.world, WorldGetArchetype(engine.world, game.benchArchId));
+  RunBenchmark(engine.world, WorldGetArchetype(engine.world, game.moveArchId),
+               WorldGetArchetype(engine.world, game.timerArchId));
   EngineShutdown(&engine);
   return 0;
 }

@@ -28,6 +28,25 @@ static void ComponentPoolGrow(componentPool_t *componentPool) {
   componentPool->denseCapacity = newCapacity;
 }
 
+static void ComponentPoolGrowAligned(componentPool_t *componentPool) {
+  uint32_t oldCapacity = componentPool->denseCapacity;
+  uint32_t newCapacity = oldCapacity == 0 ? 64 : oldCapacity * 2;
+
+  size_t oldHandleSize = oldCapacity * sizeof(uint32_t);
+  size_t newHandleSize = newCapacity * sizeof(uint32_t);
+
+  size_t oldDataSize = oldCapacity * componentPool->elementSize;
+  size_t newDataSize = newCapacity * componentPool->elementSize;
+
+  componentPool->denseHandles = ECS_AlignedRealloc(
+      componentPool->denseHandles, oldHandleSize, newHandleSize);
+
+  componentPool->denseData =
+      ECS_AlignedRealloc(componentPool->denseData, oldDataSize, newDataSize);
+
+  componentPool->denseCapacity = newCapacity;
+}
+
 static void ComponentPoolEnsureSparse(componentPool_t *pool, uint32_t handle) {
   uint32_t required = handle + 1;
 
@@ -47,6 +66,30 @@ static void ComponentPoolEnsureSparse(componentPool_t *pool, uint32_t handle) {
   for (uint32_t i = oldCap; i < newCap; ++i) {
     pool->sparse[i] = UINT32_MAX;
   }
+
+  pool->sparseCapacity = newCap;
+}
+
+static void ComponentPoolEnsureSparseAligned(componentPool_t *pool,
+                                             uint32_t handle) {
+  uint32_t required = handle + 1;
+
+  if (required <= pool->sparseCapacity)
+    return;
+
+  uint32_t oldCap = pool->sparseCapacity;
+  uint32_t newCap = oldCap == 0 ? 64 : oldCap;
+
+  while (newCap < required)
+    newCap *= 2;
+
+  size_t oldSize = oldCap * sizeof(uint32_t);
+  size_t newSize = newCap * sizeof(uint32_t);
+
+  pool->sparse = ECS_AlignedRealloc(pool->sparse, oldSize, newSize);
+
+  for (uint32_t i = oldCap; i < newCap; ++i)
+    pool->sparse[i] = UINT32_MAX;
 
   pool->sparseCapacity = newCap;
 }
@@ -113,6 +156,25 @@ uint32_t ComponentCreate(componentPool_t *pool) {
   if (pool->count >= pool->denseCapacity) {
     ComponentPoolGrow(pool);
   }
+
+  uint32_t index = pool->count++;
+
+  pool->denseHandles[index] = handle;
+  pool->sparse[handle] = index;
+
+  void *data = (char *)pool->denseData + index * pool->elementSize;
+
+  memset(data, 0, pool->elementSize);
+
+  return handle;
+}
+
+uint32_t ComponentCreateAligned(componentPool_t *pool) {
+  uint32_t handle = pool->nextHandle++;
+  ComponentPoolEnsureSparseAligned(pool, handle);
+
+  if (pool->count >= pool->denseCapacity)
+    ComponentPoolGrowAligned(pool);
 
   uint32_t index = pool->count++;
 
