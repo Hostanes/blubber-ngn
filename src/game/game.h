@@ -48,6 +48,9 @@ typedef struct GameWorld {
 
   uint32_t benchArchId;
 
+  uint32_t timerArchId;
+  uint32_t moveArchId;
+
   uint32_t playerArchId;
   uint32_t bulletArchId;
 

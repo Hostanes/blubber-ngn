@@ -1,87 +1,153 @@
 #include "game.h"
 #include "omp.h"
+#include <float.h>
+#include <math.h>
 
 /* ================= Utilities ================= */
 
-void ModelCollectionInit(ModelCollection_t *mc, uint32_t initialCapacity) {
-  mc->count = 0;
-  mc->capacity = initialCapacity;
-  mc->models = malloc(sizeof(ModelInstance_t) * initialCapacity);
-}
+typedef struct {
+  double mean;
+  double stddev;
+  double min;
+  double max;
+} Stats;
 
-void ModelCollectionAdd(ModelCollection_t *mc, ModelInstance_t instance) {
-  if (mc->count >= mc->capacity) {
-    mc->capacity = mc->capacity ? mc->capacity * 2 : 2;
-    mc->models = realloc(mc->models, sizeof(ModelInstance_t) * mc->capacity);
-  }
-  mc->models[mc->count++] = instance;
-}
+static Stats ComputeStats(double *values, int count) {
+  Stats s = {0};
+  if (count == 0)
+    return s;
 
-void ModelCollectionFree(ModelCollection_t *mc) {
-  free(mc->models);
-  mc->models = NULL;
-  mc->count = mc->capacity = 0;
-}
+  double sum = 0.0;
+  s.min = DBL_MAX;
+  s.max = -DBL_MAX;
 
-static Vector3 ResolveModelRotation(const Orientation *entityOri,
-                                    const ModelInstance_t *mi) {
-  Vector3 result = mi->rotation;
+  for (int i = 0; i < count; i++) {
+    double v = values[i];
+    sum += v;
 
-  switch (mi->rotationMode) {
-  case MODEL_ROT_WORLD:
-    // no entity rotation
-    break;
-
-  case MODEL_ROT_YAW_ONLY:
-    result.y += entityOri->yaw;
-    break;
-
-  case MODEL_ROT_YAW_PITCH:
-    result.y += entityOri->yaw;
-    result.x += entityOri->pitch;
-    break;
-
-  case MODEL_ROT_FULL:
-    result.x += entityOri->pitch;
-    result.y += entityOri->yaw;
-    break;
+    if (v < s.min)
+      s.min = v;
+    if (v > s.max)
+      s.max = v;
   }
 
-  return result;
+  s.mean = sum / count;
+
+  double variance = 0.0;
+  for (int i = 0; i < count; i++) {
+    double diff = values[i] - s.mean;
+    variance += diff * diff;
+  }
+
+  variance /= count;
+  s.stddev = sqrt(variance);
+
+  return s;
 }
 
 /* ================= Main ================= */
 
-void BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
+
+double BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
   double start = GetTime();
 
-#pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
-  for (uint32_t i = 0; i < arch->count; i++) {
-    entity_t e = arch->entities[i];
+  bool hasTimer = ArchetypeHas(arch, COMP_TIMER);
 
-    Position *p = ECS_GET(world, e, Position, COMP_POSITION);
-    Velocity *v = ECS_GET(world, e, Velocity, COMP_VELOCITY);
+  archetypeColumn_t *posCol = ArchetypeFindColumn(arch, COMP_POSITION);
+  archetypeColumn_t *velCol = ArchetypeFindColumn(arch, COMP_VELOCITY);
+  archetypeColumn_t *timerCol =
+      hasTimer ? ArchetypeFindColumn(arch, COMP_TIMER) : NULL;
 
-    p->value.x += v->value.x * dt;
-    p->value.y += v->value.y * dt;
-    p->value.z += v->value.z * dt;
+  Position *positions = (Position *)posCol->data;
+  Velocity *velocities = (Velocity *)velCol->data;
+  Timer *timers = hasTimer ? (Timer *)timerCol->data : NULL;
+
+  uint32_t count = arch->count;
+
+#pragma omp parallel for if (count >= OMP_MIN_ITERATIONS)
+  for (uint32_t i = 0; i < count; ++i) {
+
+    positions[i].value.x += velocities[i].value.x * dt;
+    positions[i].value.y += velocities[i].value.y * dt;
+    positions[i].value.z += velocities[i].value.z * dt;
+
+    if (hasTimer) {
+      timers[i].value -= dt;
+
+      if (timers[i].value <= 0.0f)
+        timers[i].value = 5.0f;
+    }
   }
 
   double end = GetTime();
-
-  double ms = (end - start) * 1000.0;
-  double updatesPerSecond = arch->count / (end - start);
-
-  printf("Entities: %u | Time: %.3f ms | %.2f M updates/sec\n", arch->count, ms,
-         updatesPerSecond / 1000000.0);
+  return count / (end - start);
 }
 
-void RunBenchmark(world_t *world, archetype_t *arch) {
-  const float dt = 0.016f;
+double BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
 
-  for (int i = 0; i < 10000; i++) {
-    BenchmarkMovementSystem(world, arch, dt);
+  archetypeColumn_t *timerCol = ArchetypeFindColumn(arch, COMP_TIMER);
+  Timer *timers = (Timer *)timerCol->data;
+
+  uint32_t count = arch->count;
+
+  double start = GetTime();
+
+#pragma omp parallel for if (count >= OMP_MIN_ITERATIONS)
+  for (uint32_t i = 0; i < count; ++i) {
+    timers[i].value -= dt;
   }
+
+  double end = GetTime();
+  return count / (end - start);
+}
+
+void RunBenchmark(world_t *world, archetype_t *moveArch,
+                  archetype_t *timerArch) {
+
+  const float dt = 0.016f;
+  const int iterations = 10000;
+
+  double *moveResults = malloc(sizeof(double) * iterations * 2);
+  double *timerResults = malloc(sizeof(double) * iterations);
+
+  int moveIndex = 0;
+
+  /* ---------- Warmup ---------- */
+
+  for (int i = 0; i < 200; i++) {
+    BenchmarkTimerSystem(world, timerArch, dt);
+    BenchmarkMovementSystem(world, moveArch, dt);
+    BenchmarkMovementSystem(world, timerArch, dt);
+  }
+
+  /* ---------- Measured ---------- */
+
+  for (int i = 0; i < iterations; i++) {
+
+    timerResults[i] = BenchmarkTimerSystem(world, timerArch, dt);
+
+    moveResults[moveIndex++] = BenchmarkMovementSystem(world, moveArch, dt);
+
+    moveResults[moveIndex++] = BenchmarkMovementSystem(world, timerArch, dt);
+  }
+
+  Stats moveStats = ComputeStats(moveResults, moveIndex);
+  Stats timerStats = ComputeStats(timerResults, iterations);
+
+  printf("\n=== Movement System ===\n");
+  printf("Mean:    %.2f M updates/sec\n", moveStats.mean / 1e6);
+  printf("StdDev:  %.2f M\n", moveStats.stddev / 1e6);
+  printf("Min:     %.2f M\n", moveStats.min / 1e6);
+  printf("Max:     %.2f M\n", moveStats.max / 1e6);
+
+  printf("\n=== Timer System ===\n");
+  printf("Mean:    %.2f M updates/sec\n", timerStats.mean / 1e6);
+  printf("StdDev:  %.2f M\n", timerStats.stddev / 1e6);
+  printf("Min:     %.2f M\n", timerStats.min / 1e6);
+  printf("Max:     %.2f M\n", timerStats.max / 1e6);
+
+  free(moveResults);
+  free(timerResults);
 }
 
 int main(void) {
@@ -90,7 +156,10 @@ int main(void) {
 
   Engine engine = EngineInit();
   GameWorld game = GameWorldCreate(&engine, engine.world);
-  RunBenchmark(engine.world, WorldGetArchetype(engine.world, game.benchArchId));
+
+  RunBenchmark(engine.world, WorldGetArchetype(engine.world, game.moveArchId),
+               WorldGetArchetype(engine.world, game.timerArchId));
+
   EngineShutdown(&engine);
   return 0;
 }
