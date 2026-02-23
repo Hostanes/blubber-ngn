@@ -62,35 +62,35 @@ double BenchmarkMovementSystem(archetype_t *arch, float dt) {
   return arch->count / (end - start);
 }
 
-double BenchmarkTimerSystem(archetype_t *arch, float dt) {
-
-  archetypeColumn_t *timerCol = ArchetypeFindColumn(arch, COMP_TIMER);
-
-  Timer *timers = (Timer *)timerCol->data;
+double BenchmarkTimerSystemPool(componentPool_t *pool, float dt) {
+  Timer *timers = (Timer *)pool->denseData;
+  uint32_t count = pool->count;
 
   double start = GetTime();
 
-#pragma omp parallel for if (arch->count >= OMP_MIN_ITERATIONS)
-  for (uint32_t i = 0; i < arch->count; i++) {
+#pragma omp parallel for if (count >= OMP_MIN_ITERATIONS)
+  for (uint32_t i = 0; i < count; ++i) {
     timers[i].value -= dt;
   }
 
   double end = GetTime();
 
-  return arch->count / (end - start);
+  return count / (end - start);
 }
 
-void RunBenchmark(world_t *world, GameWorld *gw) {
+void RunBenchmark(Engine *engine, GameWorld *gw) {
 
   const float dt = 0.016f;
   double results[BENCHMARK_ITERATIONS];
 
   // Warmup
   for (int w = 0; w < WARMUP_ITERATIONS; ++w) {
-    for (uint32_t a = 0; a < gw->archCount; ++a) {
-      archetype_t *arch = WorldGetArchetype(world, gw->archIds[a]);
 
-      BenchmarkTimerSystem(arch, dt);
+    BenchmarkTimerSystemPool(&engine->timerPool, dt);
+
+    for (uint32_t a = 0; a < gw->archCount; ++a) {
+      archetype_t *arch = WorldGetArchetype(engine->world, gw->archIds[a]);
+
       BenchmarkMovementSystem(arch, dt);
     }
   }
@@ -101,12 +101,20 @@ void RunBenchmark(world_t *world, GameWorld *gw) {
     double totalUpdates = 0.0;
     double start = GetTime();
 
+    // Count entities (movement work)
     for (uint32_t a = 0; a < gw->archCount; ++a) {
-      archetype_t *arch = WorldGetArchetype(world, gw->archIds[a]);
+      archetype_t *arch = WorldGetArchetype(engine->world, gw->archIds[a]);
 
       totalUpdates += arch->count;
+    }
 
-      BenchmarkTimerSystem(arch, dt);
+    // Timer system (pooled, once globally)
+    BenchmarkTimerSystemPool(&engine->timerPool, dt);
+
+    // Movement system (still archetype-based)
+    for (uint32_t a = 0; a < gw->archCount; ++a) {
+      archetype_t *arch = WorldGetArchetype(engine->world, gw->archIds[a]);
+
       BenchmarkMovementSystem(arch, dt);
     }
 
@@ -117,7 +125,7 @@ void RunBenchmark(world_t *world, GameWorld *gw) {
 
   Stats s = ComputeStats(results, BENCHMARK_ITERATIONS);
 
-  printf("=== Inline Layout (Movement + Timer) ===\n");
+  printf("=== Pooled Timer Layout (Movement + Timer) ===\n");
   printf("Number of archetypes: %d\n", gw->archCount);
   printf("Mean:   %.2f M updates/sec\n", s.mean / 1e6);
   printf("StdDev: %.2f M\n", s.stddev / 1e6);
@@ -131,7 +139,9 @@ int main(void) {
 
   Engine engine = EngineInit();
   GameWorld game = GameWorldCreate(&engine, engine.world);
-  RunBenchmark(engine.world, &game);
+
+  RunBenchmark(&engine, &game);
+
   EngineShutdown(&engine);
   return 0;
 }

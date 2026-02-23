@@ -40,7 +40,6 @@ typedef struct {
   Camera3D camera;
 
   componentPool_t timerPool;
-  componentPool_t modelPool;
 } Engine;
 
 typedef struct GameWorld {

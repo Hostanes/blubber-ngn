@@ -10,6 +10,10 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
   gw.archCount = NUM_ARCHETYPES;
 
+  static componentPool_t timerPool;
+  ComponentPoolInit(&timerPool, sizeof(Timer));
+  engine->timerPool = timerPool;
+
   uint32_t bits[] = {COMP_POSITION, COMP_VELOCITY, COMP_TIMER};
   bitset_t mask = MakeMask(bits, 3);
 
@@ -24,8 +28,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
     ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
     ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
-    ArchetypeAddInline(arch, COMP_TIMER, sizeof(Timer));
-    // ArchetypeAddHandle(arch, COMP_TIMER, sizeof(Timer));
+    ArchetypeAddHandle(arch, COMP_TIMER, &timerPool);
 
     for (uint32_t i = 0; i < ENTITIES_PER_ARCHETYPE; ++i) {
       entity_t e = WorldCreateEntity(world, &mask);
