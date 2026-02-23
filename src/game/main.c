@@ -47,20 +47,19 @@ static Stats ComputeStats(double *values, int count) {
 
 /* ================= Main ================= */
 
-
-double BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
+double BenchmarkMovementSystem(world_t *world, Engine *engine,
+                               archetype_t *arch, float dt) {
   double start = GetTime();
 
   bool hasTimer = ArchetypeHas(arch, COMP_TIMER);
 
   archetypeColumn_t *posCol = ArchetypeFindColumn(arch, COMP_POSITION);
   archetypeColumn_t *velCol = ArchetypeFindColumn(arch, COMP_VELOCITY);
-  archetypeColumn_t *timerCol =
-      hasTimer ? ArchetypeFindColumn(arch, COMP_TIMER) : NULL;
+  componentPool_t *timerPool = &engine->timerPool;
 
   Position *positions = (Position *)posCol->data;
   Velocity *velocities = (Velocity *)velCol->data;
-  Timer *timers = hasTimer ? (Timer *)timerCol->data : NULL;
+  float *timers = hasTimer ? (float *)timerPool->denseData : NULL;
 
   uint32_t count = arch->count;
 
@@ -72,10 +71,10 @@ double BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
     positions[i].value.z += velocities[i].value.z * dt;
 
     if (hasTimer) {
-      timers[i].value -= dt;
+      timers[i] -= dt;
 
-      if (timers[i].value <= 0.0f)
-        timers[i].value = 5.0f;
+      if (timers[i] <= 0.0f)
+        timers[i] = 5.0f;
     }
   }
 
@@ -83,25 +82,23 @@ double BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
   return count / (end - start);
 }
 
-double BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
+double BenchmarkTimerSystem(componentPool_t *pool, float dt) {
 
-  archetypeColumn_t *timerCol = ArchetypeFindColumn(arch, COMP_TIMER);
-  Timer *timers = (Timer *)timerCol->data;
-
-  uint32_t count = arch->count;
+  float *timers = (float *)pool->denseData;
+  uint32_t count = pool->count;
 
   double start = GetTime();
 
 #pragma omp parallel for if (count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < count; ++i) {
-    timers[i].value -= dt;
+    timers[i] -= dt;
   }
 
   double end = GetTime();
   return count / (end - start);
 }
 
-void RunBenchmark(world_t *world, archetype_t *moveArch,
+void RunBenchmark(world_t *world, Engine *engine, archetype_t *moveArch,
                   archetype_t *timerArch) {
 
   const float dt = 0.016f;
@@ -115,20 +112,22 @@ void RunBenchmark(world_t *world, archetype_t *moveArch,
   /* ---------- Warmup ---------- */
 
   for (int i = 0; i < 200; i++) {
-    BenchmarkTimerSystem(world, timerArch, dt);
-    BenchmarkMovementSystem(world, moveArch, dt);
-    BenchmarkMovementSystem(world, timerArch, dt);
+    BenchmarkTimerSystem(&engine->timerPool, dt);
+    BenchmarkMovementSystem(world, engine, moveArch, dt);
+    BenchmarkMovementSystem(world, engine, timerArch, dt);
   }
 
   /* ---------- Measured ---------- */
 
   for (int i = 0; i < iterations; i++) {
 
-    timerResults[i] = BenchmarkTimerSystem(world, timerArch, dt);
+    timerResults[i] = BenchmarkTimerSystem(&engine->timerPool, dt);
 
-    moveResults[moveIndex++] = BenchmarkMovementSystem(world, moveArch, dt);
+    moveResults[moveIndex++] =
+        BenchmarkMovementSystem(world, engine, moveArch, dt);
 
-    moveResults[moveIndex++] = BenchmarkMovementSystem(world, timerArch, dt);
+    moveResults[moveIndex++] =
+        BenchmarkMovementSystem(world, engine, timerArch, dt);
   }
 
   Stats moveStats = ComputeStats(moveResults, moveIndex);
@@ -157,7 +156,8 @@ int main(void) {
   Engine engine = EngineInit();
   GameWorld game = GameWorldCreate(&engine, engine.world);
 
-  RunBenchmark(engine.world, WorldGetArchetype(engine.world, game.moveArchId),
+  RunBenchmark(engine.world, &engine,
+               WorldGetArchetype(engine.world, game.moveArchId),
                WorldGetArchetype(engine.world, game.timerArchId));
 
   EngineShutdown(&engine);

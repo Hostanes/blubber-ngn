@@ -32,7 +32,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   ArchetypeAddInline(timerArch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(timerArch, COMP_VELOCITY, sizeof(Velocity));
-  ArchetypeAddInline(timerArch, COMP_TIMER, sizeof(Timer));
+  ArchetypeAddHandle(timerArch, COMP_TIMER, &engine->timerPool);
 
   // ---- Create benchmark entities ----
   for (uint32_t i = 0; i < BENCHMARK_ENTITY_COUNT; i++) {
@@ -51,12 +51,12 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
       Position *p = ECS_GET(world, e, Position, COMP_POSITION);
       Velocity *v = ECS_GET(world, e, Velocity, COMP_VELOCITY);
-      Timer *t = ECS_GET(world, e, Timer, COMP_TIMER);
+      float *t = ECS_GET(world, e, float, COMP_TIMER);
 
       p->value = (Vector3){0.0f, 0.0f, 0.0f};
       v->value = (Vector3){0.1f, 0.0f, 0.1f};
 
-      t->value = 5.0f;
+      *t = 5.0f;
     }
   }
 
