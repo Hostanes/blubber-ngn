@@ -8,7 +8,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#define BENCHMARK_ENTITY_COUNT 1000000
+#define BENCHMARK_ENTITY_COUNT 2000000
 
 GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
@@ -32,7 +32,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
   ArchetypeAddInline(timerArch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(timerArch, COMP_VELOCITY, sizeof(Velocity));
-  ArchetypeAddInline(timerArch, COMP_TIMER, sizeof(Timer));
+  ArchetypeAddHandle(timerArch, COMP_TIMER, &engine->timerPool);
 
   // ---- Create benchmark entities ----
   for (uint32_t i = 0; i < BENCHMARK_ENTITY_COUNT; i++) {
@@ -55,7 +55,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
       Position *p = ECS_GET(world, e, Position, COMP_POSITION);
       Velocity *v = ECS_GET(world, e, Velocity, COMP_VELOCITY);
-      Timer *t = ECS_GET(world, e, Timer, COMP_TIMER);
+      float *t = ECS_GET(world, e, float, COMP_TIMER);
 
       p->x = 0.0f;
       p->y = 0.0f;
@@ -66,8 +66,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
       v->z = 0.1f;
       v->w = 0.0f;
 
-      t->value = 5.0f;
-      t->pad[0] = t->pad[1] = t->pad[2] = 0.0f;
+      *t = 5.0f;
     }
   }
 

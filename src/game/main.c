@@ -46,21 +46,20 @@ static Stats ComputeStats(double *values, int count) {
   return s;
 }
 
-double BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
+double BenchmarkMovementSystem(world_t *world, Engine *engine,
+                               archetype_t *arch, float dt) {
+
   double start = GetTime();
 
   bool hasTimer = ArchetypeHas(arch, COMP_TIMER);
 
   archetypeColumn_t *posCol = ArchetypeFindColumn(arch, COMP_POSITION);
-
   archetypeColumn_t *velCol = ArchetypeFindColumn(arch, COMP_VELOCITY);
-
-  archetypeColumn_t *timerCol =
-      hasTimer ? ArchetypeFindColumn(arch, COMP_TIMER) : NULL;
 
   Position *positions = (Position *)posCol->data;
   Velocity *velocities = (Velocity *)velCol->data;
-  Timer *timers = hasTimer ? (Timer *)timerCol->data : NULL;
+
+  float *timers = hasTimer ? (float *)engine->timerPool.denseData : NULL;
 
   uint32_t count = arch->count;
   uint32_t i = 0;
@@ -69,104 +68,75 @@ double BenchmarkMovementSystem(world_t *world, archetype_t *arch, float dt) {
   __m128 zero = _mm_setzero_ps();
   __m128 reset = _mm_set1_ps(5.0f);
 
+  /* -------- SIMD -------- */
+
   for (; i + 3 < count; i += 4) {
-    // load 4 positions
-    __m128 p0 = _mm_load_ps((float *)&positions[i + 0]);
-    __m128 p1 = _mm_load_ps((float *)&positions[i + 1]);
-    __m128 p2 = _mm_load_ps((float *)&positions[i + 2]);
-    __m128 p3 = _mm_load_ps((float *)&positions[i + 3]);
 
-    // load 4 velocities
-    __m128 v0 = _mm_load_ps((float *)&velocities[i + 0]);
-    __m128 v1 = _mm_load_ps((float *)&velocities[i + 1]);
-    __m128 v2 = _mm_load_ps((float *)&velocities[i + 2]);
-    __m128 v3 = _mm_load_ps((float *)&velocities[i + 3]);
+    __m128 p = _mm_load_ps((float *)&positions[i]);
+    __m128 v = _mm_load_ps((float *)&velocities[i]);
 
-    // p += v * dt
-    p0 = _mm_add_ps(p0, _mm_mul_ps(v0, dtVec));
-    p1 = _mm_add_ps(p1, _mm_mul_ps(v1, dtVec));
-    p2 = _mm_add_ps(p2, _mm_mul_ps(v2, dtVec));
-    p3 = _mm_add_ps(p3, _mm_mul_ps(v3, dtVec));
+    p = _mm_add_ps(p, _mm_mul_ps(v, dtVec));
 
-    _mm_store_ps((float *)&positions[i + 0], p0);
-    _mm_store_ps((float *)&positions[i + 1], p1);
-    _mm_store_ps((float *)&positions[i + 2], p2);
-    _mm_store_ps((float *)&positions[i + 3], p3);
+    _mm_store_ps((float *)&positions[i], p);
 
     if (hasTimer) {
-      __m128 t0 = _mm_load_ps((float *)&timers[i + 0]);
-      __m128 t1 = _mm_load_ps((float *)&timers[i + 1]);
-      __m128 t2 = _mm_load_ps((float *)&timers[i + 2]);
-      __m128 t3 = _mm_load_ps((float *)&timers[i + 3]);
+      __m128 t = _mm_load_ps(&timers[i]);
 
-      __m128 m0 = _mm_cmple_ps(t0, zero);
-      __m128 m1 = _mm_cmple_ps(t1, zero);
-      __m128 m2 = _mm_cmple_ps(t2, zero);
-      __m128 m3 = _mm_cmple_ps(t3, zero);
+      __m128 mask = _mm_cmple_ps(t, zero);
+      t = _mm_blendv_ps(t, reset, mask);
 
-      t0 = _mm_blendv_ps(t0, reset, m0);
-      t1 = _mm_blendv_ps(t1, reset, m1);
-      t2 = _mm_blendv_ps(t2, reset, m2);
-      t3 = _mm_blendv_ps(t3, reset, m3);
-
-      _mm_store_ps((float *)&timers[i + 0], t0);
-      _mm_store_ps((float *)&timers[i + 1], t1);
-      _mm_store_ps((float *)&timers[i + 2], t2);
-      _mm_store_ps((float *)&timers[i + 3], t3);
+      _mm_store_ps(&timers[i], t);
     }
   }
 
-  // scalar tail
+  /* -------- Scalar tail -------- */
+
   for (; i < count; ++i) {
+
     positions[i].x += velocities[i].x * dt;
     positions[i].y += velocities[i].y * dt;
     positions[i].z += velocities[i].z * dt;
 
-    if (hasTimer && timers[i].value <= 0.0f)
-      timers[i].value = 5.0f;
+    if (hasTimer) {
+      timers[i] -= dt;
+      if (timers[i] <= 0.0f)
+        timers[i] = 5.0f;
+    }
   }
-  double end = GetTime();
-  double updatesPerSec = count / (end - start);
-  return updatesPerSec;
-}
-
-double BenchmarkTimerSystem(world_t *world, archetype_t *arch, float dt) {
-  archetypeColumn_t *timerCol = ArchetypeFindColumn(arch, COMP_TIMER);
-
-  Timer *timers = (Timer *)timerCol->data;
-
-  uint32_t count = arch->count;
-  uint32_t i = 0;
-
-  __m128 dtVec = _mm_set1_ps(dt);
-
-  double start = GetTime();
-
-  for (; i + 3 < count; i += 4) {
-    __m128 t0 = _mm_load_ps((float *)&timers[i + 0]);
-    __m128 t1 = _mm_load_ps((float *)&timers[i + 1]);
-    __m128 t2 = _mm_load_ps((float *)&timers[i + 2]);
-    __m128 t3 = _mm_load_ps((float *)&timers[i + 3]);
-
-    t0 = _mm_sub_ps(t0, dtVec);
-    t1 = _mm_sub_ps(t1, dtVec);
-    t2 = _mm_sub_ps(t2, dtVec);
-    t3 = _mm_sub_ps(t3, dtVec);
-
-    _mm_store_ps((float *)&timers[i + 0], t0);
-    _mm_store_ps((float *)&timers[i + 1], t1);
-    _mm_store_ps((float *)&timers[i + 2], t2);
-    _mm_store_ps((float *)&timers[i + 3], t3);
-  }
-
-  for (; i < count; ++i)
-    timers[i].value -= dt;
 
   double end = GetTime();
   return count / (end - start);
 }
 
-void RunBenchmark(world_t *world, archetype_t *moveArch,
+double BenchmarkTimerSystem(componentPool_t *pool, float dt) {
+
+  float *timers = (float *)pool->denseData;
+  uint32_t count = pool->count;
+
+  __m128 dtVec = _mm_set1_ps(dt);
+
+  uint32_t i = 0;
+  double start = GetTime();
+
+  /* -------- SIMD -------- */
+
+  for (; i + 3 < count; i += 4) {
+    __m128 t = _mm_load_ps(&timers[i]); // aligned load
+    t = _mm_sub_ps(t, dtVec);
+    _mm_store_ps(&timers[i], t); // aligned store
+  }
+
+  /* -------- Scalar tail -------- */
+
+  for (; i < count; ++i) {
+    timers[i] -= dt;
+  }
+
+  double end = GetTime();
+  return count / (end - start);
+}
+
+void RunBenchmark(world_t *world, Engine *engine, archetype_t *moveArch,
                   archetype_t *timerArch) {
   const float dt = 0.016f;
   const int iterations = 10000;
@@ -178,18 +148,20 @@ void RunBenchmark(world_t *world, archetype_t *moveArch,
 
   // warm up 200 iterations
   for (int i = 0; i < 200; i++) {
-    BenchmarkTimerSystem(world, timerArch, dt);
-    BenchmarkMovementSystem(world, moveArch, dt);
-    BenchmarkMovementSystem(world, timerArch, dt);
+    BenchmarkTimerSystem(&engine->timerPool, dt);
+    BenchmarkMovementSystem(world, engine, moveArch, dt);
+    BenchmarkMovementSystem(world, engine, timerArch, dt);
   }
 
   for (int i = 0; i < iterations; i++) {
 
-    timerResults[i] = BenchmarkTimerSystem(world, timerArch, dt);
+    timerResults[i] = BenchmarkTimerSystem(&engine->timerPool, dt);
 
-    moveResults[moveIndex++] = BenchmarkMovementSystem(world, moveArch, dt);
+    moveResults[moveIndex++] =
+        BenchmarkMovementSystem(world, engine, moveArch, dt);
 
-    moveResults[moveIndex++] = BenchmarkMovementSystem(world, timerArch, dt);
+    moveResults[moveIndex++] =
+        BenchmarkMovementSystem(world, engine, timerArch, dt);
   }
 
   Stats moveStats = ComputeStats(moveResults, moveIndex);
@@ -217,7 +189,8 @@ int main(void) {
 
   Engine engine = EngineInit();
   GameWorld game = GameWorldCreate(&engine, engine.world);
-  RunBenchmark(engine.world, WorldGetArchetype(engine.world, game.moveArchId),
+  RunBenchmark(engine.world, &engine,
+               WorldGetArchetype(engine.world, game.moveArchId),
                WorldGetArchetype(engine.world, game.timerArchId));
   EngineShutdown(&engine);
   return 0;

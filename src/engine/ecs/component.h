@@ -9,6 +9,7 @@
 typedef struct componentPool_t componentPool_t;
 
 void ComponentPoolInit(componentPool_t *componentPool, size_t elementSize);
+void ComponentPoolInitAligned(componentPool_t *pool, size_t elementSize);
 
 void ComponentRemove(componentPool_t *componentPool, uint32_t handle);
 

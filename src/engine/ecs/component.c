@@ -15,6 +15,28 @@ void ComponentPoolInit(componentPool_t *componentPool, size_t elementSize) {
   componentPool->elementSize = elementSize;
 }
 
+void ComponentPoolInitAligned(componentPool_t *pool, size_t elementSize) {
+  pool->count = 0;
+  pool->denseCapacity = 64; // preallocate immediately
+  pool->sparseCapacity = 64;
+  pool->nextHandle = 0;
+  pool->elementSize = elementSize;
+
+  size_t handleSize = pool->denseCapacity * sizeof(uint32_t);
+  size_t dataSize = pool->denseCapacity * elementSize;
+  size_t sparseSize = pool->sparseCapacity * sizeof(uint32_t);
+
+  pool->denseHandles = ECS_AlignedAlloc(handleSize);
+  pool->denseData = ECS_AlignedAlloc(dataSize);
+  pool->sparse = ECS_AlignedAlloc(sparseSize);
+
+  for (uint32_t i = 0; i < pool->sparseCapacity; ++i)
+    pool->sparse[i] = UINT32_MAX;
+
+  memset(pool->denseHandles, 0, handleSize);
+  memset(pool->denseData, 0, dataSize);
+}
+
 static void ComponentPoolGrow(componentPool_t *componentPool) {
   uint32_t oldCapacity = componentPool->denseCapacity;
   uint32_t newCapacity = oldCapacity == 0 ? 64 : oldCapacity * 2;

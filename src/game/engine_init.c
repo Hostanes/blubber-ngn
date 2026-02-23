@@ -14,8 +14,7 @@ Engine EngineInit(void) {
 
   engine.world = WorldCreate();
 
-  ComponentPoolInit(&engine.timerPool, sizeof(Timer));
-  ComponentPoolInit(&engine.modelPool, sizeof(ModelCollection_t));
+  ComponentPoolInitAligned(&engine.timerPool, sizeof(Timer));
 
   return engine;
 }
