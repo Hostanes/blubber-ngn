@@ -8,7 +8,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#define BENCHMARK_ENTITY_COUNT 2000000
+#define BENCHMARK_ENTITY_COUNT 1000000
 
 GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
