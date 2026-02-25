@@ -28,10 +28,11 @@ void UpdatePlayerCollision(world_t *world, entity_t e) {
   float bottom = eyeHeight;            // how far down to feet
   float top = totalHeight - eyeHeight; // how far up to top
 
-  cap->a =
+  cap->worldA =
       Vector3Add(playerPos->value, (Vector3){0, -bottom + PLAYER_RADIUS, 0});
 
-  cap->b = Vector3Add(playerPos->value, (Vector3){0, top - PLAYER_RADIUS, 0});
+  cap->worldB =
+      Vector3Add(playerPos->value, (Vector3){0, top - PLAYER_RADIUS, 0});
 
   ci->worldBounds = Capsule_ComputeAABB(cap);
 }
@@ -69,29 +70,29 @@ void UpdateObstacleCollision(world_t *world, archetype_t *obstacleArch) {
   }
 }
 
-void UpdateBulletCollision(world_t *world, archetype_t *bulletArch) {
-  for (int i = 0; i < bulletArch->count; i++) {
-    entity_t e = bulletArch->entities[i];
+// void UpdateBulletCollision(world_t *world, archetype_t *bulletArch) {
+//   for (int i = 0; i < bulletArch->count; i++) {
+//     entity_t e = bulletArch->entities[i];
 
-    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
-    if (!active || !active->value)
-      continue;
+//     Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+//     if (!active || !active->value)
+//       continue;
 
-    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
-    SphereCollider *sphere =
-        ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
-    CollisionInstance *ci =
-        ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+//     Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+//     SphereCollider *sphere =
+//         ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+//     CollisionInstance *ci =
+//         ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
 
-    // Update sphere center from position
-    sphere->center = pos->value;
+//     // Update sphere center from position
+//     sphere->center = pos->value;
 
-    // Update broadphase bounds
-    ci->worldBounds = Sphere_ComputeAABB(sphere);
-    // printf("Bullet AABB min: %.2f %.2f %.2f\n", ci->worldBounds.min.x,
-    //        ci->worldBounds.min.y, ci->worldBounds.min.z);
-  }
-}
+//     // Update broadphase bounds
+//     ci->worldBounds = Sphere_ComputeAABB(sphere);
+//     // printf("Bullet AABB min: %.2f %.2f %.2f\n", ci->worldBounds.min.x,
+//     //        ci->worldBounds.min.y, ci->worldBounds.min.z);
+//   }
+// }
 
 void UpdateCollisionBounds(world_t *world) {
   for (int a = 0; a < world->archetypeCount; a++) {
@@ -225,7 +226,8 @@ void CollisionSyncSystem(world_t *world) {
         if (!cap)
           break;
 
-        Collision_UpdateCapsule(ci, cap, pos->value);
+        Capsule_UpdateWorld(cap, pos->value);
+        ci->worldBounds = Capsule_ComputeAABB(cap);
       } break;
       }
     }

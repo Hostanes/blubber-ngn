@@ -26,9 +26,9 @@ static void BuildPlayerCapsule(Position *pos, CapsuleCollider *cap,
   float bottom = eyeHeight;
   float top = totalHeight - eyeHeight;
 
-  cap->a = Vector3Add(pos->value, (Vector3){0, -bottom + cap->radius, 0});
+  cap->worldA = Vector3Add(pos->value, (Vector3){0, -bottom + cap->radius, 0});
 
-  cap->b = Vector3Add(pos->value, (Vector3){0, top - cap->radius, 0});
+  cap->worldB = Vector3Add(pos->value, (Vector3){0, top - cap->radius, 0});
 
   ci->worldBounds = Capsule_ComputeAABB(cap);
 }
@@ -112,7 +112,7 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
   *isgrounded = false;
 
   // SUBSTEP SETTINGS
-  float maxStepDistance = 0.2f; // max movement per substep
+  float maxStepDistance = cap->radius * 0.5f; // max movement per substep
   float totalDistance = Vector3Length(Vector3Scale(vel->value, dt));
 
   int steps = (int)ceilf(totalDistance / maxStepDistance);

@@ -38,8 +38,13 @@ void RenderMainMenu(GameWorld *game);
 void TimerSystem(componentPool_t *timerPool, float dt);
 void CollisionSystem(world_t *world);
 
-void Grunt_SetTargets(world_t *world, entity_t e, GameWorld *game);
-void Tank_SetTargets(world_t *world, entity_t e, GameWorld *game);
-void MissileBot_SetTargets(world_t *world, entity_t e, GameWorld *game);
+void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
+                        float dt);
+void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
+                   float dt);
+
+// void Grunt_SetTargets(world_t *world, entity_t e, GameWorld *game);
+// void Tank_SetTargets(world_t *world, entity_t e, GameWorld *game);
+// void MissileBot_SetTargets(world_t *world, entity_t e, GameWorld *game);
 
 void CollisionSyncSystem(world_t *world);

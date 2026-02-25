@@ -85,7 +85,7 @@ uint32_t RegisterEnemyArchetype(world_t *world, Engine *engine) {
                       COMP_ACTIVE,           COMP_COLLISION_INSTANCE,
                       COMP_CAPSULE_COLLIDER, COMP_HEALTH,
                       COMP_NAVPATH,          COMP_GRUNT_FIRE_TIMER,
-                      COMP_MUZZLES};
+                      COMP_MUZZLES,          COMP_MOVE_TIMER};
 
   uint32_t id = CreateArchetype(world, comps, sizeof(comps) / sizeof(uint32_t));
 
@@ -103,6 +103,7 @@ uint32_t RegisterEnemyArchetype(world_t *world, Engine *engine) {
 
   ArchetypeAddHandle(arch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(arch, COMP_GRUNT_FIRE_TIMER, &engine->timerPool);
+  ArchetypeAddHandle(arch, COMP_MOVE_TIMER, &engine->timerPool);
 
   return id;
 }
@@ -162,8 +163,8 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
   cap->radius = 0.35f;
-  cap->a = (Vector3){0, -1.55f, 0};
-  cap->b = (Vector3){0, 0, 0};
+  cap->localA = (Vector3){0, -1.55f, 0};
+  cap->localB = (Vector3){0, 0, 0};
 
   CollisionInstance *ci =
       ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
@@ -242,8 +243,10 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
   cap->radius = 1.2f;
-  cap->a = Vector3Add(position, (Vector3){0, 0.0f, 0});
-  cap->b = Vector3Add(position, (Vector3){0, 2.5f, 0});
+  cap->localA= (Vector3){0, 0.0f, 0};
+  cap->localB= (Vector3){0, 2.5f, 0};
+
+  Capsule_UpdateWorld(cap, position);
 
   CollisionInstance *ci =
       ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
@@ -315,8 +318,8 @@ entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
   cap->radius = 1.5f;
-  cap->a = Vector3Add(position, (Vector3){0, 0.5f, 0});
-  cap->b = Vector3Add(position, (Vector3){0, 1.0f, 0});
+  cap->localA= Vector3Add(position, (Vector3){0, 0.5f, 0});
+  cap->localB= Vector3Add(position, (Vector3){0, 1.0f, 0});
 
   CollisionInstance *ci =
       ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
@@ -433,11 +436,12 @@ entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
 
   ModelCollectionInit(mc, 1);
 
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = model,
-                                           .offset = (Vector3){0, 0, 0},
-                                           .rotation = (Vector3){rotation.y, rotation.x, 0},
-                                           .scale = scale,
-                                           .rotationMode = MODEL_ROT_FULL});
+  ModelCollectionAdd(
+      mc, (ModelInstance_t){.model = model,
+                            .offset = (Vector3){0, 0, 0},
+                            .rotation = (Vector3){rotation.y, rotation.x, 0},
+                            .scale = scale,
+                            .rotationMode = MODEL_ROT_FULL});
 
   return e;
 }

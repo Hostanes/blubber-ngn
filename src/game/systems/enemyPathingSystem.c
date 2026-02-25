@@ -88,3 +88,73 @@ void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
   }
 }
 
+void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
+                        float dt) {
+  const float minDist = 15.0f;
+  const float maxDist = 40.0f;
+  const float repathInterval = 5.0f;
+
+  Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
+
+  for (uint32_t i = 0; i < enemyArch->count; i++) {
+    entity_t e = enemyArch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    NavPath *path = ECS_GET(world, e, NavPath, COMP_NAVPATH);
+    Timer *repathTimer = ECS_GET(world, e, Timer, COMP_MOVE_TIMER);
+
+    if (!pos || !path || !repathTimer)
+      continue;
+
+    // Only evaluate every N seconds
+    if (repathTimer->value > 0.0f)
+      continue;
+
+    // Reset timer
+    repathTimer->value = repathInterval;
+
+    // ---- Distance check ----
+    Vector3 toPlayer = Vector3Subtract(playerPos->value, pos->value);
+    toPlayer.y = 0.0f;
+
+    float distToPlayer = Vector3Length(toPlayer);
+
+    // If already within band → keep current path
+    if (distToPlayer >= minDist && distToPlayer <= maxDist)
+      continue;
+
+    // Clear previous path
+    path->count = 0;
+    path->currentIndex = 0;
+
+    // ---- Try generating new ring target ----
+    for (int attempt = 0; attempt < 10; attempt++) {
+      float angle = GetRandomValue(0, 360) * DEG2RAD;
+      float radius = GetRandomValue((int)minDist, (int)maxDist);
+
+      Vector3 candidate = {playerPos->value.x + cosf(angle) * radius, 0.0f,
+                           playerPos->value.z + sinf(angle) * radius};
+
+      // Snap to terrain
+      candidate.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                                  candidate.x, candidate.z);
+
+      int cx, cy;
+      if (!NavGrid_WorldToCell(&game->navGrid, candidate, &cx, &cy))
+        continue;
+
+      int idx = NavGrid_Index(&game->navGrid, cx, cy);
+
+      if (game->navGrid.cells[idx].type == NAV_CELL_WALL)
+        continue;
+
+      if (NavGrid_FindPath(&game->navGrid, pos->value, candidate, path)) {
+        break; // success
+      }
+    }
+  }
+}

@@ -49,7 +49,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   /* ===================================================== */
 
   gw.playerArchId = RegisterPlayerArchetype(world, engine);
-  gw.enemyMissileArchId = RegisterEnemyArchetype(world, engine);
+  // gw.enemyMissileArchId = RegisterEnemyArchetype(world, engine);
   gw.enemyGruntArchId = RegisterEnemyArchetype(world, engine);
   gw.obstacleArchId = RegisterBoxArchetype(world, engine);
   gw.levelModelArchId = RegisterLevelModelArchetype(world, engine);
@@ -128,7 +128,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   /* ===================================================== */
 
   SpawnEnemyGrunt(world, &gw, (Vector3){10, 0, 10});
-  SpawnEnemyMissile(world, &gw, (Vector3){10, 0, 20});
+  // SpawnEnemyMissile(world, &gw, (Vector3){10, 0, 20});
 
   /* ===================================================== */
   /*  SPAWN RANDOM BOXES                                  */
@@ -161,6 +161,13 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
     ci->type = COLLIDER_AABB;
     ci->layerMask = 1 << LAYER_WORLD;
     ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
+
+    AABBCollider *aabb = ECS_GET(world, box, AABBCollider, COMP_AABB_COLLIDER);
+
+    if (!aabb)
+      break;
+
+    Collision_UpdateAABB(ci, aabb, (Vector3){x, y, z});
   }
 
   /* ===================================================== */

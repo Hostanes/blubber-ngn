@@ -41,6 +41,7 @@ enum {
   COMP_GRUNT_FIRE_TIMER,
   COMP_MOVE_TARGET,
   COMP_AIM_TARGET,
+  COMP_MOVE_TIMER,
 };
 
 typedef void (*OnCollision)(world_t *world, entity_t self, entity_t other);

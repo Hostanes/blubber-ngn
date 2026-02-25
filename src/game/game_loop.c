@@ -51,21 +51,23 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       PlayerWeaponSystem(world, game->player, dt);
       PlayerShootSystem(world, game, game->player);
 
-      UpdateCollisionBounds(world);
+      // UpdateCollisionBounds(world);
 
       PlayerMoveAndCollide(world, game, dt);
 
+      EnemyGruntAISystem(world, game,
+                         WorldGetArchetype(world, game->enemyGruntArchId), dt);
+
+      EnemyAISystem(world, game,
+                    WorldGetArchetype(world, game->enemyGruntArchId), dt);
+
       MovementSystem(world, WorldGetArchetype(world, game->enemyGruntArchId),
-                     dt);
-      MovementSystem(world, WorldGetArchetype(world, game->enemyMissileArchId),
                      dt);
 
       CollisionSyncSystem(world);
 
       BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
                    WorldGetArchetype(world, game->enemyGruntArchId), dt);
-      BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
-                   WorldGetArchetype(world, game->enemyMissileArchId), dt);
       BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
                    WorldGetArchetype(world, game->obstacleArchId), dt);
 

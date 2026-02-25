@@ -161,8 +161,8 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       CapsuleCollider *cap =
           ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
-      Vector3 a = cap->a;
-      Vector3 b = cap->b;
+      Vector3 a = cap->worldA;
+      Vector3 b = cap->worldB;
 
       float radius = cap->radius;
 

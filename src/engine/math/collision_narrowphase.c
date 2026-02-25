@@ -6,6 +6,7 @@
 #include "raylib.h"
 #include "sphere.h"
 #include <math.h>
+#include <stdio.h>
 
 static Vector3 ClosestPointOnSegment(Vector3 a, Vector3 b, Vector3 p) {
   Vector3 ab = Vector3Subtract(b, a);
@@ -44,7 +45,7 @@ bool SphereVsSphere(const CollisionInstance *a, const SphereCollider *sa,
 bool SphereVsCapsule(const CollisionInstance *a, const SphereCollider *s,
                      const CollisionInstance *b, const CapsuleCollider *cap,
                      CollisionHit *outHit) {
-  Vector3 closest = ClosestPointOnSegment(cap->a, cap->b, s->center);
+  Vector3 closest = ClosestPointOnSegment(cap->worldA, cap->worldB, s->center);
 
   Vector3 delta = Vector3Subtract(s->center, closest);
   float radiusSum = s->radius + cap->radius;
@@ -127,7 +128,8 @@ bool CapsuleVsAABB(const CollisionInstance *a, const CapsuleCollider *cap,
 
   Vector3 boxCenter = Vector3Scale(Vector3Add(box->min, box->max), 0.5f);
 
-  Vector3 closestSeg = ClosestPointOnSegment(cap->a, cap->b, boxCenter);
+  Vector3 closestSeg =
+      ClosestPointOnSegment(cap->worldA, cap->worldB, boxCenter);
 
   Vector3 closestBox = {
       Clamp(closestSeg.x, box->min.x, box->max.x),
@@ -158,6 +160,8 @@ bool CapsuleVsAABB(const CollisionInstance *a, const CapsuleCollider *cap,
 bool CollisionTest(const CollisionInstance *a, const void *shapeA,
                    const CollisionInstance *b, const void *shapeB,
                    CollisionHit *outHit) {
+  printf("A layer: %u mask: %u | B layer: %u mask: %u\n", a->layerMask,
+         a->collideMask, b->layerMask, b->collideMask);
   if ((a->collideMask & b->layerMask) == 0)
     return false;
 
@@ -199,5 +203,3 @@ bool CollisionTest(const CollisionInstance *a, const void *shapeA,
 
   return false;
 }
-
-
