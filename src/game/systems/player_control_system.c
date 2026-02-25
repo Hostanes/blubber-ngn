@@ -14,7 +14,7 @@ const float speed = 20.0f;
 const float mouseSensitivity = 0.002f;
 
 const float jumpVelocity = 20.0f;
-const float jumpCoyoteTimeMax = 0.15f;
+const float jumpCoyoteTimeMax = 0.3f;
 
 static Vector3 GetForwardFromOrientation(const Orientation *ori) {
   return (Vector3){

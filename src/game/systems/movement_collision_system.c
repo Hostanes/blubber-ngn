@@ -139,7 +139,7 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
     ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, true);
 
     float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
-                                               pos->value.x, pos->value.z);
+                                                   pos->value.x, pos->value.z);
 
     float eyeHeight = 1.65f;
     float footY = pos->value.y - eyeHeight;
@@ -151,5 +151,31 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
     }
 
     BuildPlayerCapsule(pos, cap, ci);
+
+    float radius = game->arenaRadius;
+
+    Vector2 flatPos = {pos->value.x, pos->value.z};
+    float dist = Vector2Length(flatPos);
+
+    if (dist > radius) {
+      Vector2 dir = Vector2Normalize(flatPos);
+
+      flatPos = Vector2Scale(dir, radius);
+
+      pos->value.x = flatPos.x;
+      pos->value.z = flatPos.y;
+
+      // Stop outward velocity so player doesn't jitter
+      Vector3 outward = {dir.x, 0, dir.y};
+
+      float dot = Vector3DotProduct(vel->value, outward);
+
+      if (dot > 0.0f) {
+        vel->value.x -= outward.x * dot;
+        vel->value.z -= outward.z * dot;
+      }
+
+      BuildPlayerCapsule(pos, cap, ci);
+    }
   }
 }

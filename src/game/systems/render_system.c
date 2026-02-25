@@ -274,16 +274,15 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   for (uint32_t i = 0; i < world->archetypeCount; ++i) {
     archetype_t *arch = &world->archetypes[i];
-
+    
     if (!BitsetContainsAll(&arch->mask, &modelMask))
       continue;
-
     RenderArchetype(world, arch);
   }
 
-  // NavGrid *grid = &game->navGrid;
+  NavGrid *grid = &game->navGrid;
 
-  // DrawNavGridBatched(grid);
+  DrawNavGridBatched(grid);
 
   EndMode3D();
   DrawFPS(10, 10);

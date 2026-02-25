@@ -44,16 +44,12 @@ typedef struct GameWorld {
   entity_t player;
   enum gameState gameState;
 
+  uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
+      enemyMissileArchId, obstacleArchId, levelModelArchId;
+
+  float arenaRadius;
+
   int nextBulletIndex;
-
-  uint32_t playerArchId;
-  uint32_t bulletArchId;
-
-  uint32_t enemyCapsuleArchId;
-  uint32_t enemyGruntArchId;
-  uint32_t enemyMissileArchId;
-
-  uint32_t obstacleArchId;
 
   Model bulletModel;
   Model enemyModel;

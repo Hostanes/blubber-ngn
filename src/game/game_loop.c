@@ -50,8 +50,6 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       PlayerWeaponSystem(world, game->player, dt);
       PlayerShootSystem(world, game, game->player);
-      EnemyMuzzleUpdate_Grunt(world, WorldGetArchetype(world, game->enemyGruntArchId));
-      EnemyMuzzleUpdate_Grunt(world, WorldGetArchetype(world, game->enemyMissileArchId));
 
       UpdateCollisionBounds(world);
 
@@ -70,9 +68,6 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                    WorldGetArchetype(world, game->enemyMissileArchId), dt);
       BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
                    WorldGetArchetype(world, game->obstacleArchId), dt);
-
-      EnemyAISystem(world, game,
-                    WorldGetArchetype(world, game->enemyCapsuleArchId), dt);
 
       Orientation *ori =
           ECS_GET(world, game->player, Orientation, COMP_ORIENTATION);
