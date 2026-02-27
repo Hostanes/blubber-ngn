@@ -20,7 +20,7 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player);
 void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
                 int shooterArchId, Muzzle_t *m);
 void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
-                  archetype_t *enemyArch, float dt);
+                  float dt);
 
 void ApplyGravity(world_t *world, GameWorld *game, float dt);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);
@@ -42,6 +42,9 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                         float dt);
 void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                    float dt);
+void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
+                    float dt);
+void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch);
 
 // void Grunt_SetTargets(world_t *world, entity_t e, GameWorld *game);
 // void Tank_SetTargets(world_t *world, entity_t e, GameWorld *game);

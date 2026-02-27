@@ -6,6 +6,7 @@
 #include "ai_targets.h"
 #include "bullet_owner.h"
 #include "collision.h"
+#include "event_triggers.h"
 #include "health.h"
 #include "movement.h"
 #include "muzzle.h"
@@ -32,7 +33,6 @@ enum {
   COMP_ISGROUNDED,
   COMP_GRAVITY, // for gravity and colliding with terrain and obstacles from
   COMP_MUZZLES,
-  COMP_ON_COLLISION,
   COMP_DASHTIMER,
   COMP_DASHCOOLDOWN,
   COMP_ISDASHING,
@@ -42,10 +42,6 @@ enum {
   COMP_MOVE_TARGET,
   COMP_AIM_TARGET,
   COMP_MOVE_TIMER,
+  COMP_ONDEATH,
+  COMP_ONCOLLISION,
 };
-
-typedef void (*OnCollision)(world_t *world, entity_t self, entity_t other);
-
-typedef struct CollisionResponse {
-  OnCollision onCollision;
-} CollisionResponse;

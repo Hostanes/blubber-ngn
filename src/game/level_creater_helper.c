@@ -5,6 +5,14 @@
 #include "ecs_get.h"
 #include <raymath.h>
 
+void Player_OnDeath(world_t *world, entity_t e) { printf("player dead\n"); }
+
+void Grunt_OnDeath(world_t *world, entity_t e) { printf("grunt dead\n"); }
+
+void Trigger_OnCollision(world_t *world, entity_t self, entity_t other) {
+  printf("trigger collided\n");
+}
+
 //  Simple Archetype Helper
 
 uint32_t CreateArchetype(world_t *world, uint32_t *components, int count) {
@@ -19,6 +27,7 @@ uint32_t RegisterPlayerArchetype(world_t *world, Engine *engine) {
                       COMP_VELOCITY,
                       COMP_ORIENTATION,
                       COMP_MODEL,
+                      COMP_HEALTH,
                       COMP_TIMER,
                       COMP_GRAVITY,
                       COMP_ACTIVE,
@@ -29,23 +38,27 @@ uint32_t RegisterPlayerArchetype(world_t *world, Engine *engine) {
                       COMP_DASHTIMER,
                       COMP_COYOTETIMER,
                       COMP_ISDASHING,
-                      COMP_DASHCOOLDOWN};
+                      COMP_DASHCOOLDOWN,
+                      COMP_ONDEATH};
 
   uint32_t id = CreateArchetype(world, comps, sizeof(comps) / sizeof(uint32_t));
 
   archetype_t *arch = WorldGetArchetype(world, id);
+  arch->id = id;
 
   /* ---------- Inline Components ---------- */
 
   ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
   ArchetypeAddInline(arch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddInline(arch, COMP_HEALTH, sizeof(Health));
   ArchetypeAddInline(arch, COMP_ACTIVE, sizeof(Active));
   ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE, sizeof(CollisionInstance));
   ArchetypeAddInline(arch, COMP_CAPSULE_COLLIDER, sizeof(CapsuleCollider));
   ArchetypeAddInline(arch, COMP_ISGROUNDED, sizeof(bool));
   ArchetypeAddInline(arch, COMP_ISDASHING, sizeof(bool));
   ArchetypeAddInline(arch, COMP_MUZZLES, sizeof(MuzzleCollection_t));
+  ArchetypeAddInline(arch, COMP_ONDEATH, sizeof(OnDeath));
 
   /* ---------- Handle Components ---------- */
 
@@ -85,25 +98,47 @@ uint32_t RegisterEnemyArchetype(world_t *world, Engine *engine) {
                       COMP_ACTIVE,           COMP_COLLISION_INSTANCE,
                       COMP_CAPSULE_COLLIDER, COMP_HEALTH,
                       COMP_NAVPATH,          COMP_GRUNT_FIRE_TIMER,
-                      COMP_MUZZLES,          COMP_MOVE_TIMER};
+                      COMP_MUZZLES,          COMP_MOVE_TIMER,
+                      COMP_ONDEATH};
 
   uint32_t id = CreateArchetype(world, comps, sizeof(comps) / sizeof(uint32_t));
 
   archetype_t *arch = WorldGetArchetype(world, id);
+  arch->id = id;
 
   ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
   ArchetypeAddInline(arch, COMP_ORIENTATION, sizeof(Orientation));
   ArchetypeAddInline(arch, COMP_ACTIVE, sizeof(Active));
   ArchetypeAddInline(arch, COMP_HEALTH, sizeof(Health));
-  ArchetypeAddInline(arch, COMP_NAVPATH, sizeof(NavPath));
   ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE, sizeof(CollisionInstance));
+  ArchetypeAddInline(arch, COMP_NAVPATH, sizeof(NavPath));
   ArchetypeAddInline(arch, COMP_CAPSULE_COLLIDER, sizeof(CapsuleCollider));
   ArchetypeAddInline(arch, COMP_MUZZLES, sizeof(MuzzleCollection_t));
+  ArchetypeAddInline(arch, COMP_ONDEATH, sizeof(OnDeath));
 
   ArchetypeAddHandle(arch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(arch, COMP_GRUNT_FIRE_TIMER, &engine->timerPool);
   ArchetypeAddHandle(arch, COMP_MOVE_TIMER, &engine->timerPool);
+
+  return id;
+}
+
+// MESSAGE ARCHETYPE
+uint32_t RegisterTriggerArchetype(world_t *world, Engine *engine) {
+  uint32_t comps[] = {COMP_POSITION, COMP_ACTIVE, COMP_COLLISION_INSTANCE,
+                      COMP_AABB_COLLIDER, COMP_ONCOLLISION};
+
+  uint32_t id = CreateArchetype(world, comps, sizeof(comps) / sizeof(uint32_t));
+
+  archetype_t *arch = WorldGetArchetype(world, id);
+  arch->id = id;
+
+  ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(arch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE, sizeof(CollisionInstance));
+  ArchetypeAddInline(arch, COMP_AABB_COLLIDER, sizeof(AABBCollider));
+  ArchetypeAddInline(arch, COMP_ONCOLLISION, sizeof(OnCollision));
 
   return id;
 }
@@ -118,6 +153,7 @@ uint32_t RegisterBoxArchetype(world_t *world, Engine *engine) {
   uint32_t id = CreateArchetype(world, comps, sizeof(comps) / sizeof(uint32_t));
 
   archetype_t *arch = WorldGetArchetype(world, id);
+  arch->id = id;
 
   ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
   ArchetypeAddInline(arch, COMP_ORIENTATION, sizeof(Orientation));
@@ -138,6 +174,8 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
 
   ECS_GET(world, e, Position, COMP_POSITION)->value = position;
   ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
+  ECS_GET(world, e, Health, COMP_HEALTH)->current = 100;
+  ECS_GET(world, e, Health, COMP_HEALTH)->max = 100;
 
   /* ---------------- Model Setup ---------------- */
 
@@ -189,12 +227,15 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
   muzzles->count = 1;
-  muzzles->Muzzles = malloc(sizeof(Muzzle_t));
+  muzzles->Muzzles = calloc(1, sizeof(Muzzle_t));
 
   muzzles->Muzzles[0] =
       (Muzzle_t){.positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
-                 .oriOffset = {.yaw = 0.0f, .pitch = 0.0f},
+                 .weaponOffset = {0, -PI / 2},
                  .bulletType = 1};
+
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  od->fn = Player_OnDeath;
 
   return e;
 }
@@ -243,8 +284,8 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
   cap->radius = 1.2f;
-  cap->localA= (Vector3){0, 0.0f, 0};
-  cap->localB= (Vector3){0, 2.5f, 0};
+  cap->localA = (Vector3){0, 0.0f, 0};
+  cap->localB = (Vector3){0, 2.5f, 0};
 
   Capsule_UpdateWorld(cap, position);
 
@@ -272,12 +313,14 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
   muzzles->count = 1;
-  muzzles->Muzzles = malloc(sizeof(Muzzle_t));
+  muzzles->Muzzles = calloc(1, sizeof(Muzzle_t));
 
   muzzles->Muzzles[0] =
-      (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 1.2f}},
-                 .oriOffset = {.yaw = 0.0f, .pitch = 0.0f},
+      (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 1.5f}},
                  .bulletType = BULLET_TYPE_STANDARD};
+
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  od->fn = Grunt_OnDeath;
 
   return e;
 }
@@ -318,8 +361,8 @@ entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
   cap->radius = 1.5f;
-  cap->localA= Vector3Add(position, (Vector3){0, 0.5f, 0});
-  cap->localB= Vector3Add(position, (Vector3){0, 1.0f, 0});
+  cap->localA = Vector3Add(position, (Vector3){0, 0.5f, 0});
+  cap->localB = Vector3Add(position, (Vector3){0, 1.0f, 0});
 
   CollisionInstance *ci =
       ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
@@ -345,12 +388,46 @@ entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
   muzzles->count = 1;
-  muzzles->Muzzles = malloc(sizeof(Muzzle_t));
+  muzzles->Muzzles = calloc(1, sizeof(Muzzle_t));
 
   muzzles->Muzzles[0] =
       (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 0.0f}},
-                 .oriOffset = {.yaw = 0.0f, .pitch = 0.0f},
                  .bulletType = BULLET_TYPE_STANDARD};
+
+  return e;
+}
+
+// tutorial box
+
+entity_t SpawnTrigger(world_t *world, uint32_t triggerArchId, Vector3 position,
+                      Vector3 size) {
+  archetype_t *arch = WorldGetArchetype(world, triggerArchId);
+
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  ECS_GET(world, e, Position, COMP_POSITION)->value = position;
+  ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
+
+  AABBCollider *aabb = ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
+
+  aabb->halfExtents = Vector3Scale(size, 0.5f);
+
+  CollisionInstance *ci =
+      ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+  ci->owner = e;
+  ci->type = COLLIDER_AABB;
+  ci->layerMask = 1 << LAYER_TRIGGER; // define if needed
+  ci->collideMask = 0xFFFFFFFF;       // detect everything
+
+  Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+  ci->worldBounds.min = Vector3Subtract(pos->value, aabb->halfExtents);
+  ci->worldBounds.max = Vector3Add(pos->value, aabb->halfExtents);
+
+  OnCollision *oc = ECS_GET(world, e, OnCollision, COMP_ONCOLLISION);
+
+  oc->fn = Trigger_OnCollision;
 
   return e;
 }

@@ -52,6 +52,18 @@ void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
     Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
     life->value = 5.0f;
 
+    // --- Collision mask ---
+    CollisionInstance *ci =
+        ECS_GET(world, b, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+    ci->layerMask = 1 << LAYER_BULLET;
+
+    if (shooterArchId == game->playerArchId) {
+      ci->collideMask = (1 << LAYER_ENEMY) | (1 << LAYER_WORLD);
+    } else {
+      ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_WORLD);
+    }
+
     printf("spawned bullet\n");
     break;
   }
@@ -105,105 +117,100 @@ static bool SweptSphereVsAABB(Vector3 start, Vector3 end, float radius,
 }
 
 void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
-                  archetype_t *enemyArch, float dt) {
+                  float dt) {
+  archetype_t *playerArch = WorldGetArchetype(world, game->playerArchId);
+
+  archetype_t *enemyArch = WorldGetArchetype(world, game->enemyGruntArchId);
+
+  archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
+
   for (uint32_t i = 0; i < bulletArch->count; i++) {
     entity_t b = bulletArch->entities[i];
 
     Active *active = ECS_GET(world, b, Active, COMP_ACTIVE);
-    if (!active->value)
+    if (!active || !active->value)
       continue;
 
     Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
-    if (life->value <= 0.0f) {
+    if (!life || life->value <= 0.0f) {
       active->value = false;
-      printf("bullet died\n");
       continue;
     }
 
     Position *pos = ECS_GET(world, b, Position, COMP_POSITION);
     Velocity *vel = ECS_GET(world, b, Velocity, COMP_VELOCITY);
+    SphereCollider *bulletSphere =
+        ECS_GET(world, b, SphereCollider, COMP_SPHERE_COLLIDER);
+    BulletType *bulletType = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
+    BulletOwner *owner = ECS_GET(world, b, BulletOwner, COMP_BULLET_OWNER);
 
     Vector3 prevPos = pos->value;
     Vector3 nextPos = Vector3Add(prevPos, Vector3Scale(vel->value, dt));
     Vector3 delta = Vector3Subtract(nextPos, prevPos);
 
     float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
-                                                   pos->value.x, pos->value.z);
+                                                   prevPos.x, prevPos.z);
 
-    BulletType *bulletType = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
-
-    float length = Vector3Length(delta);
-
-    if (length > 0.0001f) {
-      Vector3 dir = Vector3Scale(delta, 1.0f / length);
-
-      Ray ray = {prevPos, dir};
-
-      SphereCollider *bulletSphere =
-          ECS_GET(world, b, SphereCollider, COMP_SPHERE_COLLIDER);
-
-      float radius = bulletSphere->radius;
-
-      if (pos->value.y <= terrainY) {
-        active->value = false;
-        printf("bullet Terrain collision\n");
-        // if (ArchetypeHas(enemyArch, COMP_NAVPATH)) {
-        //   printf("--- Pathing to %f, %f\n", pos->value.x, pos->value.z);
-        //   NavPath *navpath =
-        //       ECS_GET(world, enemyArch->entities[0], NavPath, COMP_NAVPATH);
-        //   Position *enemyPos =
-        //       ECS_GET(world, enemyArch->entities[0], Position,
-        //       COMP_POSITION);
-        //   printf("Enemy start pos: %.2f %.2f\n", enemyPos->value.x,
-        //          enemyPos->value.z);
-
-        //   NavGrid_FindPath(&game->navGrid, enemyPos->value, pos->value,
-        //                    navpath);
-        // }
-        continue;
-      }
-
-      BulletOwner *owner = ECS_GET(world, b, BulletOwner, COMP_BULLET_OWNER);
-
-      for (uint32_t j = 0; j < enemyArch->count; j++) {
-        entity_t enemy = enemyArch->entities[j];
-
-        Active *enemyActive = ECS_GET(world, enemy, Active, COMP_ACTIVE);
-        if (!enemyActive || !enemyActive->value)
-          continue;
-
-        CollisionInstance *ci =
-            ECS_GET(world, enemy, CollisionInstance, COMP_COLLISION_INSTANCE);
-
-        if (!ci)
-          continue;
-
-        // Layer filtering
-        if (!(ci->collideMask & (1 << LAYER_BULLET)))
-          continue;
-
-
-        if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {
-          printf("HIT\n");
-          pos->value = prevPos;
-          active->value = false;
-
-          // handle collision
-          if (ArchetypeHas(enemyArch, COMP_HEALTH)) {
-            Health *hp = ECS_GET(world, enemy, Health, COMP_HEALTH);
-            hp->current -= bulletDamages[bulletType->type];
-            if (hp->current <= 0.0f) {
-              Active *active = ECS_GET(world, enemy, Active, COMP_ACTIVE);
-              active->value = false;
-              printf("Enemy died\n");
-            }
-          }
-          break;
-        }
-      }
+    /* --- Terrain collision --- */
+    if (prevPos.y <= terrainY) {
+      active->value = false;
+      continue;
     }
 
-    // Move bullet after sweep
-    pos->value = nextPos;
+    float radius = bulletSphere->radius;
+
+    bool hit = false;
+
+    /* helper macro to check one archetype */
+#define CHECK_ARCH(archPtr)                                                    \
+  for (uint32_t j = 0; j < (archPtr)->count; j++) {                            \
+    entity_t target = (archPtr)->entities[j];                                  \
+                                                                               \
+    if (owner && target.id == owner->eId && (archPtr)->id == owner->archId)    \
+      continue;                                                                \
+                                                                               \
+    Active *targetActive = ECS_GET(world, target, Active, COMP_ACTIVE);        \
+    if (!targetActive || !targetActive->value)                                 \
+      continue;                                                                \
+                                                                               \
+    CollisionInstance *ci =                                                    \
+        ECS_GET(world, target, CollisionInstance, COMP_COLLISION_INSTANCE);    \
+    if (!ci)                                                                   \
+      continue;                                                                \
+    CollisionInstance *bulletCI =                                              \
+        ECS_GET(world, b, CollisionInstance, COMP_COLLISION_INSTANCE);         \
+                                                                               \
+    if (!(bulletCI->collideMask & ci->layerMask))                              \
+      continue;                                                                \
+                                                                               \
+    if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {        \
+      active->value = false;                                                   \
+      pos->value = prevPos;                                                    \
+                                                                               \
+      printf("hit\n");                                                         \
+      if (ArchetypeHas(archPtr, COMP_HEALTH)) {                                \
+        Health *hp = ECS_GET(world, target, Health, COMP_HEALTH);              \
+        hp->current -= bulletDamages[bulletType->type];                        \
+        if (hp->current <= 0.0f) {                                             \
+          TryKillEntity(world, target);                                        \
+        }                                                                      \
+      }                                                                        \
+                                                                               \
+      hit = true;                                                              \
+      break;                                                                   \
+    }                                                                          \
+  }                                                                            \
+  if (hit)                                                                     \
+    continue;
+
+    /* --- Collision checks --- */
+    CHECK_ARCH(playerArch);
+    CHECK_ARCH(enemyArch);
+    CHECK_ARCH(obstacleArch);
+
+#undef CHECK_ARCH
+
+    if (!hit)
+      pos->value = nextPos;
   }
 }

@@ -160,8 +160,8 @@ bool CapsuleVsAABB(const CollisionInstance *a, const CapsuleCollider *cap,
 bool CollisionTest(const CollisionInstance *a, const void *shapeA,
                    const CollisionInstance *b, const void *shapeB,
                    CollisionHit *outHit) {
-  printf("A layer: %u mask: %u | B layer: %u mask: %u\n", a->layerMask,
-         a->collideMask, b->layerMask, b->collideMask);
+  // printf("A layer: %u mask: %u | B layer: %u mask: %u\n", a->layerMask,
+  //        a->collideMask, b->layerMask, b->collideMask);
   if ((a->collideMask & b->layerMask) == 0)
     return false;
 

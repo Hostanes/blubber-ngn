@@ -178,4 +178,29 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
       BuildPlayerCapsule(pos, cap, ci);
     }
   }
+
+  // check tutorial triggers
+
+  archetype_t *triggerArch = WorldGetArchetype(world, game->tutorialBoxArchId);
+
+  for (uint32_t i = 0; i < triggerArch->count; ++i) {
+    entity_t t = triggerArch->entities[i];
+
+    Active *tActive = ECS_GET(world, t, Active, COMP_ACTIVE);
+    if (!tActive || !tActive->value)
+      continue;
+
+    CollisionInstance *tCI =
+        ECS_GET(world, t, CollisionInstance, COMP_COLLISION_INSTANCE);
+    if (!tCI)
+      continue;
+
+    if (!AABB_Overlap(ci->worldBounds, tCI->worldBounds))
+      continue;
+
+    OnCollision *oc = ECS_GET(world, t, OnCollision, COMP_ONCOLLISION);
+
+    if (oc && oc->fn)
+      oc->fn(world, t, player);
+  }
 }

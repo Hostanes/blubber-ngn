@@ -1,8 +1,8 @@
 #include "../game.h"
 #include "systems.h"
 
-const float moveSpeeds[] = {20.0f};
-const float rotateSpeeds[] = {10.0f};
+static const float moveSpeeds[] = {20.0f};
+static const float rotateSpeeds[] = {10.0f};
 
 enum {
   AI_GRUNT_INACTIVE = 0,

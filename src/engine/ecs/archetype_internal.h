@@ -31,6 +31,7 @@ typedef struct {
 } archetypeColumn_t;
 
 struct archetype_t {
+  uint32_t id; // id also used as index in gamestate
   bitset_t mask;
 
   entity_t *entities;

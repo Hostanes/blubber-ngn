@@ -23,6 +23,8 @@ uint32_t RegisterBoxArchetype(world_t *world, Engine *engine);
 
 uint32_t RegisterLevelModelArchetype(world_t *world, Engine *engine);
 
+uint32_t RegisterTriggerArchetype(world_t *world, Engine *engine);
+
 /* ===================================================== */
 /*  Factory Spawn Functions                             */
 /* ===================================================== */
@@ -41,5 +43,8 @@ entity_t SpawnBoxModel(world_t *world, GameWorld *gw, Vector3 position,
 
 entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
                          Vector3 position, Vector3 rotation, Vector3 scale);
+
+entity_t SpawnTrigger(world_t *world, uint32_t triggerArchId, Vector3 position,
+                      Vector3 size);
 
 #endif

@@ -24,7 +24,8 @@ enum CollisionLayer {
   LAYER_PLAYER = 0,
   LAYER_WORLD = 1,
   LAYER_ENEMY = 2,
-  LAYER_BULLET = 3
+  LAYER_BULLET = 3,
+  LAYER_TRIGGER = 4
 };
 
 enum gameState {
@@ -45,7 +46,7 @@ typedef struct GameWorld {
   enum gameState gameState;
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
-      enemyMissileArchId, obstacleArchId, levelModelArchId;
+      enemyMissileArchId, obstacleArchId, levelModelArchId, tutorialBoxArchId;
 
   float arenaRadius;
 
@@ -65,6 +66,18 @@ typedef struct GameWorld {
 
   NavGrid navGrid;
 } GameWorld;
+
+static void TryKillEntity(world_t *world, entity_t e) {
+  Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+  if (!active || !active->value)
+    return;
+
+  active->value = false;
+
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  if (od && od->fn)
+    od->fn(world, e);
+}
 
 void RunGameLoop(Engine *engine, GameWorld *game);
 

@@ -53,6 +53,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.enemyGruntArchId = RegisterEnemyArchetype(world, engine);
   gw.obstacleArchId = RegisterBoxArchetype(world, engine);
   gw.levelModelArchId = RegisterLevelModelArchetype(world, engine);
+  gw.tutorialBoxArchId = RegisterTriggerArchetype(world, engine);
 
   // Level models
   Model ArenaModel175 = LoadModel("assets/models/175-radius-arena.glb");
@@ -120,7 +121,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
     ci->type = COLLIDER_SPHERE;
     ci->layerMask = 1 << LAYER_BULLET;
-    ci->collideMask = (1 << LAYER_ENEMY) | (1 << LAYER_WORLD);
+    ci->collideMask =
+        (1 << LAYER_ENEMY) | (1 << LAYER_PLAYER) | (1 << LAYER_WORLD);
   }
 
   /* ===================================================== */
@@ -177,6 +179,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   SpawnBoxModel(world, &gw, (Vector3){80, -6.0f, 0}, (Vector3){3, 13, 160});
 
   SpawnBoxModel(world, &gw, (Vector3){125, -6.0f, 0}, (Vector3){3, 13, 160});
+
+  SpawnTrigger(world, gw.tutorialBoxArchId, (Vector3){-10, 0, -10},
+               (Vector3){3, 3, 3});
 
   return gw;
 }

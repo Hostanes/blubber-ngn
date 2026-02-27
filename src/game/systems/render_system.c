@@ -95,6 +95,31 @@ void DrawNavGridBatched(NavGrid *grid) {
   rlEnd();
 }
 
+void DrawTriggerAABBs(world_t *world, uint32_t triggerArchId) {
+  archetype_t *arch = WorldGetArchetype(world, triggerArchId);
+  if (!arch)
+    return;
+
+  for (uint32_t i = 0; i < arch->count; ++i) {
+    entity_t e = arch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    AABBCollider *aabb = ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
+
+    if (!pos || !aabb)
+      continue;
+
+    Vector3 center = pos->value;
+    Vector3 size = Vector3Scale(aabb->halfExtents, 2.0f);
+
+    DrawCubeWires(center, size.x, size.y, size.z, PURPLE);
+  }
+}
+
 void RenderArchetype(world_t *world, archetype_t *arch) {
   bool hasActive = BitsetContainsAll(&arch->mask, &activeMask);
   bool hasAABB = ArchetypeHas(arch, COMP_AABB_COLLIDER);
@@ -274,11 +299,13 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   for (uint32_t i = 0; i < world->archetypeCount; ++i) {
     archetype_t *arch = &world->archetypes[i];
-    
+
     if (!BitsetContainsAll(&arch->mask, &modelMask))
       continue;
     RenderArchetype(world, arch);
   }
+
+  DrawTriggerAABBs(world, game->tutorialBoxArchId);
 
   NavGrid *grid = &game->navGrid;
 
