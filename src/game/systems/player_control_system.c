@@ -39,6 +39,34 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player) {
   FireMuzzle(world, game, player, game->playerArchId, m);
 }
 
+void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
+                              entity_t player) {
+  ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
+
+  if (!mc || mc->count <= 1)
+    return;
+
+  uint32_t weaponCount = mc->count - 1; // index 0 = body
+
+  if (IsKeyPressed(KEY_ONE) && weaponCount >= 1)
+    game->playerActiveWeapon = 0;
+
+  if (IsKeyPressed(KEY_TWO) && weaponCount >= 2)
+    game->playerActiveWeapon = 1;
+
+  if (IsKeyPressed(KEY_THREE) && weaponCount >= 3)
+    game->playerActiveWeapon = 2;
+
+  // Clamp safety
+  if (game->playerActiveWeapon >= weaponCount)
+    game->playerActiveWeapon = 0;
+
+  // Update model active states (index 0 is body)
+  for (uint32_t i = 1; i < mc->count; ++i) {
+    mc->models[i].isActive = ((i - 1) == game->playerActiveWeapon);
+  }
+}
+
 void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
                          float dt) {
   Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
@@ -134,9 +162,9 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
   Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
   Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
   ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
-  ModelInstance_t *gun = &mc->models[1];
 
-  gun->rotation.x = -ori->pitch;
+  if (!mc || mc->count <= 1)
+    return;
 
   Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
@@ -158,17 +186,28 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
 
   playerWeaponSway = Vector3Lerp(playerWeaponSway, targetSway, dt * swaySpeed);
 
-  // Idle motion
   static float swayTime = 0.0f;
   swayTime += dt;
 
   Vector3 idleSway = {sinf(swayTime * 1.7f) * swayAmount * 0.08f,
                       cosf(swayTime * 2.3f) * swayAmount * 0.06f, 0.0f};
-  gun->offset = Vector3Add((Vector3){0, -0.25f, 0},
-                           Vector3Add(playerWeaponSway, idleSway));
 
+  Vector3 finalOffset = Vector3Add((Vector3){0, -0.25f, 0},
+                                   Vector3Add(playerWeaponSway, idleSway));
+
+  // ---- Update all gun models (skip index 0 = body) ----
+  for (uint32_t i = 1; i < mc->count; ++i) {
+    ModelInstance_t *gun = &mc->models[i];
+    gun->rotation.x = -ori->pitch;
+    gun->offset = finalOffset;
+  }
+
+  // ---- Update all muzzles ----
   MuzzleCollection_t *muzzles =
       ECS_GET(world, player, MuzzleCollection_t, COMP_MUZZLES);
+
+  if (!muzzles)
+    return;
 
   Position *playerPos = ECS_GET(world, player, Position, COMP_POSITION);
 
@@ -180,7 +219,7 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
 
   Vector3 up3D = Vector3Normalize(Vector3CrossProduct(right3D, forward3D));
 
-  for (int i = 0; i < muzzles->count; i++) {
+  for (uint32_t i = 0; i < muzzles->count; ++i) {
     Muzzle_t *m = &muzzles->Muzzles[i];
 
     Vector3 offset = m->positionOffset.value;
@@ -191,6 +230,7 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
                               Vector3Scale(forward3D, offset.z)));
 
     m->worldPosition = Vector3Add(playerPos->value, worldOffset);
+
     m->forward = forward3D;
   }
 }

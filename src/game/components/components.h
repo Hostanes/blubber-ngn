@@ -6,6 +6,7 @@
 #include "ai_targets.h"
 #include "bullet_owner.h"
 #include "collision.h"
+#include "combat_state.h"
 #include "event_triggers.h"
 #include "health.h"
 #include "movement.h"
@@ -44,4 +45,5 @@ enum {
   COMP_MOVE_TIMER,
   COMP_ONDEATH,
   COMP_ONCOLLISION,
+  COMP_COMBAT_STATE,
 };

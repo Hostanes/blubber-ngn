@@ -43,6 +43,7 @@ typedef struct {
 
 typedef struct GameWorld {
   entity_t player;
+  uint32_t playerActiveWeapon;
   enum gameState gameState;
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
@@ -77,6 +78,15 @@ static void TryKillEntity(world_t *world, entity_t e) {
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
   if (od && od->fn)
     od->fn(world, e);
+}
+
+static float LerpAngle(float from, float to, float t) {
+  float difference = fmodf(to - from, 2 * PI);
+  if (difference > PI)
+    difference -= 2 * PI;
+  if (difference < -PI)
+    difference += 2 * PI;
+  return from + difference * t;
 }
 
 void RunGameLoop(Engine *engine, GameWorld *game);

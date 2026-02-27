@@ -140,6 +140,9 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
     for (uint32_t m = 0; m < mc->count; ++m) {
       ModelInstance_t *mi = &mc->models[m];
 
+      if (!mi->isActive)
+        continue;
+
       mi->model.transform = mi->finalTransform;
 
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
@@ -158,6 +161,8 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
         }
       }
     }
+
+    continue;
 
     // Debug Collider Rendering
     if (hasAABB) {

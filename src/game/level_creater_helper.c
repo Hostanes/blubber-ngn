@@ -99,7 +99,7 @@ uint32_t RegisterEnemyArchetype(world_t *world, Engine *engine) {
                       COMP_CAPSULE_COLLIDER, COMP_HEALTH,
                       COMP_NAVPATH,          COMP_GRUNT_FIRE_TIMER,
                       COMP_MUZZLES,          COMP_MOVE_TIMER,
-                      COMP_ONDEATH};
+                      COMP_ONDEATH,          COMP_COMBAT_STATE};
 
   uint32_t id = CreateArchetype(world, comps, sizeof(comps) / sizeof(uint32_t));
 
@@ -116,6 +116,7 @@ uint32_t RegisterEnemyArchetype(world_t *world, Engine *engine) {
   ArchetypeAddInline(arch, COMP_CAPSULE_COLLIDER, sizeof(CapsuleCollider));
   ArchetypeAddInline(arch, COMP_MUZZLES, sizeof(MuzzleCollection_t));
   ArchetypeAddInline(arch, COMP_ONDEATH, sizeof(OnDeath));
+  ArchetypeAddInline(arch, COMP_COMBAT_STATE, sizeof(CombatState_t));
 
   ArchetypeAddHandle(arch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(arch, COMP_GRUNT_FIRE_TIMER, &engine->timerPool);
@@ -185,15 +186,28 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
 
   Model playerBody = LoadModelFromMesh(GenMeshCube(.2f, 2, .2f));
 
+  ModelCollectionInit(mc, 3); // body + 2 guns
+
+  // Body (index 0)
   ModelCollectionAdd(mc, (ModelInstance_t){.model = playerBody,
                                            .offset = (Vector3){0, -1.5f, 0},
                                            .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_YAW_ONLY});
+                                           .rotationMode = MODEL_ROT_YAW_ONLY,
+                                           .isActive = true});
 
+  // Gun 1 (index 1)
   ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->gunModel,
                                            .offset = (Vector3){0, -0.5f, 0},
                                            .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_FULL});
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .isActive = true});
+
+  // Gun 2 (index 2)
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->gunModel,
+                                           .offset = (Vector3){0, -0.5f, 0},
+                                           .scale = (Vector3){1, 1, 2},
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .isActive = false});
 
   /* ---------------- Collision ---------------- */
 
@@ -268,15 +282,18 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntLegs,
                                            .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_YAW_ONLY});
-
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntGun,
-                                           .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_WORLD});
+                                           .rotationMode = MODEL_ROT_YAW_ONLY,
+                                           .isActive = true});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntTorso,
                                            .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_WORLD});
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .isActive = true});
+
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntGun,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .isActive = true});
 
   /* -------- Collider -------- */
 
@@ -319,6 +336,15 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
       (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 1.5f}},
                  .bulletType = BULLET_TYPE_STANDARD};
 
+  CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
+  if (combat) {
+    combat->combatYaw = PI / 4;
+    combat->aimPitch= 0.0f;
+    combat->moveYaw = PI / 4;
+    combat->isAiming = false;
+    combat->state = ENEMY_STATE_MOVING;
+  }
+
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
   od->fn = Grunt_OnDeath;
 
@@ -353,7 +379,8 @@ entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->missileEnemyModel,
                                            .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_YAW_ONLY});
+                                           .rotationMode = MODEL_ROT_YAW_ONLY,
+                                           .isActive = true});
 
   /* -------- Collider -------- */
 
@@ -393,6 +420,11 @@ entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
   muzzles->Muzzles[0] =
       (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 0.0f}},
                  .bulletType = BULLET_TYPE_STANDARD};
+
+  ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE)->combatYaw = 0;
+  ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE)->moveYaw = 0;
+  ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE)->isAiming = false;
+  ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE)->aimPitch = 0;
 
   return e;
 }
@@ -473,12 +505,12 @@ entity_t SpawnBoxModel(world_t *world, GameWorld *gw, Vector3 position,
                                            .offset = (Vector3){0, 0, 0},
                                            .rotation = (Vector3){0, 0, 0},
                                            .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_FULL});
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .isActive = true});
 
   /* -------- Collider -------- */
 
   AABBCollider *aabb = ECS_GET(world, e, AABBCollider, COMP_AABB_COLLIDER);
-
   aabb->halfExtents = (Vector3){size.x * 0.5f, size.y * 0.5f, size.z * 0.5f};
 
   CollisionInstance *ci =
@@ -489,6 +521,10 @@ entity_t SpawnBoxModel(world_t *world, GameWorld *gw, Vector3 position,
   ci->layerMask = 1 << LAYER_WORLD;
   ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
 
+  Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+
+  ci->worldBounds.min = Vector3Subtract(pos->value, aabb->halfExtents);
+  ci->worldBounds.max = Vector3Add(pos->value, aabb->halfExtents);
   return e;
 }
 
@@ -501,11 +537,12 @@ entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
   /* -------- Transform -------- */
 
   ECS_GET(world, e, Position, COMP_POSITION)->value = position;
+  Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+  ori->yaw = 0.0f;
+  ori->pitch = 0.0f;
 
   Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
   active->value = true;
-
-  Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
 
   /* -------- Model -------- */
 
@@ -518,7 +555,8 @@ entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
                             .offset = (Vector3){0, 0, 0},
                             .rotation = (Vector3){rotation.y, rotation.x, 0},
                             .scale = scale,
-                            .rotationMode = MODEL_ROT_FULL});
+                            .rotationMode = MODEL_ROT_FULL,
+                            .isActive = true});
 
   return e;
 }

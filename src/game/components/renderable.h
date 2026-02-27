@@ -1,6 +1,7 @@
 
 #pragma once
 #include "raylib.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum {
@@ -12,6 +13,7 @@ typedef enum {
 
 typedef struct {
   Model model;
+  bool isActive;
   Vector3 offset;
   Vector3 rotation;
   Vector3 scale;

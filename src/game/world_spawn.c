@@ -20,6 +20,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
   gw.gameState = GAMESTATE_MAINMENU;
   gw.arenaRadius = 175.0;
+  gw.playerActiveWeapon = 0;
   /* ---------- Terrain ---------- */
 
   gw.terrainModel = LoadModel("assets/models/terrain-level1.glb");
@@ -109,7 +110,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
     ModelCollectionInit(mc, 1);
     ModelCollectionAdd(mc, (ModelInstance_t){.model = gw.bulletModel,
                                              .scale = (Vector3){1, 1, 1},
-                                             .rotationMode = MODEL_ROT_FULL});
+                                             .rotationMode = MODEL_ROT_FULL, .isActive = true});
 
     SphereCollider *sphere =
         ECS_GET(world, b, SphereCollider, COMP_SPHERE_COLLIDER);
@@ -155,7 +156,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
         mc, (ModelInstance_t){
                 .model = cube,
                 .scale = (Vector3){width / 5.0f, height / 5.0f, depth / 5.0f},
-                .rotationMode = MODEL_ROT_FULL});
+                .rotationMode = MODEL_ROT_FULL,
+            .isActive = true});
 
     CollisionInstance *ci =
         ECS_GET(world, box, CollisionInstance, COMP_COLLISION_INSTANCE);

@@ -90,11 +90,13 @@ void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
 
 void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                         float dt) {
-  const float minDist = 15.0f;
-  const float maxDist = 40.0f;
+  const float minDist = 10.0f;
+  const float maxDist = 30.0f;
   const float repathInterval = 5.0f;
 
   Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
+  if (!playerPos)
+    return;
 
   for (uint32_t i = 0; i < enemyArch->count; i++) {
     entity_t e = enemyArch->entities[i];
@@ -106,55 +108,81 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
     Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
     NavPath *path = ECS_GET(world, e, NavPath, COMP_NAVPATH);
     Timer *repathTimer = ECS_GET(world, e, Timer, COMP_MOVE_TIMER);
+    CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
 
-    if (!pos || !path || !repathTimer)
+    if (!pos || !path || !repathTimer || !combat)
       continue;
 
-    // Only evaluate every N seconds
-    if (repathTimer->value > 0.0f)
-      continue;
+    // 1. Update the local timer
+    if (repathTimer->value > 0.0f) {
+      repathTimer->value -= dt;
+    }
 
-    // Reset timer
-    repathTimer->value = repathInterval;
-
-    // ---- Distance check ----
+    // 2. Calculate horizontal distance to player
     Vector3 toPlayer = Vector3Subtract(playerPos->value, pos->value);
     toPlayer.y = 0.0f;
-
     float distToPlayer = Vector3Length(toPlayer);
 
-    // If already within band → keep current path
-    if (distToPlayer >= minDist && distToPlayer <= maxDist)
-      continue;
+    // 3. State Management Logic
+    switch (combat->state) {
 
-    // Clear previous path
-    path->count = 0;
-    path->currentIndex = 0;
-
-    // ---- Try generating new ring target ----
-    for (int attempt = 0; attempt < 10; attempt++) {
-      float angle = GetRandomValue(0, 360) * DEG2RAD;
-      float radius = GetRandomValue((int)minDist, (int)maxDist);
-
-      Vector3 candidate = {playerPos->value.x + cosf(angle) * radius, 0.0f,
-                           playerPos->value.z + sinf(angle) * radius};
-
-      // Snap to terrain
-      candidate.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
-                                                  candidate.x, candidate.z);
-
-      int cx, cy;
-      if (!NavGrid_WorldToCell(&game->navGrid, candidate, &cx, &cy))
-        continue;
-
-      int idx = NavGrid_Index(&game->navGrid, cx, cy);
-
-      if (game->navGrid.cells[idx].type == NAV_CELL_WALL)
-        continue;
-
-      if (NavGrid_FindPath(&game->navGrid, pos->value, candidate, path)) {
-        break; // success
+    case ENEMY_STATE_MOVING: {
+      // If we are currently moving, check if the generic EnemyAISystem
+      // finished the path (it clears path->count when done).
+      if (path->count == 0) {
+        combat->state = ENEMY_STATE_COMBAT;
       }
+      // While moving, we don't do anything else; let EnemyAISystem drive.
+    } break;
+
+    case ENEMY_STATE_COMBAT: {
+      // If we are standing still (Combat), check if we've become out of range
+      if (distToPlayer < minDist || distToPlayer > maxDist) {
+
+        // Only try to repath if our cooldown timer is done
+        if (repathTimer->value <= 0.0f) {
+          bool foundPath = false;
+
+          // Try to find a valid spot in the "sweet spot" ring around the player
+          for (int attempt = 0; attempt < 10; attempt++) {
+            float angle = GetRandomValue(0, 360) * DEG2RAD;
+            float radius = GetRandomValue((int)minDist, (int)maxDist);
+
+            Vector3 candidate = {playerPos->value.x + cosf(angle) * radius,
+                                 0.0f,
+                                 playerPos->value.z + sinf(angle) * radius};
+
+            // Snap to terrain height
+            candidate.y = HeightMap_GetHeightCatmullRom(
+                &game->terrainHeightMap, candidate.x, candidate.z);
+
+            // Validate grid cell
+            int cx, cy;
+            if (!NavGrid_WorldToCell(&game->navGrid, candidate, &cx, &cy))
+              continue;
+            int idx = NavGrid_Index(&game->navGrid, cx, cy);
+            if (game->navGrid.cells[idx].type == NAV_CELL_WALL)
+              continue;
+
+            // Attempt pathfinding
+            if (NavGrid_FindPath(&game->navGrid, pos->value, candidate, path)) {
+              combat->state = ENEMY_STATE_MOVING;
+              repathTimer->value = repathInterval;
+              foundPath = true;
+              break;
+            }
+          }
+
+          // If all attempts failed, we stay in COMBAT state
+          // and try again next time the timer allows.
+        }
+      }
+    } break;
+
+    default: {
+      // Initial safety check
+      combat->state = ENEMY_STATE_COMBAT;
+    } break;
     }
   }
 }

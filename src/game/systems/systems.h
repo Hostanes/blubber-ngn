@@ -14,6 +14,7 @@ typedef struct GameWorld GameWorld;
 
 void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
                          float dt);
+void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game, entity_t player);
 void PlayerWeaponSystem(world_t *world, entity_t player, float dt);
 void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player);
 
