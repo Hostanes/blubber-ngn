@@ -16,3 +16,5 @@ void *ComponentGet(componentPool_t *componentPool, uint32_t handle);
 bool ComponentHas(const componentPool_t *componentPool, uint32_t handle);
 
 uint32_t ComponentCreate(componentPool_t *pool);
+
+void ComponentPoolClear(componentPool_t *pool);

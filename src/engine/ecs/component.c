@@ -125,3 +125,15 @@ uint32_t ComponentCreate(componentPool_t *pool) {
 
   return handle;
 }
+
+
+void ComponentPoolClear(componentPool_t *pool) {
+  pool->count = 0;
+  pool->nextHandle = 0;
+
+  if (pool->sparse) {
+    for (uint32_t i = 0; i < pool->sparseCapacity; ++i) {
+      pool->sparse[i] = UINT32_MAX;
+    }
+  }
+}

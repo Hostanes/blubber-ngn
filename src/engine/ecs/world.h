@@ -21,6 +21,8 @@ void *WorldGetComponent(world_t *, entity_t, componentId_t);
 
 uint32_t WorldCreateArchetype(world_t *world, const bitset_t *mask);
 
+void WorldClear(world_t *world);
+
 static inline archetype_t *WorldGetArchetype(world_t *world, uint32_t id) {
   return &world->archetypes[id];
 }

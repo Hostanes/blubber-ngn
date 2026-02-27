@@ -16,3 +16,4 @@ entity_t EntityCreate(entityManager_t *entityManager);
 void EntityDestroy(entityManager_t *entityManager, entity_t entity);
 
 bool EntityIsAlive(const entityManager_t *entityManager, entity_t entity);
+void EntityManagerClear(entityManager_t *entityManager);

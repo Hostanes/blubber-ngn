@@ -31,6 +31,8 @@ enum CollisionLayer {
 enum gameState {
   GAMESTATE_MAINMENU = 0,
   GAMESTATE_INLEVEL,
+  GAMESTATE_SETTINGS,
+  GAMESTATE_LOADING,
 };
 
 typedef struct {
@@ -45,6 +47,13 @@ typedef struct GameWorld {
   entity_t player;
   uint32_t playerActiveWeapon;
   enum gameState gameState;
+
+  uint32_t targetLevel;
+  float loadingTimer;
+
+  float masterVolume;
+  int targetFPS;
+  bool showFPS;
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, obstacleArchId, levelModelArchId, tutorialBoxArchId;
@@ -93,5 +102,3 @@ void RunGameLoop(Engine *engine, GameWorld *game);
 
 Engine EngineInit(void);
 void EngineShutdown(Engine *engine);
-
-GameWorld GameWorldCreate(Engine *engine, world_t *world);

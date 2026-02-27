@@ -1,5 +1,6 @@
 #include "game.h"
 #include "omp.h"
+#include "world_spawn.h"
 
 /* ================= Utilities ================= */
 
@@ -58,6 +59,7 @@ int main(void) {
 
   Engine engine = EngineInit();
   GameWorld game = GameWorldCreate(&engine, engine.world);
+  EnableCursor();
   RunGameLoop(&engine, &game);
   EngineShutdown(&engine);
   return 0;

@@ -88,3 +88,14 @@ bool EntityIsAlive(const entityManager_t *entityManager, entity_t entity) {
 
   return entityManager->generations[entity.id] == entity.generation;
 }
+
+void EntityManagerClear(entityManager_t *entityManager) {
+  // 1. Increment generations for all active IDs so old handles become invalid
+  for (uint32_t i = 0; i < entityManager->nextId; i++) {
+    entityManager->generations[i]++;
+  }
+
+  // 2. Reset counters
+  entityManager->nextId = 0;
+  entityManager->freeCount = 0;
+}

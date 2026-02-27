@@ -140,3 +140,19 @@ void ArchetypeRemoveEntity(archetype_t *arch, uint32_t index) {
 
   arch->count--;
 }
+
+void ArchetypeClear(archetype_t *arch) {
+  // Release components back to pools if they are Handle-based
+  for (uint32_t i = 0; i < arch->columnCount; ++i) {
+    archetypeColumn_t *col = &arch->columns[i];
+    if (col->storageType == ArchetypeStorageHandle && col->pool) {
+      uint32_t *handles = (uint32_t *)col->data;
+      for (uint32_t j = 0; j < arch->count; ++j) {
+        if (handles[j] != UINT32_MAX) {
+          ComponentRemove(col->pool, handles[j]);
+        }
+      }
+    }
+  }
+  arch->count = 0;
+}

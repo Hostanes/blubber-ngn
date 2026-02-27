@@ -29,25 +29,6 @@ static void EnsureActiveMask(void) {
   activeMaskInit = true;
 }
 
-void RenderMainMenu(GameWorld *game) {
-  BeginDrawing();
-  ClearBackground(DARKGRAY);
-
-  const char *title = "FPS test game";
-  const char *prompt = "Press ENTER to start";
-
-  int screenW = GetScreenWidth();
-  int screenH = GetScreenHeight();
-
-  DrawText(title, screenW / 2 - MeasureText(title, 40) / 2, screenH / 2 - 60,
-           40, RAYWHITE);
-
-  DrawText(prompt, screenW / 2 - MeasureText(prompt, 20) / 2, screenH / 2 + 10,
-           20, LIGHTGRAY);
-
-  EndDrawing();
-}
-
 void DrawNavGridBatched(NavGrid *grid) {
   rlBegin(RL_LINES);
 

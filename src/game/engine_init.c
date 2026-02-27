@@ -5,6 +5,7 @@ Engine EngineInit(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
   InitWindow(1280, 720, "ECS FPS Test");
   DisableCursor();
+  SetExitKey(KEY_NULL);
   SetTargetFPS(60);
 
   Engine engine = {0};

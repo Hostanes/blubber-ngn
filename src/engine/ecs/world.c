@@ -141,3 +141,18 @@ void *WorldGetComponent(world_t *world, entity_t entity,
 
   return ComponentGet((componentPool_t *)col->pool, handle);
 }
+
+void WorldClear(world_t *world) {
+  for (uint32_t i = 0; i < world->archetypeCount; ++i) {
+    ArchetypeClear(&world->archetypes[i]);
+  }
+
+  EntityManagerClear(&world->entityManager);
+
+  if (world->entityLocations) {
+    // Using UINT32_MAX or 0 depends on your preference,
+    // but ensuring archetype index is invalid is key.
+    memset(world->entityLocations, 0xFF,
+           world->entityLocationCapacity * sizeof(entityLocation_t));
+  }
+}
