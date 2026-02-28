@@ -128,7 +128,7 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
 
       mi->model.transform = mi->finalTransform;
 
-      // DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
+      DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
     }
 
     continue;

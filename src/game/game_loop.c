@@ -64,7 +64,7 @@ void EnemyBenchmarkSystem(world_t *world, GameWorld *game, float dt) {
   static float spawnTimer = 0.0f;
   static float destroyTimer = 0.0f;
 
-  const int spawnBatch = 10000; // spawn per tick
+  const int spawnBatch = 100; // spawn per tick
 
   spawnTimer += dt;
   destroyTimer += dt;
