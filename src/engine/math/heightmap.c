@@ -1,5 +1,18 @@
 #include "heightmap.h"
 
+void HeightMap_Free(HeightMap *hm) {
+  if (!hm)
+    return;
+
+  free(hm->samples);
+  hm->samples = NULL;
+
+  hm->width = 0;
+  hm->height = 0;
+  hm->cellSize = 0.0f;
+  hm->origin = (Vector3){0};
+}
+
 HeightMap HeightMap_FromMesh(Mesh mesh, Matrix transform) {
   HeightMap hm = {0};
 

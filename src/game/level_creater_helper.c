@@ -8,7 +8,31 @@
 
 void Player_OnDeath(world_t *world, entity_t e) { printf("player dead\n"); }
 
-void Grunt_OnDeath(world_t *world, entity_t e) { printf("grunt dead\n"); }
+void Grunt_OnDeath(world_t *world, entity_t entity) {
+  /* -------- NavPath -------- */
+  NavPath *nav = ECS_GET(world, entity, NavPath, COMP_NAVPATH);
+
+  if (nav && nav->points) {
+    NavPath_Destroy(nav);
+  }
+
+  /* -------- Muzzles -------- */
+  MuzzleCollection_t *m =
+      ECS_GET(world, entity, MuzzleCollection_t, COMP_MUZZLES);
+
+  if (m && m->Muzzles) {
+    free(m->Muzzles);
+    m->Muzzles = NULL;
+    m->count = 0;
+  }
+
+  /* -------- Model Collection -------- */
+  ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
+
+  if (mc) {
+    ModelCollectionFree(mc);
+  }
+}
 
 void Trigger_OnCollision(world_t *world, entity_t self, entity_t other) {
   printf("trigger collided\n");

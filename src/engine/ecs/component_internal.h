@@ -14,4 +14,8 @@ struct componentPool_t {
 
   uint32_t nextHandle;
   size_t elementSize;
+
+  uint32_t *freeHandles;
+  uint32_t freeCount;
+  uint32_t freeCapacity;
 };

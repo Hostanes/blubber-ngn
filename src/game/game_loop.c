@@ -64,39 +64,42 @@ void EnemyBenchmarkSystem(world_t *world, GameWorld *game, float dt) {
   static float spawnTimer = 0.0f;
   static float destroyTimer = 0.0f;
 
-  const int spawnBatch = 50;   // spawn per tick
-  const int destroyBatch = 50; // destroy per tick
+  const int spawnBatch = 10000; // spawn per tick
 
   spawnTimer += dt;
   destroyTimer += dt;
 
   /* --- Spawn --- */
-  if (spawnTimer > 0.3f) {
+  if (spawnTimer > 0.2f) {
 
     for (int i = 0; i < spawnBatch; i++) {
 
       float x = GetRandomValue(-150, 150);
       float z = GetRandomValue(-150, 150);
-
-      SpawnEnemyRanger(world, game, (Vector3){x, 0, z});
+      float y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap, x, z);
+      SpawnEnemyGrunt(world, game, (Vector3){x, y, z});
     }
 
     spawnTimer = 0.0f;
   }
 
   /* --- Destroy --- */
-  if (destroyTimer > 0.3f) {
+  if (destroyTimer > 0.2f) {
 
-    archetype_t *arch = WorldGetArchetype(world, game->enemyRangerArchId);
+    archetype_t *arch = WorldGetArchetype(world, game->enemyGruntArchId);
 
-    int toDestroy = destroyBatch;
+    int toDestroy = spawnBatch;
 
     for (uint32_t i = 0; i < arch->count && toDestroy > 0; i++) {
 
       entity_t e = arch->entities[i];
       Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
       active->value = false;
-      WorldDestroyEntity(world, e); // or your destroy function
+
+      OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+      if (od && od->fn)
+        od->fn(world, e);
+      WorldDestroyEntity(world, e);
 
       toDestroy--;
     }
@@ -128,6 +131,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                GetScreenHeight() / 2, 30, RAYWHITE);
       EndDrawing();
 
+      HeightMap_Free(&game->terrainHeightMap);
+      NavGrid_Destroy(&game->navGrid);
       WorldClear(world);
       SpawnLevel01(world, game);
       game->gameState = GAMESTATE_INLEVEL;
