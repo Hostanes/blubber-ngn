@@ -56,7 +56,8 @@ typedef struct GameWorld {
   bool showFPS;
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
-      enemyMissileArchId, obstacleArchId, levelModelArchId, tutorialBoxArchId;
+      enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
+      tutorialBoxArchId;
 
   float arenaRadius;
 
@@ -73,6 +74,7 @@ typedef struct GameWorld {
 
   HeightMap terrainHeightMap;
   Model terrainModel;
+  Model ArenaModel175;
 
   NavGrid navGrid;
 } GameWorld;

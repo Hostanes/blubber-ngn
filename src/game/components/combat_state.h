@@ -10,4 +10,8 @@ typedef struct {
   float moveYaw;   // Target yaw for moving
   float aimPitch;  // Current muzzle pitch
   bool isAiming;   // Threshold check flag
+
+  int burstShotsRemaining;
+  float burstTimer;
+  int burstType; // 0 = auto, 1 = missile
 } CombatState_t;

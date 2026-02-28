@@ -115,9 +115,11 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       if (!active->value)
         continue;
     }
+    // printf("render entity id %u\n", e.id);
 
     ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
 
+    // printf("model count %d\n", mc->count);
     for (uint32_t m = 0; m < mc->count; ++m) {
       ModelInstance_t *mi = &mc->models[m];
 
@@ -143,7 +145,7 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       }
     }
 
-    continue;
+    // continue;
 
     // Debug Collider Rendering
     if (hasAABB) {
@@ -286,16 +288,16 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   for (uint32_t i = 0; i < world->archetypeCount; ++i) {
     archetype_t *arch = &world->archetypes[i];
 
-    if (!BitsetContainsAll(&arch->mask, &modelMask))
+    if (!ArchetypeHas(arch, COMP_MODEL))
       continue;
     RenderArchetype(world, arch);
   }
 
   DrawTriggerAABBs(world, game->tutorialBoxArchId);
 
-  NavGrid *grid = &game->navGrid;
+  // NavGrid *grid = &game->navGrid;
 
-  DrawNavGridBatched(grid);
+  // DrawNavGridBatched(grid);
 
   EndMode3D();
   DrawFPS(10, 10);

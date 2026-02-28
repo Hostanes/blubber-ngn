@@ -18,6 +18,7 @@ uint32_t CreateArchetype(world_t *world, uint32_t *components, int count);
 uint32_t RegisterPlayerArchetype(world_t *world, Engine *engine);
 
 uint32_t RegisterEnemyArchetype(world_t *world, Engine *engine);
+uint32_t RegisterEnemyRangerArchetype(world_t *world, Engine *engine);
 
 uint32_t RegisterBoxArchetype(world_t *world, Engine *engine);
 
@@ -32,6 +33,7 @@ uint32_t RegisterTriggerArchetype(world_t *world, Engine *engine);
 entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position);
 
 entity_t SpawnEnemyGrunt(world_t *world, GameWorld *gw, Vector3 position);
+entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position);
 
 entity_t SpawnEnemyMissile(world_t *world, GameWorld *gw, Vector3 position);
 

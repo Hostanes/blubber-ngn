@@ -9,7 +9,7 @@ const float swaySpeed = 15.0f;
 
 const float dashSpeed = 50.0f;
 const float dashDuration = 0.18f;
-const float dashCooldownMax = 0.4f;
+const float dashCooldownMax = 0.9f;
 const float speed = 20.0f;
 const float mouseSensitivity = 0.002f;
 

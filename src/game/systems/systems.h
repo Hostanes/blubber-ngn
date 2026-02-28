@@ -47,6 +47,13 @@ void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                     float dt);
 void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch);
 
+void EnemyRangerAISystem(world_t *world, GameWorld *game,
+                         archetype_t *enemyArch, float dt);
+void EnemyRangerFireSystem(world_t *world, GameWorld *game,
+                           archetype_t *enemyArch, float dt);
+void EnemyRangerAimSystem(world_t *world, GameWorld *game,
+                          archetype_t *enemyArch, float dt);
+
 // void Grunt_SetTargets(world_t *world, entity_t e, GameWorld *game);
 // void Tank_SetTargets(world_t *world, entity_t e, GameWorld *game);
 // void MissileBot_SetTargets(world_t *world, entity_t e, GameWorld *game);

@@ -2,7 +2,7 @@
 #include "enemy_behaviour.h"
 #include "systems.h"
 
-const float faceThreshold = 0.05f;
+const float faceThreshold = 0.5f;
 const float arriveThreshold = 0.5f;
 
 void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
@@ -183,6 +183,69 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
       // Initial safety check
       combat->state = ENEMY_STATE_COMBAT;
     } break;
+    }
+  }
+}
+
+void EnemyRangerAISystem(world_t *world, GameWorld *game,
+                         archetype_t *enemyArch, float dt) {
+  const float minDist = 25.0f;       // larger inner ring
+  const float maxDist = 90.0f;       // larger outer ring
+  const float repathInterval = 8.0f; // moves less frequently
+
+  Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
+  if (!playerPos)
+    return;
+
+  for (uint32_t i = 0; i < enemyArch->count; i++) {
+    entity_t e = enemyArch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    NavPath *path = ECS_GET(world, e, NavPath, COMP_NAVPATH);
+    Timer *repathTimer = ECS_GET(world, e, Timer, COMP_MOVE_TIMER);
+    CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
+
+    if (!pos || !path || !repathTimer || !combat)
+      continue;
+
+    if (repathTimer->value > 0.0f)
+      repathTimer->value -= dt;
+
+    Vector3 toPlayer = Vector3Subtract(playerPos->value, pos->value);
+    toPlayer.y = 0.0f;
+    float distToPlayer = Vector3Length(toPlayer);
+
+    switch (combat->state) {
+
+    case ENEMY_STATE_MOVING:
+      if (path->count == 0)
+        combat->state = ENEMY_STATE_COMBAT;
+      break;
+
+    case ENEMY_STATE_COMBAT:
+
+      if (distToPlayer < minDist || distToPlayer > maxDist) {
+
+        if (repathTimer->value <= 0.0f) {
+
+          if (NavGrid_FindPath(&game->navGrid, pos->value, playerPos->value,
+                               path)) {
+
+            combat->state = ENEMY_STATE_MOVING;
+            repathTimer->value = repathInterval;
+          }
+        }
+      }
+
+      break;
+
+    default:
+      combat->state = ENEMY_STATE_COMBAT;
+      break;
     }
   }
 }

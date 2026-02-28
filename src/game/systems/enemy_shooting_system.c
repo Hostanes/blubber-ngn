@@ -203,3 +203,185 @@ void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch) {
     fireTimer->value = 1.0f;
   }
 }
+
+void EnemyRangerAimSystem(world_t *world, GameWorld *game,
+                          archetype_t *enemyArch, float dt) {
+
+  Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
+  if (!playerPos)
+    return;
+
+  Vector3 playerAimPos = playerPos->value;
+  playerAimPos.y -= 0.5f;
+
+  for (uint32_t i = 0; i < enemyArch->count; i++) {
+
+    entity_t e = enemyArch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+    MuzzleCollection_t *muzzles =
+        ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+    CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
+
+    if (!pos || !ori || !muzzles || !combat)
+      continue;
+
+    /* --- 1. ALWAYS rotate body toward player in combat --- */
+    if (combat->state == ENEMY_STATE_COMBAT) {
+
+      Vector3 toPlayer = Vector3Subtract(playerAimPos, pos->value);
+      float targetYaw = atan2f(toPlayer.x, toPlayer.z);
+
+      float delta = targetYaw - ori->yaw;
+
+      while (delta > PI)
+        delta -= 2 * PI;
+      while (delta < -PI)
+        delta += 2 * PI;
+
+      float step = 4.0f * dt; // slightly heavier/slower rotation
+
+      if (fabsf(delta) < step)
+        ori->yaw = targetYaw;
+      else
+        ori->yaw += (delta > 0 ? 1 : -1) * step;
+    }
+
+    /* --- 2. Update muzzle local aiming --- */
+    for (int m = 0; m < muzzles->count; m++) {
+
+      Muzzle_t *mz = &muzzles->Muzzles[m];
+
+      /* Missile muzzle does NOT aim at player (fires straight up) */
+      if (mz->bulletType == BULLET_TYPE_MISSILE) {
+        mz->aimRot.yaw = 0.0f;
+        mz->aimRot.pitch = PI / 2.0f; // straight up
+        continue;
+      }
+
+      /* Autocannon aims normally */
+
+      Vector3 toPlayer = Vector3Subtract(playerAimPos, pos->value);
+
+      float targetWorldYaw = atan2f(toPlayer.x, toPlayer.z);
+
+      float horizontalDist =
+          sqrtf(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
+
+      float targetPitch =
+          atan2f(toPlayer.y - mz->positionOffset.value.y, horizontalDist);
+
+      float targetLocalYaw = targetWorldYaw - ori->yaw;
+
+      while (targetLocalYaw > PI)
+        targetLocalYaw -= 2 * PI;
+      while (targetLocalYaw < -PI)
+        targetLocalYaw += 2 * PI;
+
+      float swivelSpeed = 6.0f * dt;
+
+      float yawDelta = targetLocalYaw - mz->aimRot.yaw;
+      while (yawDelta > PI)
+        yawDelta -= 2 * PI;
+      while (yawDelta < -PI)
+        yawDelta += 2 * PI;
+
+      if (fabsf(yawDelta) < swivelSpeed)
+        mz->aimRot.yaw = targetLocalYaw;
+      else
+        mz->aimRot.yaw += (yawDelta > 0 ? 1 : -1) * swivelSpeed;
+
+      float pitchDelta = targetPitch - mz->aimRot.pitch;
+
+      if (fabsf(pitchDelta) < swivelSpeed)
+        mz->aimRot.pitch = targetPitch;
+      else
+        mz->aimRot.pitch += (pitchDelta > 0 ? 1 : -1) * swivelSpeed;
+    }
+
+    /* --- 3. ALWAYS update world transforms --- */
+    MuzzleCollection_UpdateWorld(pos, ori, muzzles);
+  }
+}
+
+void EnemyRangerFireSystem(world_t *world, GameWorld *game,
+                           archetype_t *enemyArch, float dt) {
+
+  for (uint32_t i = 0; i < enemyArch->count; i++) {
+
+    entity_t e = enemyArch->entities[i];
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
+
+    if (!combat || combat->state != ENEMY_STATE_COMBAT)
+      continue;
+
+    Timer *fireTimer = ECS_GET(world, e, Timer, COMP_GRUNT_FIRE_TIMER);
+    if (!fireTimer)
+      continue;
+
+    MuzzleCollection_t *muzzles =
+        ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+
+    if (!muzzles || muzzles->count < 2)
+      continue;
+
+    /* ------------------------------------- */
+    /* 1. Currently in burst?               */
+    /* ------------------------------------- */
+
+    if (combat->burstShotsRemaining > 0) {
+
+      combat->burstTimer -= dt;
+
+      if (combat->burstTimer <= 0.0f) {
+
+        Muzzle_t *mz = NULL;
+
+        if (combat->burstType == 0) {
+          mz = &muzzles->Muzzles[0]; // autocannon
+        } else {
+          mz = &muzzles->Muzzles[1]; // missile
+          mz->forward = (Vector3){0, 1, 0};
+        }
+
+        FireMuzzle(world, game, e, game->enemyRangerArchId, mz);
+
+        combat->burstShotsRemaining--;
+        combat->burstTimer = 0.12f; // time between shots
+      }
+
+      continue;
+    }
+
+    /* ------------------------------------- */
+    /* 2. Not bursting — can we start one?  */
+    /* ------------------------------------- */
+
+    if (fireTimer->value > 0.0f)
+      continue;
+
+    int roll = GetRandomValue(0, 100);
+
+    combat->burstShotsRemaining = GetRandomValue(3, 4);
+
+    if (roll < 80) {
+      combat->burstType = 0;     // autocannon
+      combat->burstTimer = 0.0f; // fire immediately
+      fireTimer->value = 1.2f;   // cooldown after burst
+    } else {
+      combat->burstType = 1; // missile
+      combat->burstTimer = 0.0f;
+      fireTimer->value = 3.5f;
+    }
+  }
+}

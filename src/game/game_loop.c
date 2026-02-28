@@ -16,9 +16,9 @@ bool DrawButton(const char *text, Vector2 pos) {
 
 void RenderMainMenu(GameWorld *game) {
   BeginDrawing();
-  ClearBackground(DARKBLUE);
+  ClearBackground(BLACK);
 
-  DrawText("MY ECS SHOOTER", GetScreenWidth() / 2 - 150, 150, 40, RAYWHITE);
+  DrawText("WHALEFALL", GetScreenWidth() / 2 - 150, 150, 40, RAYWHITE);
 
   // Simple vertical menu
   if (DrawButton("START GAME", (Vector2){GetScreenWidth() / 2 - 100, 300})) {
@@ -59,6 +59,52 @@ void RenderSettingsMenu(GameWorld *game) {
   EndDrawing();
 }
 
+void EnemyBenchmarkSystem(world_t *world, GameWorld *game, float dt) {
+
+  static float spawnTimer = 0.0f;
+  static float destroyTimer = 0.0f;
+
+  const int spawnBatch = 50;   // spawn per tick
+  const int destroyBatch = 50; // destroy per tick
+
+  spawnTimer += dt;
+  destroyTimer += dt;
+
+  /* --- Spawn --- */
+  if (spawnTimer > 0.3f) {
+
+    for (int i = 0; i < spawnBatch; i++) {
+
+      float x = GetRandomValue(-150, 150);
+      float z = GetRandomValue(-150, 150);
+
+      SpawnEnemyRanger(world, game, (Vector3){x, 0, z});
+    }
+
+    spawnTimer = 0.0f;
+  }
+
+  /* --- Destroy --- */
+  if (destroyTimer > 0.3f) {
+
+    archetype_t *arch = WorldGetArchetype(world, game->enemyRangerArchId);
+
+    int toDestroy = destroyBatch;
+
+    for (uint32_t i = 0; i < arch->count && toDestroy > 0; i++) {
+
+      entity_t e = arch->entities[i];
+      Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+      active->value = false;
+      WorldDestroyEntity(world, e); // or your destroy function
+
+      toDestroy--;
+    }
+
+    destroyTimer = 0.0f;
+  }
+}
+
 void RunGameLoop(Engine *engine, GameWorld *game) {
   world_t *world = engine->world;
   Camera3D *camera = &engine->camera;
@@ -93,6 +139,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       TimerSystem(&engine->timerPool, dt);
 
+      EnemyBenchmarkSystem(world, game, dt);
+
       PlayerControlSystem(world, game, game->player, dt);
 
       ApplyGravity(world, game, dt);
@@ -105,18 +153,31 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       PlayerMoveAndCollide(world, game, dt);
 
-      EnemyGruntAISystem(world, game,
-                         WorldGetArchetype(world, game->enemyGruntArchId), dt);
-      EnemyAISystem(world, game,
-                    WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      // EnemyGruntAISystem(world, game,
+      //                    WorldGetArchetype(world, game->enemyGruntArchId),
+      //                    dt);
 
-      EnemyAimSystem(world, game,
-                     WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      // EnemyRangerAISystem(
+      //     world, game, WorldGetArchetype(world, game->enemyRangerArchId),
+      //     dt);
+
+      // EnemyAISystem(world, game,
+      //               WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      // EnemyAISystem(world, game,
+      //               WorldGetArchetype(world, game->enemyRangerArchId), dt);
+
+      EnemyRangerAimSystem(
+          world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
+
+      EnemyRangerFireSystem(
+          world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
 
       EnemyFireSystem(world, game,
                       WorldGetArchetype(world, game->enemyGruntArchId));
 
       MovementSystem(world, WorldGetArchetype(world, game->enemyGruntArchId),
+                     dt);
+      MovementSystem(world, WorldGetArchetype(world, game->enemyRangerArchId),
                      dt);
 
       BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
@@ -140,6 +201,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       if (IsKeyPressed(KEY_ESCAPE)) {
         game->gameState = GAMESTATE_MAINMENU;
+        WorldClear(world);
         EnableCursor();
       }
     } break;

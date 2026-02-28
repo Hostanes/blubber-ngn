@@ -1,4 +1,5 @@
 #include "world_spawn.h"
+#include "level_creater_helper.h"
 
 #define MAX_BULLETS 2048
 
@@ -8,6 +9,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   GameWorld gw = {0};
   gw.gameState = GAMESTATE_MAINMENU;
   gw.arenaRadius = 175.0;
+
+  gw.terrainModel = LoadModel("assets/models/terrain-level1.glb");
+  gw.ArenaModel175 = LoadModel("assets/models/175-radius-arena.glb");
 
   /* 1. Load Shared Models (Persistent) */
   gw.gunModel = LoadModel("assets/models/gun1.glb");
@@ -23,6 +27,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.obstacleArchId = RegisterBoxArchetype(world, engine);
   gw.levelModelArchId = RegisterLevelModelArchetype(world, engine);
   gw.tutorialBoxArchId = RegisterTriggerArchetype(world, engine);
+  gw.enemyRangerArchId = RegisterEnemyRangerArchetype(world, engine);
 
   // Bullet Archetype setup (Same as before)
   uint32_t bulletBits[] = {
@@ -85,20 +90,62 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
 
 // --- LEVEL 1 SPAWNER ---
 void SpawnLevel01(world_t *world, GameWorld *gw) {
-  gw->terrainModel = LoadModel("assets/models/terrain-level1.glb");
   gw->terrainHeightMap =
       HeightMap_FromMesh(gw->terrainModel.meshes[0], MatrixIdentity());
   NavGrid_LoadFromImage(&gw->navGrid, "navmap.png", 2,
                         (Vector3){-180, 0, -180});
 
   // Spawn Level Geo
-  Model ArenaModel175 = LoadModel("assets/models/175-radius-arena.glb");
-  SpawnLevelModel(world, gw, ArenaModel175, (Vector3){0, 0, 0},
+  SpawnLevelModel(world, gw, gw->ArenaModel175, (Vector3){0, 0, 0},
                   (Vector3){PI, 0, 0}, (Vector3){1, 1, 1});
 
   // Spawn Entities
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
-  SpawnEnemyGrunt(world, gw, (Vector3){10, 0, 10});
+  SpawnEnemyRanger(world, gw, (Vector3){2, 0, 50});
+  // SpawnEnemyGrunt(world, gw, (Vector3){2, 0, 23});
+  // SpawnEnemyGrunt(world, gw, (Vector3){35, 0, 16});
+  // SpawnEnemyGrunt(world, gw, (Vector3){25, 0, 10});
+  // SpawnEnemyGrunt(world, gw, (Vector3){12, 0, 15});
+  // SpawnEnemyGrunt(world, gw, (Vector3){12, 0, 26});
+
+  // Random Boxes
+  Model cube = LoadModelFromMesh(GenMeshCube(5, 5, 5));
+  for (int i = 0; i < 50; ++i) {
+    float x = GetRandomValue(-172, 172);
+    float z = GetRandomValue(-172, 172);
+    float y = GetRandomValue(0, 15);
+
+    float height = GetRandomValue(2, 6);
+    float width = GetRandomValue(2, 6);
+    float depth = GetRandomValue(2, 6);
+
+    entity_t box = SpawnBox(world, gw, (Vector3){x, y, z},
+                            (Vector3){width, height, depth});
+
+    ModelCollection_t *mc = ECS_GET(world, box, ModelCollection_t, COMP_MODEL);
+
+    ModelCollectionInit(mc, 1);
+    ModelCollectionAdd(
+        mc, (ModelInstance_t){
+                .model = cube,
+                .scale = (Vector3){width / 5.0f, height / 5.0f, depth / 5.0f},
+                .rotationMode = MODEL_ROT_FULL,
+                .isActive = true});
+
+    CollisionInstance *ci =
+        ECS_GET(world, box, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+    ci->type = COLLIDER_AABB;
+    ci->layerMask = 1 << LAYER_WORLD;
+    ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
+
+    AABBCollider *aabb = ECS_GET(world, box, AABBCollider, COMP_AABB_COLLIDER);
+
+    if (!aabb)
+      break;
+
+    Collision_UpdateAABB(ci, aabb, (Vector3){x, y, z});
+  }
 
   // Bullet Archetype setup (Same as before)
   uint32_t bulletBits[] = {
@@ -139,44 +186,5 @@ void SpawnLevel01(world_t *world, GameWorld *gw) {
     ci->layerMask = 1 << LAYER_BULLET;
     ci->collideMask =
         (1 << LAYER_ENEMY) | (1 << LAYER_PLAYER) | (1 << LAYER_WORLD);
-  }
-
-  // Random Boxes
-  Model cube = LoadModelFromMesh(GenMeshCube(5, 5, 5));
-  for (int i = 0; i < 50; ++i) {
-    float x = GetRandomValue(-172, 172);
-    float z = GetRandomValue(-172, 172);
-    float y = GetRandomValue(0, 15);
-
-    float height = GetRandomValue(2, 6);
-    float width = GetRandomValue(2, 6);
-    float depth = GetRandomValue(2, 6);
-
-    entity_t box = SpawnBox(world, gw, (Vector3){x, y, z},
-                            (Vector3){width, height, depth});
-
-    ModelCollection_t *mc = ECS_GET(world, box, ModelCollection_t, COMP_MODEL);
-
-    ModelCollectionInit(mc, 1);
-    ModelCollectionAdd(
-        mc, (ModelInstance_t){
-                .model = cube,
-                .scale = (Vector3){width / 5.0f, height / 5.0f, depth / 5.0f},
-                .rotationMode = MODEL_ROT_FULL,
-                .isActive = true});
-
-    CollisionInstance *ci =
-        ECS_GET(world, box, CollisionInstance, COMP_COLLISION_INSTANCE);
-
-    ci->type = COLLIDER_AABB;
-    ci->layerMask = 1 << LAYER_WORLD;
-    ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET);
-
-    AABBCollider *aabb = ECS_GET(world, box, AABBCollider, COMP_AABB_COLLIDER);
-
-    if (!aabb)
-      break;
-
-    Collision_UpdateAABB(ci, aabb, (Vector3){x, y, z});
   }
 }

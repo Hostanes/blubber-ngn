@@ -122,6 +122,8 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
 
   archetype_t *enemyArch = WorldGetArchetype(world, game->enemyGruntArchId);
 
+  archetype_t *rangerArch = WorldGetArchetype(world, game->enemyRangerArchId);
+
   archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
 
   for (uint32_t i = 0; i < bulletArch->count; i++) {
@@ -207,6 +209,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     CHECK_ARCH(playerArch);
     CHECK_ARCH(enemyArch);
     CHECK_ARCH(obstacleArch);
+    CHECK_ARCH(rangerArch);
 
 #undef CHECK_ARCH
 
