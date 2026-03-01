@@ -403,7 +403,7 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
     combat->aimPitch = 0.0f;
     combat->moveYaw = PI / 4;
     combat->isAiming = false;
-    combat->state = ENEMY_STATE_MOVING;
+    combat->state = ENEMY_STATE_COMBAT;
   }
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -496,7 +496,7 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
     combat->aimPitch = 0.0f;
     combat->moveYaw = PI / 4;
     combat->isAiming = false;
-    combat->state = ENEMY_STATE_MOVING;
+    combat->state = ENEMY_STATE_COMBAT;
   }
 
   printf("Ranger position: %f %f %f\n", position.x, position.y, position.z);

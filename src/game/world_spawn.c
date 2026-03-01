@@ -101,7 +101,7 @@ void SpawnLevel01(world_t *world, GameWorld *gw) {
 
   // Spawn Entities
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
-  SpawnEnemyRanger(world, gw, (Vector3){2, 0, 50});
+  // SpawnEnemyRanger(world, gw, (Vector3){2, 0, 50});
   // SpawnEnemyGrunt(world, gw, (Vector3){2, 0, 23});
   // SpawnEnemyGrunt(world, gw, (Vector3){35, 0, 16});
   // SpawnEnemyGrunt(world, gw, (Vector3){25, 0, 10});

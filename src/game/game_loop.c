@@ -3,6 +3,14 @@
 #include "world_spawn.h"
 #include <raylib.h>
 
+#define FPS_SAMPLES 120
+
+float fpsSamples[FPS_SAMPLES] = {0};
+int fpsIndex = 0;
+int fpsCount = 0;
+float fpsSum = 0.0f;
+float fpsAverage = 0.0f;
+
 // Helper for UI buttons
 bool DrawButton(const char *text, Vector2 pos) {
   Rectangle bounds = {pos.x, pos.y, 200, 50};
@@ -64,7 +72,7 @@ void EnemyBenchmarkSystem(world_t *world, GameWorld *game, float dt) {
   static float spawnTimer = 0.0f;
   static float destroyTimer = 0.0f;
 
-  const int spawnBatch = 100; // spawn per tick
+  const int spawnBatch = 20000; // spawn per tick
 
   spawnTimer += dt;
   destroyTimer += dt;
@@ -142,6 +150,26 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
     case GAMESTATE_INLEVEL: {
 
+      float currentFps = (dt > 0.0f) ? (1.0f / dt) : 0.0f;
+
+      /* remove oldest sample from sum */
+      fpsSum -= fpsSamples[fpsIndex];
+
+      /* store new sample */
+      fpsSamples[fpsIndex] = currentFps;
+
+      /* add new sample to sum */
+      fpsSum += currentFps;
+
+      fpsIndex = (fpsIndex + 1) % FPS_SAMPLES;
+
+      if (fpsCount < FPS_SAMPLES)
+        fpsCount++;
+
+      fpsAverage = fpsSum / fpsCount;
+
+      printf("fps average %f\n", fpsAverage);
+
       TimerSystem(&engine->timerPool, dt);
 
       EnemyBenchmarkSystem(world, game, dt);
@@ -174,8 +202,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       EnemyRangerAimSystem(
           world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
 
-      EnemyRangerFireSystem(
-          world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
+      EnemyAimSystem(world, game,
+                     WorldGetArchetype(world, game->enemyGruntArchId), dt);
 
       EnemyFireSystem(world, game,
                       WorldGetArchetype(world, game->enemyGruntArchId));

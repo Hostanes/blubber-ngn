@@ -126,6 +126,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
 
   archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
 
+#pragma omp parallel for if (bulletArch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < bulletArch->count; i++) {
     entity_t b = bulletArch->entities[i];
 
