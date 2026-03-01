@@ -1,11 +1,24 @@
 
+
 #include "../game.h"
+#include "../level_creater_helper.h"
 #include "systems.h"
 #include <stdint.h>
 
 void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
                 int shooterArchId, Muzzle_t *m) {
   archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
+
+  if (m->bulletType == BULLET_TYPE_MISSILE) {
+
+    Vector3 muzzlePos = m->worldPosition;
+    Vector3 forward = m->forward;
+
+    SpawnHomingMissile(world, game, shooter,
+                       game->player, // target
+                       muzzlePos, forward);
+    return;
+  }
 
   for (uint32_t i = 0; i < bulletArch->count; i++) {
     entity_t b = bulletArch->entities[i];
@@ -64,7 +77,7 @@ void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
       ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_WORLD);
     }
 
-    printf("spawned bullet\n");
+    // printf("spawned bullet\n");
     break;
   }
 }
@@ -190,7 +203,6 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
       active->value = false;                                                   \
       pos->value = prevPos;                                                    \
                                                                                \
-      printf("hit\n");                                                         \
       if (ArchetypeHas(archPtr, COMP_HEALTH)) {                                \
         Health *hp = ECS_GET(world, target, Health, COMP_HEALTH);              \
         hp->current -= bulletDamages[bulletType->type];                        \
@@ -207,6 +219,136 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     continue;
 
     /* --- Collision checks --- */
+    CHECK_ARCH(playerArch);
+    CHECK_ARCH(enemyArch);
+    CHECK_ARCH(obstacleArch);
+    CHECK_ARCH(rangerArch);
+
+#undef CHECK_ARCH
+
+    if (!hit)
+      pos->value = nextPos;
+  }
+}
+
+void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
+                         float dt) {
+
+  for (uint32_t i = 0; i < arch->count; i++) {
+
+    entity_t e = arch->entities[i];
+    printf("processing missle of eid %d\n", e.id);
+
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value)
+      continue;
+
+    HomingMissile *hm = ECS_GET(world, e, HomingMissile, COMP_HOMINGMISSILE);
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    Velocity *vel = ECS_GET(world, e, Velocity, COMP_VELOCITY);
+    Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
+
+    if (!hm || !pos || !vel || !ori)
+      continue;
+
+    Position *targetPos = ECS_GET(world, hm->target, Position, COMP_POSITION);
+
+    if (!targetPos)
+      continue;
+
+    Vector3 toTarget = Vector3Subtract(targetPos->value, pos->value);
+
+    Vector3 desiredDir = Vector3Normalize(toTarget);
+    Vector3 currentDir = Vector3Normalize(vel->value);
+
+    float maxTurn = hm->turnSpeed * dt;
+
+    Vector3 newDir = Vector3Lerp(currentDir, desiredDir, maxTurn);
+    newDir = Vector3Normalize(newDir);
+
+    float speed = Vector3Length(vel->value);
+    if (speed > hm->maxSpeed)
+      speed = hm->maxSpeed;
+
+    vel->value = Vector3Scale(newDir, speed);
+
+    ori->yaw = atan2f(newDir.x, newDir.z);
+
+    ori->pitch = asinf(newDir.y);
+
+    /* --- Model orientation toward movement direction --- */
+    ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+
+    if (mc && mc->count > 0) {
+      mc->models[0].rotation = (Vector3){-ori->pitch, 0.0f, 0.0f};
+    }
+
+    archetype_t *playerArch = WorldGetArchetype(world, game->playerArchId);
+    archetype_t *enemyArch = WorldGetArchetype(world, game->enemyGruntArchId);
+    archetype_t *rangerArch = WorldGetArchetype(world, game->enemyRangerArchId);
+    archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
+
+    SphereCollider *missileSphere =
+        ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+
+    CollisionInstance *missileCI =
+        ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+    Vector3 prevPos = pos->value;
+    Vector3 nextPos = Vector3Add(prevPos, Vector3Scale(vel->value, dt));
+
+    float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                                   prevPos.x, prevPos.z);
+
+    /* --- Terrain collision --- */
+    if (prevPos.y <= terrainY) {
+      TryKillEntity(world, e);
+      continue;
+    }
+
+    float radius = missileSphere->radius;
+
+    bool hit = false;
+
+#define CHECK_ARCH(archPtr)                                                    \
+  for (uint32_t j = 0; j < (archPtr)->count; j++) {                            \
+    entity_t target = (archPtr)->entities[j];                                  \
+                                                                               \
+    if (target.id == e.id)                                                     \
+      continue;                                                                \
+    if (target.id == hm->owner.id)                                             \
+      continue;                                                                \
+                                                                               \
+    Active *targetActive = ECS_GET(world, target, Active, COMP_ACTIVE);        \
+    if (!targetActive || !targetActive->value)                                 \
+      continue;                                                                \
+                                                                               \
+    CollisionInstance *ci =                                                    \
+        ECS_GET(world, target, CollisionInstance, COMP_COLLISION_INSTANCE);    \
+    if (!ci)                                                                   \
+      continue;                                                                \
+                                                                               \
+    if (!(missileCI->collideMask & ci->layerMask))                             \
+      continue;                                                                \
+                                                                               \
+    if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {        \
+      TryKillEntity(world, e);                                                 \
+      pos->value = prevPos;                                                    \
+                                                                               \
+      if (ArchetypeHas(archPtr, COMP_HEALTH)) {                                \
+        Health *hp = ECS_GET(world, target, Health, COMP_HEALTH);              \
+        hp->current -= 100.0f;                                                 \
+        if (hp->current <= 0.0f)                                               \
+          TryKillEntity(world, target);                                        \
+      }                                                                        \
+                                                                               \
+      hit = true;                                                              \
+      break;                                                                   \
+    }                                                                          \
+  }                                                                            \
+  if (hit)                                                                     \
+    continue;
+
     CHECK_ARCH(playerArch);
     CHECK_ARCH(enemyArch);
     CHECK_ARCH(obstacleArch);

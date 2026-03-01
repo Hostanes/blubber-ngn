@@ -2,7 +2,15 @@
 #include "enemy_behaviour.h"
 #include "systems.h"
 
-#define ENEMY_AIM_THRESHOLD 0
+#define RANGER_FIRE_DEBUG 0
+
+#if RANGER_FIRE_DEBUG
+#define RF_LOG(...) printf(__VA_ARGS__)
+#else
+#define RF_LOG(...)
+#endif
+
+#define ENEMY_AIM_THRESHOLD 0.5
 
 void MuzzleCollection_UpdateWorld(Position *pos, Orientation *entityOri,
                                   MuzzleCollection_t *muzzles) {
@@ -315,31 +323,59 @@ void EnemyRangerFireSystem(world_t *world, GameWorld *game,
   for (uint32_t i = 0; i < enemyArch->count; i++) {
 
     entity_t e = enemyArch->entities[i];
+    RF_LOG("[RANGER FIRE] Checking entity %u\n", e);
 
     Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
-    if (!active || !active->value)
+    if (!active) {
+      RF_LOG("  -> No Active component\n");
       continue;
+    }
+
+    if (!active->value) {
+      RF_LOG("  -> Not active\n");
+      continue;
+    }
 
     CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
-
-    if (!combat || combat->state != ENEMY_STATE_COMBAT)
+    if (!combat) {
+      RF_LOG("  -> No CombatState\n");
       continue;
+    }
+
+    if (combat->state != ENEMY_STATE_COMBAT) {
+      RF_LOG("  -> Not in COMBAT state (%d)\n", combat->state);
+      continue;
+    }
 
     Timer *fireTimer = ECS_GET(world, e, Timer, COMP_GRUNT_FIRE_TIMER);
-    if (!fireTimer)
+    if (!fireTimer) {
+      RF_LOG("  -> No fire timer\n");
       continue;
+    }
 
     MuzzleCollection_t *muzzles =
         ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
-    if (!muzzles || muzzles->count < 2)
+    if (!muzzles) {
+      RF_LOG("  -> No muzzle collection\n");
       continue;
+    }
+
+    if (muzzles->count < 2) {
+      RF_LOG("  -> Not enough muzzles (%d)\n", muzzles->count);
+      continue;
+    }
+
+    RF_LOG("  -> fireTimer: %.2f | burstRemaining: %d\n", fireTimer->value,
+           combat->burstShotsRemaining);
 
     /* ------------------------------------- */
     /* 1. Currently in burst?               */
     /* ------------------------------------- */
 
     if (combat->burstShotsRemaining > 0) {
+
+      RF_LOG("  -> In burst. Timer: %.2f\n", combat->burstTimer);
 
       combat->burstTimer -= dt;
 
@@ -348,16 +384,19 @@ void EnemyRangerFireSystem(world_t *world, GameWorld *game,
         Muzzle_t *mz = NULL;
 
         if (combat->burstType == 0) {
-          mz = &muzzles->Muzzles[0]; // autocannon
+          RF_LOG("    -> Firing AUTOCANNON\n");
+          mz = &muzzles->Muzzles[0];
         } else {
-          mz = &muzzles->Muzzles[1]; // missile
+          RF_LOG("    -> Firing MISSILE\n");
+          mz = &muzzles->Muzzles[1];
           mz->forward = (Vector3){0, 1, 0};
         }
 
+        RF_LOG("    -> Calling FireMuzzle()\n");
         FireMuzzle(world, game, e, game->enemyRangerArchId, mz);
 
         combat->burstShotsRemaining--;
-        combat->burstTimer = 0.12f; // time between shots
+        combat->burstTimer = 0.12f;
       }
 
       continue;
@@ -367,19 +406,28 @@ void EnemyRangerFireSystem(world_t *world, GameWorld *game,
     /* 2. Not bursting — can we start one?  */
     /* ------------------------------------- */
 
-    if (fireTimer->value > 0.0f)
+    if (fireTimer->value > 0.0f) {
+      RF_LOG("  -> Waiting for cooldown (%.2f)\n", fireTimer->value);
       continue;
+    }
 
-    int roll = GetRandomValue(0, 100);
+    RF_LOG("  -> Starting new burst\n");
+
+    // int roll = GetRandomValue(0, 100);
+    int roll = 90;
+    RF_LOG("  -> Roll: %d\n", roll);
 
     combat->burstShotsRemaining = GetRandomValue(3, 4);
+    RF_LOG("  -> Burst shots: %d\n", combat->burstShotsRemaining);
 
     if (roll < 80) {
-      combat->burstType = 0;     // autocannon
-      combat->burstTimer = 0.0f; // fire immediately
-      fireTimer->value = 1.2f;   // cooldown after burst
+      RF_LOG("  -> Selected AUTOCANNON burst\n");
+      combat->burstType = 0;
+      combat->burstTimer = 0.0f;
+      fireTimer->value = 1.2f;
     } else {
-      combat->burstType = 1; // missile
+      RF_LOG("  -> Selected MISSILE burst\n");
+      combat->burstType = 1;
       combat->burstTimer = 0.0f;
       fireTimer->value = 3.5f;
     }

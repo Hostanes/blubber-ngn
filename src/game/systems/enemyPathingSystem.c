@@ -232,15 +232,22 @@ void EnemyRangerAISystem(world_t *world, GameWorld *game,
 
         if (repathTimer->value <= 0.0f) {
 
-          if (NavGrid_FindPath(&game->navGrid, pos->value, playerPos->value,
-                               path)) {
+          Vector3 dir = Vector3Normalize(toPlayer);
+
+          float desiredDist = (minDist + maxDist) * 0.5f;
+
+          Vector3 ringTarget =
+              Vector3Subtract(playerPos->value, Vector3Scale(dir, desiredDist));
+
+          ringTarget.y = playerPos->value.y;
+
+          if (NavGrid_FindPath(&game->navGrid, pos->value, ringTarget, path)) {
 
             combat->state = ENEMY_STATE_MOVING;
             repathTimer->value = repathInterval;
           }
         }
       }
-
       break;
 
     default:

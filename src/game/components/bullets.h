@@ -1,3 +1,4 @@
+#include "../../engine/ecs/entity.h"
 
 // index of these is the bullet Type
 static float bulletDamages[] = {10.0f, 70.0f, 30.0f};
@@ -12,3 +13,10 @@ enum {
 typedef struct {
   int type;
 } BulletType;
+
+typedef struct {
+  entity_t owner;
+  entity_t target;
+  float turnSpeed; // radians/sec
+  float maxSpeed;
+} HomingMissile;

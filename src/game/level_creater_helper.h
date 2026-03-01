@@ -26,6 +26,8 @@ uint32_t RegisterLevelModelArchetype(world_t *world, Engine *engine);
 
 uint32_t RegisterTriggerArchetype(world_t *world, Engine *engine);
 
+uint32_t RegisterMissileArchetype(world_t *world, Engine *engine);
+
 /* ===================================================== */
 /*  Factory Spawn Functions                             */
 /* ===================================================== */
@@ -48,5 +50,8 @@ entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
 
 entity_t SpawnTrigger(world_t *world, uint32_t triggerArchId, Vector3 position,
                       Vector3 size);
+
+void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
+                        entity_t target, Vector3 position, Vector3 forward);
 
 #endif

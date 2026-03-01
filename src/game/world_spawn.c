@@ -28,6 +28,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.levelModelArchId = RegisterLevelModelArchetype(world, engine);
   gw.tutorialBoxArchId = RegisterTriggerArchetype(world, engine);
   gw.enemyRangerArchId = RegisterEnemyRangerArchetype(world, engine);
+  gw.missileArchId = RegisterMissileArchetype(world, engine);
 
   // Bullet Archetype setup (Same as before)
   uint32_t bulletBits[] = {
@@ -101,7 +102,10 @@ void SpawnLevel01(world_t *world, GameWorld *gw) {
 
   // Spawn Entities
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
-  // SpawnEnemyRanger(world, gw, (Vector3){2, 0, 50});
+  SpawnEnemyRanger(
+      world, gw,
+      (Vector3){2, HeightMap_GetHeightCatmullRom(&gw->terrainHeightMap, 2, 50),
+                50});
   // SpawnEnemyGrunt(world, gw, (Vector3){2, 0, 23});
   // SpawnEnemyGrunt(world, gw, (Vector3){35, 0, 16});
   // SpawnEnemyGrunt(world, gw, (Vector3){25, 0, 10});

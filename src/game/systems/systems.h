@@ -22,6 +22,8 @@ void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
                 int shooterArchId, Muzzle_t *m);
 void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
                   float dt);
+void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
+                         float dt);
 
 void ApplyGravity(world_t *world, GameWorld *game, float dt);
 void MovementSystem(world_t *world, archetype_t *arch, float dt);

@@ -1,3 +1,4 @@
+#include "components/muzzle.h"
 #include "game.h"
 #include "systems/systems.h"
 #include "world_spawn.h"
@@ -149,30 +150,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
     } break;
 
     case GAMESTATE_INLEVEL: {
-
-      float currentFps = (dt > 0.0f) ? (1.0f / dt) : 0.0f;
-
-      /* remove oldest sample from sum */
-      fpsSum -= fpsSamples[fpsIndex];
-
-      /* store new sample */
-      fpsSamples[fpsIndex] = currentFps;
-
-      /* add new sample to sum */
-      fpsSum += currentFps;
-
-      fpsIndex = (fpsIndex + 1) % FPS_SAMPLES;
-
-      if (fpsCount < FPS_SAMPLES)
-        fpsCount++;
-
-      fpsAverage = fpsSum / fpsCount;
-
-      printf("fps average %f\n", fpsAverage);
-
       TimerSystem(&engine->timerPool, dt);
-
-      EnemyBenchmarkSystem(world, game, dt);
 
       PlayerControlSystem(world, game, game->player, dt);
 
@@ -186,18 +164,16 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       PlayerMoveAndCollide(world, game, dt);
 
-      // EnemyGruntAISystem(world, game,
-      //                    WorldGetArchetype(world, game->enemyGruntArchId),
-      //                    dt);
+      EnemyGruntAISystem(world, game,
+                         WorldGetArchetype(world, game->enemyGruntArchId), dt);
 
-      // EnemyRangerAISystem(
-      //     world, game, WorldGetArchetype(world, game->enemyRangerArchId),
-      //     dt);
+      EnemyRangerAISystem(
+          world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
 
-      // EnemyAISystem(world, game,
-      //               WorldGetArchetype(world, game->enemyGruntArchId), dt);
-      // EnemyAISystem(world, game,
-      //               WorldGetArchetype(world, game->enemyRangerArchId), dt);
+      EnemyAISystem(world, game,
+                    WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      EnemyAISystem(world, game,
+                    WorldGetArchetype(world, game->enemyRangerArchId), dt);
 
       EnemyRangerAimSystem(
           world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
@@ -205,6 +181,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       EnemyAimSystem(world, game,
                      WorldGetArchetype(world, game->enemyGruntArchId), dt);
 
+      EnemyRangerFireSystem(
+          world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
       EnemyFireSystem(world, game,
                       WorldGetArchetype(world, game->enemyGruntArchId));
 
@@ -215,6 +193,10 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
                    dt);
+
+      MovementSystem(world, WorldGetArchetype(world, game->missileArchId), dt);
+      HomingMissileSystem(world, game,
+                          WorldGetArchetype(world, game->missileArchId), dt);
 
       Orientation *ori =
           ECS_GET(world, game->player, Orientation, COMP_ORIENTATION);

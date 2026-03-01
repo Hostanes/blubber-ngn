@@ -6,17 +6,56 @@
 #include "ecs_get.h"
 #include <raymath.h>
 
-void Player_OnDeath(world_t *world, entity_t e) { printf("player dead\n"); }
+void Player_OnDeath(world_t *world, entity_t entity) {
+  printf("killing player\n");
+  MuzzleCollection_t *m =
+      ECS_GET(world, entity, MuzzleCollection_t, COMP_MUZZLES);
+
+  if (m && m->Muzzles) {
+    free(m->Muzzles);
+    m->Muzzles = NULL;
+    m->count = 0;
+  }
+
+  ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
+
+  if (mc) {
+    ModelCollectionFree(mc);
+  }
+}
 
 void Grunt_OnDeath(world_t *world, entity_t entity) {
-  /* -------- NavPath -------- */
+  printf("killing grunt\n");
   NavPath *nav = ECS_GET(world, entity, NavPath, COMP_NAVPATH);
 
   if (nav && nav->points) {
     NavPath_Destroy(nav);
   }
 
-  /* -------- Muzzles -------- */
+  MuzzleCollection_t *m =
+      ECS_GET(world, entity, MuzzleCollection_t, COMP_MUZZLES);
+
+  if (m && m->Muzzles) {
+    free(m->Muzzles);
+    m->Muzzles = NULL;
+    m->count = 0;
+  }
+
+  ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
+
+  if (mc) {
+    ModelCollectionFree(mc);
+  }
+}
+
+void Ranger_OnDeath(world_t *world, entity_t entity) {
+  printf("killing ranger\n");
+  NavPath *nav = ECS_GET(world, entity, NavPath, COMP_NAVPATH);
+
+  if (nav && nav->points) {
+    NavPath_Destroy(nav);
+  }
+
   MuzzleCollection_t *m =
       ECS_GET(world, entity, MuzzleCollection_t, COMP_MUZZLES);
 
@@ -32,6 +71,34 @@ void Grunt_OnDeath(world_t *world, entity_t entity) {
   if (mc) {
     ModelCollectionFree(mc);
   }
+}
+
+void OnMissileDeath(world_t *world, entity_t e) {
+
+  Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+  if (!active || !active->value)
+    return;
+
+  active->value = false;
+
+  Velocity *vel = ECS_GET(world, e, Velocity, COMP_VELOCITY);
+  if (vel)
+    vel->value = (Vector3){0, 0, 0};
+
+  CollisionInstance *ci =
+      ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+  if (ci) {
+    ci->layerMask = 0;
+    ci->collideMask = 0;
+  }
+
+  Timer *life = ECS_GET(world, e, Timer, COMP_TIMER);
+  if (life)
+    life->value = 0.0f;
+
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+  if (mc && mc->count > 0)
+    mc->models[0].isActive = false;
 }
 
 void Trigger_OnCollision(world_t *world, entity_t self, entity_t other) {
@@ -224,6 +291,42 @@ uint32_t RegisterEnemyRangerArchetype(world_t *world, Engine *engine) {
   ArchetypeAddHandle(arch, COMP_MODEL, &engine->modelPool);
   ArchetypeAddHandle(arch, COMP_GRUNT_FIRE_TIMER, &engine->timerPool);
   ArchetypeAddHandle(arch, COMP_MOVE_TIMER, &engine->timerPool);
+
+  return id;
+}
+
+uint32_t RegisterMissileArchetype(world_t *world, Engine *engine) {
+  uint32_t comps[] = {COMP_POSITION,
+                      COMP_VELOCITY,
+                      COMP_ORIENTATION,
+                      COMP_MODEL,
+                      COMP_ACTIVE,
+                      COMP_TIMER,
+                      COMP_COLLISION_INSTANCE,
+                      COMP_SPHERE_COLLIDER,
+                      COMP_ONDEATH,
+                      COMP_HOMINGMISSILE};
+
+  uint32_t id = CreateArchetype(world, comps, sizeof(comps) / sizeof(uint32_t));
+
+  archetype_t *arch = WorldGetArchetype(world, id);
+  arch->id = id;
+
+  /* -------- Inline -------- */
+
+  ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
+  ArchetypeAddInline(arch, COMP_ORIENTATION, sizeof(Orientation));
+  ArchetypeAddInline(arch, COMP_ACTIVE, sizeof(Active));
+  ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE, sizeof(CollisionInstance));
+  ArchetypeAddInline(arch, COMP_SPHERE_COLLIDER, sizeof(SphereCollider));
+  ArchetypeAddInline(arch, COMP_HOMINGMISSILE, sizeof(HomingMissile));
+  ArchetypeAddInline(arch, COMP_ONDEATH, sizeof(OnDeath));
+
+  /* -------- Handle -------- */
+
+  ArchetypeAddHandle(arch, COMP_MODEL, &engine->modelPool);
+  ArchetypeAddHandle(arch, COMP_TIMER, &engine->timerPool);
 
   return id;
 }
@@ -496,10 +599,14 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
     combat->aimPitch = 0.0f;
     combat->moveYaw = PI / 4;
     combat->isAiming = false;
-    combat->state = ENEMY_STATE_COMBAT;
+    combat->state = ENEMY_STATE_MOVING;
+    combat->burstShotsRemaining = 3;
+    combat->burstTimer = 1.2f;
+    combat->burstType = 0;
   }
 
-  printf("Ranger position: %f %f %f\n", position.x, position.y, position.z);
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  od->fn = Ranger_OnDeath;
   return e;
 }
 
@@ -711,4 +818,66 @@ entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
                             .isActive = true});
 
   return e;
+}
+
+void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
+                        entity_t target, Vector3 position, Vector3 forward) {
+
+  archetype_t *arch = WorldGetArchetype(world, game->missileArchId);
+  entity_t m = WorldCreateEntity(world, &arch->mask);
+
+  ECS_GET(world, m, Active, COMP_ACTIVE)->value = true;
+
+  /* --- Transform --- */
+  ECS_GET(world, m, Position, COMP_POSITION)->value = position;
+
+  float speed = 12.0f;
+
+  ECS_GET(world, m, Velocity, COMP_VELOCITY)->value =
+      Vector3Scale(forward, speed);
+
+  Orientation *ori = ECS_GET(world, m, Orientation, COMP_ORIENTATION);
+  ori->yaw = atan2f(forward.x, forward.z);
+  ori->pitch = asinf(forward.y);
+
+  /* --- Model --- */
+  ModelCollection_t *mc = ECS_GET(world, m, ModelCollection_t, COMP_MODEL);
+
+  ModelCollectionInit(mc, 1);
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->bulletModel,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .isActive = true});
+
+  mc->models[0].rotation = (Vector3){-ori->pitch, 0.0f, 0.0f};
+
+  /* --- Homing Data --- */
+  HomingMissile *hm = ECS_GET(world, m, HomingMissile, COMP_HOMINGMISSILE);
+  hm->owner = shooter;
+  hm->target = target;
+  hm->turnSpeed = 2.0f;
+  hm->maxSpeed = 500.0f;
+
+  /* --- Lifetime --- */
+  Timer *life = ECS_GET(world, m, Timer, COMP_TIMER);
+  life->value = 6.0f;
+
+  /* --- Collider --- */
+  SphereCollider *sphere =
+      ECS_GET(world, m, SphereCollider, COMP_SPHERE_COLLIDER);
+
+  sphere->radius = 0.35f;
+  sphere->center = position;
+
+  CollisionInstance *ci =
+      ECS_GET(world, m, CollisionInstance, COMP_COLLISION_INSTANCE);
+
+  ci->owner = m;
+  ci->type = COLLIDER_SPHERE;
+  ci->layerMask = 1 << LAYER_BULLET;
+  ci->collideMask =
+      (1 << LAYER_PLAYER) | (1 << LAYER_ENEMY) | (1 << LAYER_WORLD);
+
+  OnDeath *od = ECS_GET(world, m, OnDeath, COMP_ONDEATH);
+  od->fn = OnMissileDeath;
 }

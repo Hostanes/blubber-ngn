@@ -57,7 +57,7 @@ typedef struct GameWorld {
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
-      tutorialBoxArchId;
+      tutorialBoxArchId, missileArchId;
 
   float arenaRadius;
 
