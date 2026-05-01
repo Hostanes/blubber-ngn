@@ -11,7 +11,10 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.arenaRadius = 175.0;
 
   gw.terrainModel = LoadModel("assets/models/terrain-level1.glb");
-  gw.ArenaModel175 = LoadModel("assets/models/175-radius-arena.glb");
+  gw.ArenaModel175 = LoadModel("assets/models/175-arena-border.glb");
+  gw.ruinsModel = LoadModel("assets/models/ruins.glb");
+  gw.obstacleModel = LoadModel("assets/models/obstacle.glb");
+  gw.skyBox = LoadModel("assets/models/skybox.glb");
 
   /* 1. Load Shared Models (Persistent) */
   gw.gunModel = LoadModel("assets/models/gun1.glb");
@@ -96,25 +99,22 @@ void SpawnLevel01(world_t *world, GameWorld *gw) {
   NavGrid_LoadFromImage(&gw->navGrid, "navmap.png", 2,
                         (Vector3){-180, 0, -180});
 
-  // Spawn Level Geo
-  SpawnLevelModel(world, gw, gw->ArenaModel175, (Vector3){0, 0, 0},
-                  (Vector3){PI, 0, 0}, (Vector3){1, 1, 1});
-
   // Spawn Entities
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
   SpawnEnemyRanger(
       world, gw,
-      (Vector3){2, HeightMap_GetHeightCatmullRom(&gw->terrainHeightMap, 2, 50),
+      (Vector3){2, HeightMap_GetHeightCatmullRom(&gw->terrainHeightMap, 2,
+      50),
                 50});
-  // SpawnEnemyGrunt(world, gw, (Vector3){2, 0, 23});
-  // SpawnEnemyGrunt(world, gw, (Vector3){35, 0, 16});
-  // SpawnEnemyGrunt(world, gw, (Vector3){25, 0, 10});
-  // SpawnEnemyGrunt(world, gw, (Vector3){12, 0, 15});
-  // SpawnEnemyGrunt(world, gw, (Vector3){12, 0, 26});
+  SpawnEnemyGrunt(world, gw, (Vector3){2, 0, 23});
+  SpawnEnemyGrunt(world, gw, (Vector3){35, 0, 16});
+  SpawnEnemyGrunt(world, gw, (Vector3){25, 0, 10});
+  SpawnEnemyGrunt(world, gw, (Vector3){12, 0, 15});
+  SpawnEnemyGrunt(world, gw, (Vector3){12, 0, 26});
 
   // Random Boxes
   Model cube = LoadModelFromMesh(GenMeshCube(5, 5, 5));
-  for (int i = 0; i < 50; ++i) {
+  for (int i = 0; i < 0; ++i) {
     float x = GetRandomValue(-172, 172);
     float z = GetRandomValue(-172, 172);
     float y = GetRandomValue(0, 15);
@@ -191,4 +191,37 @@ void SpawnLevel01(world_t *world, GameWorld *gw) {
     ci->collideMask =
         (1 << LAYER_ENEMY) | (1 << LAYER_PLAYER) | (1 << LAYER_WORLD);
   }
+
+  SpawnBoxModel(world, gw, (Vector3){0.72, 1.35, 65.223},
+                (Vector3){5.47, 5.47, 5.47});
+  SpawnBoxModel(world, gw, (Vector3){14.533, 1.36, 78.97},
+                (Vector3){5.47, 5.47, 5.47});
+  SpawnBoxModel(world, gw, (Vector3){-21, 1.35, 89.546},
+                (Vector3){5.47, 5.47, 5.47});
+  SpawnBoxModel(world, gw, (Vector3){8.35, 2.4, 106.6},
+                (Vector3){6.55, 6.55, 6.55});
+
+  SpawnBoxModel(world, gw, (Vector3){128.92, 20.071, -39.071},
+                (Vector3){11.6, 11.6, 11.6});
+  SpawnBoxModel(world, gw, (Vector3){-108.29, 25.861, 81.147},
+                (Vector3){11.6, 11.6, 11.6});
+  SpawnBoxModel(world, gw, (Vector3){-114.36, 20.509, -32.1},
+                (Vector3){11.6, 11.6, 11.6});
+
+  SpawnBoxModel(world, gw, (Vector3){-0.581, 1.35, -20.62},
+                (Vector3){4.85, 4.85, 4.85});
+
+  SpawnBoxModel(world, gw, (Vector3){93.25, 14.5, -74.4}, (Vector3){11, 4, 11});
+  SpawnBoxModel(world, gw, (Vector3){73.775, 20.752, -84.136},
+                (Vector3){11, 4, 11});
+  SpawnBoxModel(world, gw, (Vector3){107.62, 22.3, -80}, (Vector3){11, 4, 11});
+  SpawnBoxModel(world, gw, (Vector3){105.39, 27, -95.661},
+                (Vector3){11, 4, 11});
+
+  SpawnLevelModel(world, gw, gw->ruinsModel, (Vector3){0, 0, 0},
+                  (Vector3){0, 0, 0}, (Vector3){1, 1, 1});
+  SpawnLevelModel(world, gw, gw->skyBox, (Vector3){0, 0, 0}, (Vector3){0, 0, 0},
+                  (Vector3){1, 1, 1});
+  SpawnLevelModel(world, gw, gw->ArenaModel175, (Vector3){0, 0, 0},
+                  (Vector3){0, 0, 0}, (Vector3){1, 1, 1});
 }

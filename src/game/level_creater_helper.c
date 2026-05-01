@@ -425,6 +425,8 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
 
   entity_t e = WorldCreateEntity(world, &arch->mask);
 
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap, position.x, position.z);
+
   /* -------- Basic State -------- */
 
   ECS_GET(world, e, Position, COMP_POSITION)->value = position;
@@ -519,6 +521,8 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
   printf("SpawnEnemyRanger called\n");
   archetype_t *arch = WorldGetArchetype(world, game->enemyRangerArchId);
   entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap, position.x, position.z);
 
   ECS_GET(world, e, Position, COMP_POSITION)->value = position;
   ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
@@ -754,16 +758,14 @@ entity_t SpawnBoxModel(world_t *world, GameWorld *gw, Vector3 position,
 
   /* -------- Model -------- */
 
-  Model boxModel = LoadModelFromMesh(GenMeshCube(size.x, size.y, size.z));
-
   ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
 
   ModelCollectionInit(mc, 1);
 
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = boxModel,
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->obstacleModel,
                                            .offset = (Vector3){0, 0, 0},
                                            .rotation = (Vector3){0, 0, 0},
-                                           .scale = (Vector3){1, 1, 1},
+                                           .scale = size,
                                            .rotationMode = MODEL_ROT_FULL,
                                            .isActive = true});
 
@@ -784,6 +786,7 @@ entity_t SpawnBoxModel(world_t *world, GameWorld *gw, Vector3 position,
 
   ci->worldBounds.min = Vector3Subtract(pos->value, aabb->halfExtents);
   ci->worldBounds.max = Vector3Add(pos->value, aabb->halfExtents);
+  Collision_UpdateAABB(ci, aabb, position);
   return e;
 }
 
@@ -831,7 +834,7 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
   /* --- Transform --- */
   ECS_GET(world, m, Position, COMP_POSITION)->value = position;
 
-  float speed = 12.0f;
+  float speed = 20.0f;
 
   ECS_GET(world, m, Velocity, COMP_VELOCITY)->value =
       Vector3Scale(forward, speed);
@@ -855,8 +858,8 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
   HomingMissile *hm = ECS_GET(world, m, HomingMissile, COMP_HOMINGMISSILE);
   hm->owner = shooter;
   hm->target = target;
-  hm->turnSpeed = 2.0f;
-  hm->maxSpeed = 500.0f;
+  hm->turnSpeed = 1.5f;
+  hm->maxSpeed = 50.0f;
 
   /* --- Lifetime --- */
   Timer *life = ECS_GET(world, m, Timer, COMP_TIMER);

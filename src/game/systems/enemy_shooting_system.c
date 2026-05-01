@@ -413,8 +413,8 @@ void EnemyRangerFireSystem(world_t *world, GameWorld *game,
 
     RF_LOG("  -> Starting new burst\n");
 
-    // int roll = GetRandomValue(0, 100);
-    int roll = 90;
+    int roll = GetRandomValue(0, 100);
+    // int roll = 90;
     RF_LOG("  -> Roll: %d\n", roll);
 
     combat->burstShotsRemaining = GetRandomValue(3, 4);

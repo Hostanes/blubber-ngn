@@ -131,7 +131,7 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
     }
 
-    // continue;
+    continue;
 
     // Debug Render Muzzles (if present)
     if (ArchetypeHas(arch, COMP_MUZZLES)) {
@@ -345,6 +345,32 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
            vel->value.z);
 
   DrawText(buf, screenW - 260, 10, 16, WHITE);
+
+  // --- Health bar (bottom-right) ---
+  Health *hp = ECS_GET(world, player, Health, COMP_HEALTH);
+  if (hp && hp->max > 0.0f) {
+    int barW = 220;
+    int barH = 20;
+    int margin = 20;
+    int barX = margin;
+    int barY = screenH - margin - barH;
+
+    float ratio = hp->current / hp->max;
+    if (ratio < 0.0f) ratio = 0.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
+
+    int fillW = (int)(barW * ratio);
+
+    Color fill = ratio > 0.5f ? GREEN : (ratio > 0.25f ? YELLOW : RED);
+
+    DrawRectangle(barX, barY, barW, barH, (Color){30, 10, 10, 200});
+    DrawRectangle(barX, barY, fillW, barH, fill);
+    DrawRectangleLines(barX, barY, barW, barH, WHITE);
+
+    char hpBuf[32];
+    snprintf(hpBuf, sizeof(hpBuf), "HP  %d / %d", (int)hp->current, (int)hp->max);
+    DrawText(hpBuf, barX + 6, barY + 3, 14, WHITE);
+  }
 
   EndDrawing();
 }

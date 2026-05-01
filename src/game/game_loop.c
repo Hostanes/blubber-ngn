@@ -1,5 +1,6 @@
 #include "components/muzzle.h"
 #include "game.h"
+#include "rlgl.h"
 #include "systems/systems.h"
 #include "world_spawn.h"
 #include <raylib.h>

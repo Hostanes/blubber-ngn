@@ -1,5 +1,5 @@
-
 #include "game.h"
+#include "rlgl.h"
 
 Engine EngineInit(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
@@ -9,7 +9,7 @@ Engine EngineInit(void) {
   SetTargetFPS(60);
 
   Engine engine = {0};
-
+  rlSetClipPlanes(0.1f, 5000.0f);
   engine.camera.fovy = 75.0f;
   engine.camera.projection = CAMERA_PERSPECTIVE;
 

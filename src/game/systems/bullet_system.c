@@ -237,7 +237,7 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
   for (uint32_t i = 0; i < arch->count; i++) {
 
     entity_t e = arch->entities[i];
-    printf("processing missle of eid %d\n", e.id);
+    // printf("processing missle of eid %d\n", e.id);
 
     Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
     if (!active || !active->value)
