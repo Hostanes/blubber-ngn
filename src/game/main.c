@@ -1,3 +1,4 @@
+#include "component_registry_setup.h"
 #include "game.h"
 #include "omp.h"
 #include "world_spawn.h"
@@ -61,6 +62,7 @@ int main(void) {
   printf("num procs: %d\n", omp_get_num_procs());
 
   Engine engine = EngineInit();
+  SetupComponentRegistry(&engine.componentRegistry, &engine);
   GameWorld game = GameWorldCreate(&engine, engine.world);
   EnableCursor();
   RunGameLoop(&engine, &game);

@@ -6,29 +6,6 @@
 #include <raylib.h>
 
 /* ===================================================== */
-/*  Archetype Creation Helper                           */
-/* ===================================================== */
-
-uint32_t CreateArchetype(world_t *world, uint32_t *components, int count);
-
-/* ===================================================== */
-/*  Archetype Registration                              */
-/* ===================================================== */
-
-uint32_t RegisterPlayerArchetype(world_t *world, Engine *engine);
-
-uint32_t RegisterEnemyArchetype(world_t *world, Engine *engine);
-uint32_t RegisterEnemyRangerArchetype(world_t *world, Engine *engine);
-
-uint32_t RegisterBoxArchetype(world_t *world, Engine *engine);
-
-uint32_t RegisterLevelModelArchetype(world_t *world, Engine *engine);
-
-uint32_t RegisterTriggerArchetype(world_t *world, Engine *engine);
-
-uint32_t RegisterMissileArchetype(world_t *world, Engine *engine);
-
-/* ===================================================== */
 /*  Factory Spawn Functions                             */
 /* ===================================================== */
 

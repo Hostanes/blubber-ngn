@@ -1,4 +1,5 @@
 #include "world_spawn.h"
+#include "archetype_loader.h"
 #include "level_creater_helper.h"
 
 #define MAX_BULLETS 2048
@@ -24,14 +25,15 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.gruntLegs = LoadModel("assets/models/enemies/grunt/grunt-legs.glb");
   gw.gruntTorso = LoadModel("assets/models/enemies/grunt/grunt-torso.glb");
 
-  /* 2. Register Archetypes (Persistent) */
-  gw.playerArchId = RegisterPlayerArchetype(world, engine);
-  gw.enemyGruntArchId = RegisterEnemyArchetype(world, engine);
-  gw.obstacleArchId = RegisterBoxArchetype(world, engine);
-  gw.levelModelArchId = RegisterLevelModelArchetype(world, engine);
-  gw.tutorialBoxArchId = RegisterTriggerArchetype(world, engine);
-  gw.enemyRangerArchId = RegisterEnemyRangerArchetype(world, engine);
-  gw.missileArchId = RegisterMissileArchetype(world, engine);
+  /* 2. Register Archetypes from JSON definitions */
+  const ComponentRegistry *reg = &engine->componentRegistry;
+  gw.playerArchId     = ArchetypeLoader_FromFile(world, reg, "assets/entities/player.json");
+  gw.enemyGruntArchId = ArchetypeLoader_FromFile(world, reg, "assets/entities/grunt.json");
+  gw.enemyRangerArchId= ArchetypeLoader_FromFile(world, reg, "assets/entities/ranger.json");
+  gw.obstacleArchId   = ArchetypeLoader_FromFile(world, reg, "assets/entities/box.json");
+  gw.levelModelArchId = ArchetypeLoader_FromFile(world, reg, "assets/entities/level_model.json");
+  gw.tutorialBoxArchId= ArchetypeLoader_FromFile(world, reg, "assets/entities/trigger.json");
+  gw.missileArchId    = ArchetypeLoader_FromFile(world, reg, "assets/entities/homing_missile.json");
 
   // Bullet Archetype setup (Same as before)
   uint32_t bulletBits[] = {

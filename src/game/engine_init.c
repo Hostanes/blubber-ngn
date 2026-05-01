@@ -1,4 +1,5 @@
 #include "game.h"
+#include "component_registry_setup.h"
 #include "rlgl.h"
 
 Engine EngineInit(void) {
@@ -18,10 +19,12 @@ Engine EngineInit(void) {
   ComponentPoolInit(&engine.timerPool, sizeof(Timer));
   ComponentPoolInit(&engine.modelPool, sizeof(ModelCollection_t));
 
+  ComponentRegistry_Init(&engine.componentRegistry);
+
   return engine;
 }
 
 void EngineShutdown(Engine *engine) {
-  (void)engine;
+  ComponentRegistry_Shutdown(&engine->componentRegistry);
   CloseWindow();
 }

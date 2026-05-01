@@ -2,6 +2,7 @@
 #pragma once
 #include "../engine/ecs/archetype.h"
 #include "../engine/ecs/component.h"
+#include "../engine/ecs/component_registry.h"
 #include "../engine/ecs/world.h"
 #include "../engine/math/heightmap.h"
 #include "../engine/util/bitset.h"
@@ -41,6 +42,8 @@ typedef struct {
 
   componentPool_t timerPool;
   componentPool_t modelPool;
+
+  ComponentRegistry componentRegistry;
 } Engine;
 
 typedef struct GameWorld {
