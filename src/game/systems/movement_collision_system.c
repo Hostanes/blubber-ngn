@@ -13,6 +13,9 @@ static void *GetColliderShape(world_t *world, entity_t e,
   case COLLIDER_CAPSULE:
     return ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
+  case COLLIDER_WALL_SEGMENT:
+    return ECS_GET(world, e, WallSegmentCollider, COMP_WALL_SEGMENT_COLLIDER);
+
   default:
     return NULL;
   }
@@ -31,6 +34,40 @@ static void BuildPlayerCapsule(Position *pos, CapsuleCollider *cap,
   cap->worldB = Vector3Add(pos->value, (Vector3){0, top - cap->radius, 0});
 
   ci->worldBounds = Capsule_ComputeAABB(cap);
+}
+
+static void ResolveCapsuleVsWallSegments(world_t *world, GameWorld *game,
+                                         Position *pos, Velocity *vel,
+                                         CapsuleCollider *cap,
+                                         CollisionInstance *playerCI) {
+  archetype_t *arch = WorldGetArchetype(world, game->wallSegArchId);
+
+  for (int i = 0; i < arch->count; ++i) {
+    entity_t wall_e = arch->entities[i];
+
+    CollisionInstance *wallCI =
+        ECS_GET(world, wall_e, CollisionInstance, COMP_COLLISION_INSTANCE);
+    if (!wallCI)
+      continue;
+
+    if (!AABB_Overlap(playerCI->worldBounds, wallCI->worldBounds))
+      continue;
+
+    WallSegmentCollider *wall =
+        ECS_GET(world, wall_e, WallSegmentCollider, COMP_WALL_SEGMENT_COLLIDER);
+    if (!wall)
+      continue;
+
+    CollisionHit hit;
+    if (!CollisionTest(playerCI, cap, wallCI, wall, &hit))
+      continue;
+
+    pos->value = Vector3Add(pos->value, Vector3Scale(hit.normal, hit.penetration));
+    vel->value.x = 0.0f;
+    vel->value.z = 0.0f;
+
+    BuildPlayerCapsule(pos, cap, playerCI);
+  }
 }
 
 static void ResolveCapsuleVsObstacles(world_t *world, GameWorld *game,
@@ -132,6 +169,7 @@ void PlayerMoveAndCollide(world_t *world, GameWorld *game, float dt) {
 
     BuildPlayerCapsule(pos, cap, ci);
     ResolveCapsuleVsObstacles(world, game, pos, vel, cap, ci, false);
+    ResolveCapsuleVsWallSegments(world, game, pos, vel, cap, ci);
 
     pos->value.y += delta.y;
 

@@ -17,6 +17,51 @@ static Vector3 ClosestPointOnSegment(Vector3 a, Vector3 b, Vector3 p) {
   return Vector3Add(a, Vector3Scale(ab, t));
 }
 
+// Closest points between two line segments in XZ (Y ignored).
+// Returns distance; writes closest point on each segment to pa and pb.
+// Uses the parametric approach from Ericson "Real-Time Collision Detection" 5.1.9.
+static float ClosestDistSegSeg2D(Vector3 A, Vector3 B, Vector3 C, Vector3 D,
+                                  Vector3 *pa, Vector3 *pb) {
+  float d1x = B.x - A.x, d1z = B.z - A.z;
+  float d2x = D.x - C.x, d2z = D.z - C.z;
+  float rx  = A.x - C.x, rz  = A.z - C.z;
+
+  float a = d1x*d1x + d1z*d1z;
+  float e = d2x*d2x + d2z*d2z;
+  float f = d2x*rx  + d2z*rz;
+  float s, t;
+
+  if (a < 1e-6f && e < 1e-6f) {
+    s = t = 0.0f;
+  } else if (a < 1e-6f) {
+    s = 0.0f;
+    t = Clamp(f / e, 0.0f, 1.0f);
+  } else {
+    float c = d1x*rx + d1z*rz;
+    if (e < 1e-6f) {
+      t = 0.0f;
+      s = Clamp(-c / a, 0.0f, 1.0f);
+    } else {
+      float b     = d1x*d2x + d1z*d2z;
+      float denom = a*e - b*b;
+      s = (denom > 1e-6f) ? Clamp((b*f - c*e) / denom, 0.0f, 1.0f) : 0.0f;
+      t = (b*s + f) / e;
+      if (t < 0.0f) {
+        t = 0.0f;
+        s = Clamp(-c / a, 0.0f, 1.0f);
+      } else if (t > 1.0f) {
+        t = 1.0f;
+        s = Clamp((b - c) / a, 0.0f, 1.0f);
+      }
+    }
+  }
+
+  *pa = (Vector3){A.x + s*d1x, 0.0f, A.z + s*d1z};
+  *pb = (Vector3){C.x + t*d2x, 0.0f, C.z + t*d2z};
+  float dx = pa->x - pb->x, dz = pa->z - pb->z;
+  return sqrtf(dx*dx + dz*dz);
+}
+
 bool SphereVsSphere(const CollisionInstance *a, const SphereCollider *sa,
                     const CollisionInstance *b, const SphereCollider *sb,
                     CollisionHit *outHit) {
@@ -157,6 +202,74 @@ bool CapsuleVsAABB(const CollisionInstance *a, const CapsuleCollider *cap,
   return true;
 }
 
+bool SphereVsWallSegment(const CollisionInstance *a, const SphereCollider *s,
+                         const CollisionInstance *b, const WallSegmentCollider *wall,
+                         CollisionHit *outHit) {
+  if (s->center.y + s->radius < wall->yBottom || s->center.y - s->radius > wall->yTop)
+    return false;
+
+  Vector3 p       = {s->center.x, 0.0f, s->center.z};
+  Vector3 closest = ClosestPointOnSegment(wall->worldA, wall->worldB, p);
+
+  float dx    = s->center.x - closest.x;
+  float dz    = s->center.z - closest.z;
+  float dist2 = dx*dx + dz*dz;
+  float r     = s->radius + wall->radius;
+
+  if (dist2 > r * r)
+    return false;
+
+  float dist = sqrtf(dist2);
+
+  if (outHit) {
+    outHit->a           = a->owner;
+    outHit->b           = b->owner;
+    outHit->normal      = (dist > 0.0f) ? (Vector3){dx/dist, 0.0f, dz/dist}
+                                        : (Vector3){0.0f, 0.0f, 1.0f};
+    outHit->penetration = r - dist;
+    outHit->point       = (Vector3){closest.x, s->center.y, closest.z};
+  }
+
+  return true;
+}
+
+bool CapsuleVsWallSegment(const CollisionInstance *a, const CapsuleCollider *cap,
+                           const CollisionInstance *b, const WallSegmentCollider *wall,
+                           CollisionHit *outHit) {
+  float capYMin = fminf(cap->worldA.y, cap->worldB.y) - cap->radius;
+  float capYMax = fmaxf(cap->worldA.y, cap->worldB.y) + cap->radius;
+  if (capYMax < wall->yBottom || capYMin > wall->yTop)
+    return false;
+
+  Vector3 capA2 = {cap->worldA.x, 0.0f, cap->worldA.z};
+  Vector3 capB2 = {cap->worldB.x, 0.0f, cap->worldB.z};
+
+  Vector3 closestCap, closestWall;
+  float dist = ClosestDistSegSeg2D(capA2, capB2, wall->worldA, wall->worldB,
+                                   &closestCap, &closestWall);
+
+  float r = cap->radius + wall->radius;
+  if (dist > r)
+    return false;
+
+  if (outHit) {
+    float dx        = closestCap.x - closestWall.x;
+    float dz        = closestCap.z - closestWall.z;
+    float midY      = 0.5f * (fminf(cap->worldA.y, cap->worldB.y) +
+                               fmaxf(cap->worldA.y, cap->worldB.y));
+    outHit->a           = a->owner;
+    outHit->b           = b->owner;
+    outHit->normal      = (dist > 0.0f) ? (Vector3){dx/dist, 0.0f, dz/dist}
+                                        : (Vector3){0.0f, 0.0f, 1.0f};
+    outHit->penetration = r - dist;
+    outHit->point       = (Vector3){closestWall.x,
+                                    Clamp(midY, wall->yBottom, wall->yTop),
+                                    closestWall.z};
+  }
+
+  return true;
+}
+
 bool CollisionTest(const CollisionInstance *a, const void *shapeA,
                    const CollisionInstance *b, const void *shapeB,
                    CollisionHit *outHit) {
@@ -177,6 +290,9 @@ bool CollisionTest(const CollisionInstance *a, const void *shapeA,
 
     if (b->type == COLLIDER_CAPSULE)
       return SphereVsCapsule(a, sa, b, shapeB, outHit);
+
+    if (b->type == COLLIDER_WALL_SEGMENT)
+      return SphereVsWallSegment(a, sa, b, shapeB, outHit);
   } break;
 
   case COLLIDER_CAPSULE: {
@@ -187,6 +303,9 @@ bool CollisionTest(const CollisionInstance *a, const void *shapeA,
 
     if (b->type == COLLIDER_SPHERE)
       return SphereVsCapsule(b, shapeB, a, capA, outHit);
+
+    if (b->type == COLLIDER_WALL_SEGMENT)
+      return CapsuleVsWallSegment(a, capA, b, shapeB, outHit);
   } break;
 
   case COLLIDER_AABB: {
@@ -198,6 +317,16 @@ bool CollisionTest(const CollisionInstance *a, const void *shapeA,
 
     if (b->type == COLLIDER_CAPSULE)
       return CapsuleVsAABB(b, shapeB, a, outHit);
+  } break;
+
+  case COLLIDER_WALL_SEGMENT: {
+    const WallSegmentCollider *wall = shapeA;
+
+    if (b->type == COLLIDER_SPHERE)
+      return SphereVsWallSegment(b, shapeB, a, wall, outHit);
+
+    if (b->type == COLLIDER_CAPSULE)
+      return CapsuleVsWallSegment(b, shapeB, a, wall, outHit);
   } break;
   }
 

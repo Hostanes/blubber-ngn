@@ -10,3 +10,9 @@ void Collision_UpdateSphere(CollisionInstance *ci, SphereCollider *sphere,
   sphere->center = position;
   ci->worldBounds = Sphere_ComputeAABB(sphere);
 }
+
+void Collision_UpdateWallSegment(CollisionInstance *ci, WallSegmentCollider *wall,
+                                 Vector3 position) {
+  WallSegment_UpdateWorld(wall, position);
+  ci->worldBounds = WallSegment_ComputeAABB(wall);
+}

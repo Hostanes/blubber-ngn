@@ -6,12 +6,14 @@
 #include "collision_hit.h"
 #include "raylib.h"
 #include "sphere.h"
+#include "wall_segment.h"
 #include <stdint.h>
 
 typedef enum {
   COLLIDER_AABB,
   COLLIDER_SPHERE,
   COLLIDER_CAPSULE,
+  COLLIDER_WALL_SEGMENT,
 } ColliderType;
 
 typedef struct {
@@ -36,6 +38,8 @@ void Collision_UpdateCapsule(CollisionInstance *ci, CapsuleCollider *cap,
                              Vector3 position);
 void Collision_UpdateSphere(CollisionInstance *ci, SphereCollider *sphere,
                             Vector3 position);
+void Collision_UpdateWallSegment(CollisionInstance *ci, WallSegmentCollider *wall,
+                                 Vector3 position);
 
 bool CollisionTest(const CollisionInstance *a, const void *shapeA,
                    const CollisionInstance *b, const void *shapeB,

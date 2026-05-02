@@ -29,10 +29,11 @@ void SetupComponentRegistry(ComponentRegistry *reg, Engine *engine) {
   REG_INLINE("Active",      COMP_ACTIVE,      Active);
 
   /* ---- Collision ---- */
-  REG_INLINE("CollisionInstance", COMP_COLLISION_INSTANCE, CollisionInstance);
-  REG_INLINE("CapsuleCollider",   COMP_CAPSULE_COLLIDER,   CapsuleCollider);
-  REG_INLINE("SphereCollider",    COMP_SPHERE_COLLIDER,    SphereCollider);
-  REG_INLINE("AABBCollider",      COMP_AABB_COLLIDER,      AABBCollider);
+  REG_INLINE("CollisionInstance",    COMP_COLLISION_INSTANCE,    CollisionInstance);
+  REG_INLINE("CapsuleCollider",      COMP_CAPSULE_COLLIDER,      CapsuleCollider);
+  REG_INLINE("SphereCollider",       COMP_SPHERE_COLLIDER,       SphereCollider);
+  REG_INLINE("AABBCollider",         COMP_AABB_COLLIDER,         AABBCollider);
+  REG_INLINE("WallSegmentCollider",  COMP_WALL_SEGMENT_COLLIDER, WallSegmentCollider);
 
   /* ---- Player state ---- */
   REG_INLINE("IsGrounded",  COMP_ISGROUNDED,   bool);

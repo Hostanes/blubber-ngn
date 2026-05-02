@@ -144,6 +144,11 @@ void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
 
     /* --- 3. Compute final matrices/vectors --- */
     MuzzleCollection_UpdateWorld(pos, ori, muzzles);
+
+    /* --- 4. Drive gun model pitch from muzzle aim --- */
+    ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+    if (mc && mc->count > 2)
+      mc->models[2].rotation.x = -muzzles->Muzzles[0].aimRot.pitch;
   }
 }
 
@@ -151,7 +156,7 @@ void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
 void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch) {
   Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
   Vector3 playerAimPos = playerPos->value;
-  playerAimPos.y -= 3; // Match the height used in AimSystem
+  playerAimPos.y -= 0.5f;
 
   for (uint32_t i = 0; i < enemyArch->count; i++) {
     entity_t e = enemyArch->entities[i];
@@ -314,6 +319,11 @@ void EnemyRangerAimSystem(world_t *world, GameWorld *game,
 
     /* --- 3. ALWAYS update world transforms --- */
     MuzzleCollection_UpdateWorld(pos, ori, muzzles);
+
+    /* --- 4. Drive gun model pitch from autocannon muzzle aim --- */
+    ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+    if (mc && mc->count > 2)
+      mc->models[2].rotation.x = -muzzles->Muzzles[0].aimRot.pitch;
   }
 }
 
@@ -411,22 +421,38 @@ void EnemyRangerFireSystem(world_t *world, GameWorld *game,
       continue;
     }
 
+    /* Aim check before committing to a burst */
+    Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+    Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
+    if (!pos || !playerPos)
+      continue;
+
+    Vector3 playerAimPos = playerPos->value;
+    playerAimPos.y -= 0.5f;
+
+    Muzzle_t *acMuzzle = &muzzles->Muzzles[0];
+    Vector3 dirToPlayer = Vector3Normalize(
+        Vector3Subtract(playerAimPos, acMuzzle->worldPosition));
+    float aimAccuracy = Vector3DotProduct(acMuzzle->forward, dirToPlayer);
+
     RF_LOG("  -> Starting new burst\n");
 
     int roll = GetRandomValue(0, 100);
-    // int roll = 90;
     RF_LOG("  -> Roll: %d\n", roll);
 
-    combat->burstShotsRemaining = GetRandomValue(3, 4);
-    RF_LOG("  -> Burst shots: %d\n", combat->burstShotsRemaining);
-
     if (roll < 80) {
+      if (aimAccuracy <= ENEMY_AIM_THRESHOLD) {
+        RF_LOG("  -> Autocannon not aimed (%.2f), skipping\n", aimAccuracy);
+        continue;
+      }
       RF_LOG("  -> Selected AUTOCANNON burst\n");
+      combat->burstShotsRemaining = GetRandomValue(3, 4);
       combat->burstType = 0;
       combat->burstTimer = 0.0f;
       fireTimer->value = 1.2f;
     } else {
       RF_LOG("  -> Selected MISSILE burst\n");
+      combat->burstShotsRemaining = GetRandomValue(3, 4);
       combat->burstType = 1;
       combat->burstTimer = 0.0f;
       fireTimer->value = 3.5f;

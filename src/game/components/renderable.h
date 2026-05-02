@@ -15,9 +15,11 @@ typedef struct {
   Model model;
   bool isActive;
   Vector3 offset;
+  Vector3 pivot;    // model-space point to rotate around; (0,0,0) = model origin
   Vector3 rotation;
   Vector3 scale;
   ModelRotationMode rotationMode;
+  int32_t parentIndex; // -1 = entity root; >= 0 = index into ModelCollection_t (must be < own index)
 
   Matrix finalTransform;
 } ModelInstance_t;

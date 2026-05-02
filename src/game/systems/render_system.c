@@ -76,6 +76,48 @@ void DrawNavGridBatched(NavGrid *grid) {
   rlEnd();
 }
 
+void DrawWallSegmentWireframes(world_t *world, uint32_t wallSegArchId) {
+  archetype_t *arch = WorldGetArchetype(world, wallSegArchId);
+  if (!arch)
+    return;
+
+  for (uint32_t i = 0; i < arch->count; ++i) {
+    entity_t e = arch->entities[i];
+    WallSegmentCollider *wall =
+        ECS_GET(world, e, WallSegmentCollider, COMP_WALL_SEGMENT_COLLIDER);
+    if (!wall)
+      continue;
+
+    float dx  = wall->worldB.x - wall->worldA.x;
+    float dz  = wall->worldB.z - wall->worldA.z;
+    float len = sqrtf(dx * dx + dz * dz);
+
+    Vector3 perp = {0, 0, 0};
+    if (len > 1e-6f)
+      perp = (Vector3){-dz / len * wall->radius, 0.0f, dx / len * wall->radius};
+
+    float yb = wall->yBottom, yt = wall->yTop;
+    Vector3 c[8] = {
+        {wall->worldA.x + perp.x, yb, wall->worldA.z + perp.z},
+        {wall->worldA.x - perp.x, yb, wall->worldA.z - perp.z},
+        {wall->worldB.x - perp.x, yb, wall->worldB.z - perp.z},
+        {wall->worldB.x + perp.x, yb, wall->worldB.z + perp.z},
+        {wall->worldA.x + perp.x, yt, wall->worldA.z + perp.z},
+        {wall->worldA.x - perp.x, yt, wall->worldA.z - perp.z},
+        {wall->worldB.x - perp.x, yt, wall->worldB.z - perp.z},
+        {wall->worldB.x + perp.x, yt, wall->worldB.z + perp.z},
+    };
+
+    Color col = ORANGE;
+    DrawLine3D(c[0], c[1], col); DrawLine3D(c[1], c[2], col);
+    DrawLine3D(c[2], c[3], col); DrawLine3D(c[3], c[0], col);
+    DrawLine3D(c[4], c[5], col); DrawLine3D(c[5], c[6], col);
+    DrawLine3D(c[6], c[7], col); DrawLine3D(c[7], c[4], col);
+    DrawLine3D(c[0], c[4], col); DrawLine3D(c[1], c[5], col);
+    DrawLine3D(c[2], c[6], col); DrawLine3D(c[3], c[7], col);
+  }
+}
+
 void DrawTriggerAABBs(world_t *world, uint32_t triggerArchId) {
   archetype_t *arch = WorldGetArchetype(world, triggerArchId);
   if (!arch)
@@ -131,7 +173,7 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
     }
 
-    continue;
+    // continue;
 
     // Debug Render Muzzles (if present)
     if (ArchetypeHas(arch, COMP_MUZZLES)) {
@@ -206,57 +248,48 @@ void ComputeArchetypeTransforms(world_t *world, archetype_t *arch) {
     Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
     ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
 
-    Matrix T_world = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
-    Matrix R_entityYaw = MatrixRotateY(ori->yaw);
-    Matrix entityTransform = MatrixMultiply(R_entityYaw, T_world);
-
     for (uint32_t m = 0; m < mc->count; ++m) {
       ModelInstance_t *mi = &mc->models[m];
 
-      // Base local transform (scale + local rotation + offset)
       Matrix S = MatrixScale(mi->scale.x, mi->scale.y, mi->scale.z);
+      Matrix T_neg_pivot = MatrixTranslate(-mi->pivot.x, -mi->pivot.y, -mi->pivot.z);
       Matrix R_local = MatrixRotateXYZ(mi->rotation);
-      Matrix T_local =
-          MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z);
-
-      Matrix local = MatrixMultiply(S, MatrixMultiply(R_local, T_local));
+      Matrix T_pos_pivot = MatrixTranslate(mi->pivot.x, mi->pivot.y, mi->pivot.z);
+      Matrix T_local = MatrixTranslate(mi->offset.x, mi->offset.y, mi->offset.z);
+      // Rotate around pivot: translate to pivot, rotate, translate back, then apply offset
+      Matrix local = MatrixMultiply(S, MatrixMultiply(T_neg_pivot, MatrixMultiply(R_local, MatrixMultiply(T_pos_pivot, T_local))));
 
       Matrix final;
 
-      switch (mi->rotationMode) {
-      case MODEL_ROT_WORLD: {
-        // Only position, no entity rotation
-        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+      if (mi->parentIndex >= 0 && (uint32_t)mi->parentIndex < m) {
+        final = MatrixMultiply(local, mc->models[mi->parentIndex].finalTransform);
+      } else {
+        switch (mi->rotationMode) {
+        case MODEL_ROT_WORLD: {
+          Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+          final = MatrixMultiply(local, T);
+        } break;
 
-        final = MatrixMultiply(local, T);
-      } break;
+        case MODEL_ROT_YAW_ONLY: {
+          Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+          Matrix R_yaw = MatrixRotateY(ori->yaw);
+          final = MatrixMultiply(local, MatrixMultiply(R_yaw, T));
+        } break;
 
-      case MODEL_ROT_YAW_ONLY: {
-        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+        case MODEL_ROT_YAW_PITCH: {
+          Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+          Matrix R_yaw = MatrixRotateY(ori->yaw);
+          Matrix R_pitch = MatrixRotateX(-ori->pitch);
+          final = MatrixMultiply(local, MatrixMultiply(R_pitch, MatrixMultiply(R_yaw, T)));
+        } break;
 
-        Matrix R_yaw = MatrixRotateY(ori->yaw);
-
-        final = MatrixMultiply(local, MatrixMultiply(R_yaw, T));
-      } break;
-
-      case MODEL_ROT_YAW_PITCH: {
-        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
-
-        Matrix R_yaw = MatrixRotateY(ori->yaw);
-        Matrix R_pitch = MatrixRotateX(-ori->pitch);
-
-        final = MatrixMultiply(
-            local, MatrixMultiply(R_pitch, MatrixMultiply(R_yaw, T)));
-      } break;
-
-      case MODEL_ROT_FULL:
-      default: {
-        Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
-
-        Matrix R_yaw = MatrixRotateY(ori->yaw);
-
-        final = MatrixMultiply(local, MatrixMultiply(R_yaw, T));
-      } break;
+        case MODEL_ROT_FULL:
+        default: {
+          Matrix T = MatrixTranslate(pos->value.x, pos->value.y, pos->value.z);
+          Matrix R_yaw = MatrixRotateY(ori->yaw);
+          final = MatrixMultiply(local, MatrixMultiply(R_yaw, T));
+        } break;
+        }
       }
 
       mi->finalTransform = final;
@@ -294,6 +327,7 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   }
 
   DrawTriggerAABBs(world, game->tutorialBoxArchId);
+  DrawWallSegmentWireframes(world, game->wallSegArchId);
 
   // NavGrid *grid = &game->navGrid;
 

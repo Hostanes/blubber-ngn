@@ -34,6 +34,9 @@ enum gameState {
   GAMESTATE_INLEVEL,
   GAMESTATE_SETTINGS,
   GAMESTATE_LOADING,
+  GAMESTATE_EDITOR,
+  GAMESTATE_LEVELSELECT,
+  GAMESTATE_PAUSED,
 };
 
 typedef struct {
@@ -52,6 +55,7 @@ typedef struct GameWorld {
   enum gameState gameState;
 
   uint32_t targetLevel;
+  char targetLevelPath[256];
   float loadingTimer;
 
   float masterVolume;
@@ -60,7 +64,7 @@ typedef struct GameWorld {
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
-      tutorialBoxArchId, missileArchId;
+      tutorialBoxArchId, missileArchId, wallSegArchId;
 
   float arenaRadius;
 
@@ -69,6 +73,7 @@ typedef struct GameWorld {
   Model bulletModel;
   Model enemyModel;
   Model gunModel;
+  Model shadowModel;
 
   Model missileEnemyModel;
   Model gruntTorso;

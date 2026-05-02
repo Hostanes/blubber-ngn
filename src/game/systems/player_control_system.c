@@ -46,7 +46,8 @@ void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
   if (!mc || mc->count <= 1)
     return;
 
-  uint32_t weaponCount = mc->count - 1; // index 0 = body
+  // index 0 = body, last index = shadow — weapons are indices 1..count-2
+  uint32_t weaponCount = mc->count > 2 ? mc->count - 2 : 0;
 
   if (IsKeyPressed(KEY_ONE) && weaponCount >= 1)
     game->playerActiveWeapon = 0;
@@ -61,8 +62,9 @@ void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
   if (game->playerActiveWeapon >= weaponCount)
     game->playerActiveWeapon = 0;
 
-  // Update model active states (index 0 is body)
-  for (uint32_t i = 1; i < mc->count; ++i) {
+  // Update model active states (index 0 = body, last = shadow — skip both)
+  uint32_t gunEnd = mc->count > 1 ? mc->count - 1 : 1;
+  for (uint32_t i = 1; i < gunEnd; ++i) {
     mc->models[i].isActive = ((i - 1) == game->playerActiveWeapon);
   }
 }
@@ -158,13 +160,21 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
   vel->value.z = horiz.z;
 }
 
-void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
+void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float dt) {
   Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
   Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
+  Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
   ModelCollection_t *mc = ECS_GET(world, player, ModelCollection_t, COMP_MODEL);
 
   if (!mc || mc->count <= 1)
     return;
+
+  // Shadow (index 3): snap to terrain, slightly above to avoid clipping
+  if (mc->count > 3) {
+    float terrainY = HeightMap_GetHeightCatmullRom(
+        &game->terrainHeightMap, pos->value.x, pos->value.z);
+    mc->models[3].offset.y = terrainY - pos->value.y + 0.1f;
+  }
 
   Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
@@ -195,8 +205,9 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
   Vector3 finalOffset = Vector3Add((Vector3){0, -0.25f, 0},
                                    Vector3Add(playerWeaponSway, idleSway));
 
-  // ---- Update all gun models (skip index 0 = body) ----
-  for (uint32_t i = 1; i < mc->count; ++i) {
+  // ---- Update gun models (skip index 0 = body, skip last = shadow) ----
+  uint32_t gunEnd = mc->count > 3 ? mc->count - 1 : mc->count;
+  for (uint32_t i = 1; i < gunEnd; ++i) {
     ModelInstance_t *gun = &mc->models[i];
     gun->rotation.x = -ori->pitch;
     gun->offset = finalOffset;
@@ -208,8 +219,6 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
 
   if (!muzzles)
     return;
-
-  Position *playerPos = ECS_GET(world, player, Position, COMP_POSITION);
 
   Vector3 forward3D = {cosf(ori->pitch) * sinf(ori->yaw), sinf(ori->pitch),
                        cosf(ori->pitch) * cosf(ori->yaw)};
@@ -229,7 +238,7 @@ void PlayerWeaponSystem(world_t *world, entity_t player, float dt) {
                    Vector3Add(Vector3Scale(up3D, offset.y),
                               Vector3Scale(forward3D, offset.z)));
 
-    m->worldPosition = Vector3Add(playerPos->value, worldOffset);
+    m->worldPosition = Vector3Add(pos->value, worldOffset);
 
     m->forward = forward3D;
   }

@@ -138,6 +138,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
   archetype_t *rangerArch = WorldGetArchetype(world, game->enemyRangerArchId);
 
   archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
+  archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
 
 #pragma omp parallel for if (bulletArch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < bulletArch->count; i++) {
@@ -223,6 +224,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     CHECK_ARCH(enemyArch);
     CHECK_ARCH(obstacleArch);
     CHECK_ARCH(rangerArch);
+    CHECK_ARCH(wallSegArch);
 
 #undef CHECK_ARCH
 
@@ -283,10 +285,11 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
       mc->models[0].rotation = (Vector3){-ori->pitch, 0.0f, 0.0f};
     }
 
-    archetype_t *playerArch = WorldGetArchetype(world, game->playerArchId);
-    archetype_t *enemyArch = WorldGetArchetype(world, game->enemyGruntArchId);
-    archetype_t *rangerArch = WorldGetArchetype(world, game->enemyRangerArchId);
+    archetype_t *playerArch  = WorldGetArchetype(world, game->playerArchId);
+    archetype_t *enemyArch   = WorldGetArchetype(world, game->enemyGruntArchId);
+    archetype_t *rangerArch  = WorldGetArchetype(world, game->enemyRangerArchId);
     archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
+    archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
 
     SphereCollider *missileSphere =
         ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
@@ -353,6 +356,7 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     CHECK_ARCH(enemyArch);
     CHECK_ARCH(obstacleArch);
     CHECK_ARCH(rangerArch);
+    CHECK_ARCH(wallSegArch);
 
 #undef CHECK_ARCH
 

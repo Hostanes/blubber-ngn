@@ -157,10 +157,17 @@ void UpdateCollisionBounds(world_t *world) {
         if (!cap)
           break;
 
-        // If capsule endpoints depend on position, rebuild them here
-        // (only if not already done in movement system)
-
         ci->worldBounds = Capsule_ComputeAABB(cap);
+      } break;
+
+      case COLLIDER_WALL_SEGMENT: {
+        WallSegmentCollider *wall =
+            ECS_GET(world, e, WallSegmentCollider, COMP_WALL_SEGMENT_COLLIDER);
+
+        if (!wall)
+          break;
+
+        Collision_UpdateWallSegment(ci, wall, pos->value);
       } break;
 
       default:
@@ -229,6 +236,10 @@ void CollisionSyncSystem(world_t *world) {
         Capsule_UpdateWorld(cap, pos->value);
         ci->worldBounds = Capsule_ComputeAABB(cap);
       } break;
+
+      case COLLIDER_WALL_SEGMENT:
+      default:
+        break;
       }
     }
   }

@@ -1,4 +1,6 @@
 #include "json_reader.h"
+#include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void skip_ws(const char **p) {
@@ -61,6 +63,15 @@ int JsonReadString(const char *json, const char *key, char *out, int maxLen) {
   if (!p)
     return -1;
   return parse_str(&p, out, maxLen);
+}
+
+bool JsonReadFloat(const char *json, const char *key, float *out) {
+  const char *p = find_value(json, key);
+  if (!p)
+    return false;
+  char *end;
+  *out = strtof(p, &end);
+  return end != p;
 }
 
 int JsonReadStringArray(const char *json, const char *key, char *out,

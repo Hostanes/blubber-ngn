@@ -120,15 +120,16 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
 
   ModelCollectionInit(mc, 2);
 
-  Model playerBody = LoadModelFromMesh(GenMeshCube(.2f, 2, .2f));
+  Model playerBody = LoadModelFromMesh(GenMeshCube(.05f, .05f, .05f));
 
-  ModelCollectionInit(mc, 3); // body + 2 guns
+  ModelCollectionInit(mc, 4); // body + 2 guns + shadow
 
   // Body (index 0)
   ModelCollectionAdd(mc, (ModelInstance_t){.model = playerBody,
                                            .offset = (Vector3){0, -1.5f, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   // Gun 1 (index 1)
@@ -136,6 +137,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
                                            .offset = (Vector3){0, -0.5f, 0},
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   // Gun 2 (index 2)
@@ -143,7 +145,15 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
                                            .offset = (Vector3){0, -0.5f, 0},
                                            .scale = (Vector3){1, 1, 2},
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = false});
+
+  // Shadow (index 3) — flat on terrain, updated each frame in PlayerWeaponSystem
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->shadowModel,
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_WORLD,
+                                           .parentIndex = -1,
+                                           .isActive = true});
 
   /* ---------------- Collision ---------------- */
 
@@ -197,7 +207,8 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
 
   entity_t e = WorldCreateEntity(world, &arch->mask);
 
-  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap, position.x, position.z);
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                             position.x, position.z);
 
   /* -------- Basic State -------- */
 
@@ -221,16 +232,20 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntLegs,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntTorso,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntGun,
                                            .scale = (Vector3){1, 1, 1},
+                                           .pivot = (Vector3){0, 3, 0},
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   /* -------- Collider -------- */
@@ -294,7 +309,8 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
   archetype_t *arch = WorldGetArchetype(world, game->enemyRangerArchId);
   entity_t e = WorldCreateEntity(world, &arch->mask);
 
-  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap, position.x, position.z);
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                             position.x, position.z);
 
   ECS_GET(world, e, Position, COMP_POSITION)->value = position;
   ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
@@ -315,16 +331,20 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntLegs,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntTorso,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntGun,
                                            .scale = (Vector3){1, 1, 1},
+                                           .pivot = (Vector3){0, 3, 0},
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   /* --- Collider --- */
@@ -376,8 +396,8 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
     combat->moveYaw = PI / 4;
     combat->isAiming = false;
     combat->state = ENEMY_STATE_MOVING;
-    combat->burstShotsRemaining = 3;
-    combat->burstTimer = 1.2f;
+    combat->burstShotsRemaining = 0;
+    combat->burstTimer = 0.0f;
     combat->burstType = 0;
   }
 
@@ -415,6 +435,7 @@ entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->missileEnemyModel,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   /* -------- Collider -------- */
@@ -539,6 +560,7 @@ entity_t SpawnBoxModel(world_t *world, GameWorld *gw, Vector3 position,
                                            .rotation = (Vector3){0, 0, 0},
                                            .scale = size,
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   /* -------- Collider -------- */
@@ -590,6 +612,7 @@ entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
                             .rotation = (Vector3){rotation.y, rotation.x, 0},
                             .scale = scale,
                             .rotationMode = MODEL_ROT_FULL,
+                            .parentIndex = -1,
                             .isActive = true});
 
   return e;
@@ -622,6 +645,7 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
   ModelCollectionAdd(mc, (ModelInstance_t){.model = game->bulletModel,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
                                            .isActive = true});
 
   mc->models[0].rotation = (Vector3){-ori->pitch, 0.0f, 0.0f};
@@ -655,4 +679,33 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
 
   OnDeath *od = ECS_GET(world, m, OnDeath, COMP_ONDEATH);
   od->fn = OnMissileDeath;
+}
+
+entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,
+                          Vector3 localA, Vector3 localB,
+                          float localYBottom, float localYTop, float radius) {
+  archetype_t *arch = WorldGetArchetype(world, gw->wallSegArchId);
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  ECS_GET(world, e, Position, COMP_POSITION)->value = position;
+  ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
+
+  WallSegmentCollider *wall =
+      ECS_GET(world, e, WallSegmentCollider, COMP_WALL_SEGMENT_COLLIDER);
+  wall->localA       = localA;
+  wall->localB       = localB;
+  wall->localYBottom = localYBottom;
+  wall->localYTop    = localYTop;
+  wall->radius       = radius;
+
+  CollisionInstance *ci =
+      ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+  ci->owner       = e;
+  ci->type        = COLLIDER_WALL_SEGMENT;
+  ci->layerMask   = 1 << LAYER_WORLD;
+  ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET) | (1 << LAYER_ENEMY);
+
+  Collision_UpdateWallSegment(ci, wall, position);
+
+  return e;
 }
