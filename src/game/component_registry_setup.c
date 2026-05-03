@@ -44,6 +44,9 @@ void SetupComponentRegistry(ComponentRegistry *reg, Engine *engine) {
   REG_INLINE("CombatState",      COMP_COMBAT_STATE,  CombatState_t);
   REG_INLINE("NavPath",          COMP_NAVPATH,       NavPath);
 
+  /* ---- Spawner ---- */
+  REG_INLINE("EnemySpawner", COMP_ENEMY_SPAWNER, EnemySpawner);
+
   /* ---- Events ---- */
   REG_INLINE("OnDeath",     COMP_ONDEATH,     OnDeath);
   REG_INLINE("OnCollision", COMP_ONCOLLISION, OnCollision);

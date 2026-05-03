@@ -6,12 +6,15 @@ typedef enum {
 
 typedef struct {
   EnemyState_e state;
-  float combatYaw; // Target yaw for aiming
-  float moveYaw;   // Target yaw for moving
-  float aimPitch;  // Current muzzle pitch
-  bool isAiming;   // Threshold check flag
+  float combatYaw;
+  float moveYaw;
+  float aimPitch;
+  bool  isAiming;
 
-  int burstShotsRemaining;
+  int   burstShotsRemaining;
   float burstTimer;
-  int burstType; // 0 = auto, 1 = missile
+  int   burstType; // 0 = auto, 1 = missile
+
+  float settleTimer;  // counts down after arriving; fire blocked while > 0
+  bool  pathPending;  // true while a NavPathQueue request is in-flight
 } CombatState_t;

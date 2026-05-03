@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "../engine/util/json_reader.h"
+#include "rlgl.h"
 #include "components/renderable.h"
 #include "game.h"
 #include "level_creater_helper.h"
@@ -8,6 +9,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static float s_navHeightCache[180][180];
+static bool  s_navHeightCacheValid = false;
 
 void EditorInit(EditorState *ed, GameWorld *gw, world_t *world) {
   WorldClear(world);
@@ -38,9 +42,27 @@ void EditorInit(EditorState *ed, GameWorld *gw, world_t *world) {
   ed->edLevelCount    = 0;
   ed->edLevelSelected = 0;
 
+  ed->spawnerCount = 0;
+  ed->placeType    = 0;
+  ed->historyTop   = 0;
+
   HeightMap_Free(&gw->terrainHeightMap);
   gw->terrainHeightMap =
       HeightMap_FromMesh(gw->terrainModel.meshes[0], MatrixIdentity());
+
+  ed->navPaintMode   = false;
+  ed->navPaintType   = 0;
+  ed->navPaletteOpen = false;
+  ed->navBrushSize   = 1;
+  if (ed->navImageLoaded) UnloadImage(ed->navImage);
+  ed->navImage = LoadImage("assets/navmap.png");
+  if (ed->navImage.width != 180 || ed->navImage.height != 180) {
+    if (ed->navImage.data) UnloadImage(ed->navImage);
+    ed->navImage = GenImageColor(180, 180, WHITE);
+  }
+  ImageFormat(&ed->navImage, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+  ed->navImageLoaded = true;
+  s_navHeightCacheValid = false;
 
   ed->initialized = true;
 }
@@ -135,49 +157,67 @@ void EditorLoad(EditorState *ed, GameWorld *gw, world_t *world, const char *path
     if (mc) ModelCollectionFree(mc);
     WorldDestroyEntity(world, e);
   }
-  ed->placedCount    = 0;
-  ed->selectedIndex  = -1;
+  ed->placedCount   = 0;
+  ed->selectedIndex = -1;
+  ed->spawnerCount  = 0;
+  ed->historyTop    = 0;
 
   char *text = LoadFileText(path);
   if (!text) return;
 
-  const char *p = strstr(text, "\"boxes\"");
-  if (!p) { UnloadFileText(text); return; }
-  p = strchr(p, '[');
-  if (!p) { UnloadFileText(text); return; }
-  p++;
-
-  while (*p && *p != ']' && ed->placedCount < EDITOR_MAX_BOXES) {
-    while (*p && *p != '{' && *p != ']') p++;
-    if (*p != '{') break;
-    const char *obj = p;
-    while (*p && *p != '}') p++;
-    if (!*p) break;
-    p++;
-
-    int len = (int)(p - obj);
-    if (len >= 512) continue;
-    char buf[512];
-    memcpy(buf, obj, len);
-    buf[len] = '\0';
-
-    float x = 0, y = 0, z = 0, sx = 5, sy = 5, sz = 5;
-    JsonReadFloat(buf, "x",  &x);
-    JsonReadFloat(buf, "y",  &y);
-    JsonReadFloat(buf, "z",  &z);
-    JsonReadFloat(buf, "sx", &sx);
-    JsonReadFloat(buf, "sy", &sy);
-    JsonReadFloat(buf, "sz", &sz);
-
-    Vector3 pos   = {x, y, z};
-    Vector3 scale = {sx, sy, sz};
-    entity_t e = SpawnBoxModel(world, gw, pos, scale);
-    ed->placed[ed->placedCount++] = (EditorPlacedBox){
-        .entity   = e,
-        .position = pos,
-        .scale    = scale,
-    };
+  // Parse boxes
+  {
+    const char *p = strstr(text, "\"boxes\"");
+    if (p) {
+      p = strchr(p, '[');
+      if (p) { p++;
+        while (*p && *p != ']' && ed->placedCount < EDITOR_MAX_BOXES) {
+          while (*p && *p != '{' && *p != ']') p++;
+          if (*p != '{') break;
+          const char *obj = p;
+          while (*p && *p != '}') p++;
+          if (!*p) break; p++;
+          int len = (int)(p - obj);
+          if (len >= 512) continue;
+          char buf[512]; memcpy(buf, obj, len); buf[len] = '\0';
+          float x=0,y=0,z=0,sx=5,sy=5,sz=5;
+          JsonReadFloat(buf,"x",&x); JsonReadFloat(buf,"y",&y); JsonReadFloat(buf,"z",&z);
+          JsonReadFloat(buf,"sx",&sx); JsonReadFloat(buf,"sy",&sy); JsonReadFloat(buf,"sz",&sz);
+          Vector3 pos={x,y,z}, scale={sx,sy,sz};
+          entity_t e = SpawnBoxModel(world, gw, pos, scale);
+          ed->placed[ed->placedCount++] = (EditorPlacedBox){.entity=e,.position=pos,.scale=scale};
+        }
+      }
+    }
   }
+
+  // Parse spawners
+  {
+    const char *p = strstr(text, "\"spawners\"");
+    if (p) {
+      p = strchr(p, '[');
+      if (p) { p++;
+        while (*p && *p != ']' && ed->spawnerCount < EDITOR_MAX_SPAWNERS) {
+          while (*p && *p != '{' && *p != ']') p++;
+          if (*p != '{') break;
+          const char *obj = p;
+          while (*p && *p != '}') p++;
+          if (!*p) break; p++;
+          int len = (int)(p - obj);
+          if (len >= 256) continue;
+          char buf[256]; memcpy(buf, obj, len); buf[len] = '\0';
+          float x=0,y=0,z=0,type=0;
+          JsonReadFloat(buf,"x",&x); JsonReadFloat(buf,"y",&y); JsonReadFloat(buf,"z",&z);
+          JsonReadFloat(buf,"type",&type);
+          ed->placedSpawners[ed->spawnerCount++] = (EditorPlacedSpawner){
+              .position  = {x,y,z},
+              .enemyType = (int)type,
+          };
+        }
+      }
+    }
+  }
+
   UnloadFileText(text);
 }
 
@@ -210,7 +250,9 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
 
   // --- ESC toggles pause menu ---
   if (IsKeyPressed(KEY_ESCAPE)) {
-    if (ed->isSelectingLevel) {
+    if (ed->navPaletteOpen) {
+      ed->navPaletteOpen = false;
+    } else if (ed->isSelectingLevel) {
       ed->isSelectingLevel = false;
     } else {
       ed->isPaused = !ed->isPaused;
@@ -276,8 +318,16 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
 
   // --- Mode toggle ---
   if (IsKeyPressed(KEY_TAB)) {
+    ed->navPaintMode  = false;
     ed->transformMode = !ed->transformMode;
     ed->selectedIndex = -1;
+  }
+
+  // --- Nav paint toggle ---
+  if (IsKeyPressed(KEY_N)) {
+    ed->navPaintMode  = !ed->navPaintMode;
+    if (ed->navPaintMode) ed->transformMode = false;
+    ed->navPaletteOpen = false;
   }
 
   // --- Camera (always active) ---
@@ -310,7 +360,63 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
   ed->camera.up     = (Vector3){0, 1, 0};
 
   // --- Mode-specific ---
-  if (ed->transformMode) {
+  if (ed->navPaintMode) {
+
+    if (ed->navPaletteOpen) {
+      // Key selection
+      if (IsKeyPressed(KEY_ONE))   { ed->navPaintType = 0; ed->navPaletteOpen = false; }
+      if (IsKeyPressed(KEY_TWO))   { ed->navPaintType = 1; ed->navPaletteOpen = false; }
+      if (IsKeyPressed(KEY_THREE)) { ed->navPaintType = 2; ed->navPaletteOpen = false; }
+      // Mouse selection (coordinates match palette render below)
+      if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        int sw = GetScreenWidth(), sh = GetScreenHeight();
+        int pw = 300, ph = 210;
+        int ppx = sw/2 - pw/2, ppy = sh/2 - ph/2;
+        Vector2 mp = GetMousePosition();
+        for (int i = 0; i < 3; i++) {
+          Rectangle r = {(float)(ppx+20), (float)(ppy+50+i*48), (float)(pw-40), 38};
+          if (CheckCollisionPointRec(mp, r)) {
+            ed->navPaintType = i;
+            ed->navPaletteOpen = false;
+            break;
+          }
+        }
+      }
+    } else {
+      if (IsKeyPressed(KEY_P)) ed->navPaletteOpen = true;
+
+      float scroll = GetMouseWheelMove();
+      if (scroll > 0.0f && ed->navBrushSize < 5) ed->navBrushSize++;
+      if (scroll < 0.0f && ed->navBrushSize > 1) ed->navBrushSize--;
+
+      ed->hasHit = RaycastTerrain(ed, gw, &ed->hitPos);
+      if (ed->hasHit) {
+        bool doErase = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+        bool doPaint = IsMouseButtonDown(MOUSE_BUTTON_LEFT) || doErase;
+        if (doPaint) {
+          Color paintColor;
+          if (doErase || ed->navPaintType == 0) {
+            paintColor = WHITE;
+          } else if (ed->navPaintType == 1) {
+            paintColor = BLACK;
+          } else {
+            paintColor = (Color){0, 0, 255, 255};
+          }
+          int cgx = (int)((ed->hitPos.x + 180.0f) / 2.0f);
+          int cgz = (int)((ed->hitPos.z + 180.0f) / 2.0f);
+          int r   = ed->navBrushSize - 1;
+          for (int dz = -r; dz <= r; dz++) {
+            for (int dx = -r; dx <= r; dx++) {
+              int nx = cgx + dx, nz = cgz + dz;
+              if (nx < 0 || nx >= 180 || nz < 0 || nz >= 180) continue;
+              ImageDrawPixel(&ed->navImage, nx, 179 - nz, paintColor);
+            }
+          }
+        }
+      }
+    }
+
+  } else if (ed->transformMode) {
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
       ed->selectedIndex = PickBox(ed);
@@ -364,31 +470,58 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
 
   } else {
     // --- Place mode ---
-    float scroll = GetMouseWheelMove();
-    if (scroll != 0.0f) {
-      ed->boxScale += scroll * 0.5f;
-      if (ed->boxScale < 0.5f) ed->boxScale = 0.5f;
+
+    // Sub-type switching: B=box, G=grunt spawner, R=ranger spawner
+    if (IsKeyPressed(KEY_B)) ed->placeType = 0;
+    if (IsKeyPressed(KEY_G)) ed->placeType = 1;
+    if (IsKeyPressed(KEY_R)) ed->placeType = 2;
+
+    // Scroll resizes box scale (only relevant in box mode)
+    if (ed->placeType == 0) {
+      float scroll = GetMouseWheelMove();
+      if (scroll != 0.0f) {
+        ed->boxScale += scroll * 0.5f;
+        if (ed->boxScale < 0.5f) ed->boxScale = 0.5f;
+      }
     }
 
     ed->hasHit = RaycastTerrain(ed, gw, &ed->hitPos);
 
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && ed->hasHit &&
-        ed->placedCount < EDITOR_MAX_BOXES) {
-      Vector3 scale = {ed->boxScale, ed->boxScale, ed->boxScale};
-      entity_t e = SpawnBoxModel(world, gw, ed->hitPos, scale);
-      ed->placed[ed->placedCount++] = (EditorPlacedBox){
-          .entity   = e,
-          .position = ed->hitPos,
-          .scale    = scale,
-      };
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && ed->hasHit) {
+      if (ed->placeType == 0 && ed->placedCount < EDITOR_MAX_BOXES) {
+        Vector3 scale = {ed->boxScale, ed->boxScale, ed->boxScale};
+        entity_t e = SpawnBoxModel(world, gw, ed->hitPos, scale);
+        ed->placed[ed->placedCount++] = (EditorPlacedBox){
+            .entity   = e,
+            .position = ed->hitPos,
+            .scale    = scale,
+        };
+        int top = ed->historyTop;
+        if (top < EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS)
+          ed->history[ed->historyTop++] = 0;
+      } else if (ed->placeType > 0 && ed->spawnerCount < EDITOR_MAX_SPAWNERS) {
+        int enemyType = ed->placeType - 1; // 0=grunt, 1=ranger
+        ed->placedSpawners[ed->spawnerCount++] = (EditorPlacedSpawner){
+            .position  = ed->hitPos,
+            .enemyType = enemyType,
+        };
+        int top = ed->historyTop;
+        if (top < EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS)
+          ed->history[ed->historyTop++] = 1;
+      }
     }
 
-    if (IsKeyPressed(KEY_Z) && ed->placedCount > 0) {
-      EditorPlacedBox *last = &ed->placed[--ed->placedCount];
-      ModelCollection_t *mc =
-          ECS_GET(world, last->entity, ModelCollection_t, COMP_MODEL);
-      if (mc) ModelCollectionFree(mc);
-      WorldDestroyEntity(world, last->entity);
+    if (IsKeyPressed(KEY_Z) && ed->historyTop > 0) {
+      uint8_t t = ed->history[--ed->historyTop];
+      if (t == 0 && ed->placedCount > 0) {
+        EditorPlacedBox *last = &ed->placed[--ed->placedCount];
+        ModelCollection_t *mc =
+            ECS_GET(world, last->entity, ModelCollection_t, COMP_MODEL);
+        if (mc) ModelCollectionFree(mc);
+        WorldDestroyEntity(world, last->entity);
+      } else if (t == 1 && ed->spawnerCount > 0) {
+        ed->spawnerCount--;
+      }
     }
   }
 
@@ -422,11 +555,74 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
     DrawCubeWires(b->position, b->scale.x, b->scale.y, b->scale.z, wires);
   }
 
+  // Placed spawner wireframes
+  for (int i = 0; i < ed->spawnerCount; i++) {
+    EditorPlacedSpawner *s = &ed->placedSpawners[i];
+    Color col = (s->enemyType == 0) ? RED : BLUE;
+    DrawSphereWires(s->position, 1.5f, 8, 8, col);
+    DrawLine3D(Vector3Add(s->position, (Vector3){-2,0,0}),
+               Vector3Add(s->position, (Vector3){ 2,0,0}), col);
+    DrawLine3D(Vector3Add(s->position, (Vector3){0,0,-2}),
+               Vector3Add(s->position, (Vector3){0,0, 2}), col);
+  }
+
   // Place-mode preview ghost
-  if (!ed->transformMode && ed->hasHit) {
-    float s = ed->boxScale;
-    DrawCube(ed->hitPos, s, s, s, (Color){255, 255, 100, 60});
-    DrawCubeWires(ed->hitPos, s, s, s, YELLOW);
+  if (!ed->transformMode && !ed->navPaintMode && ed->hasHit) {
+    if (ed->placeType == 0) {
+      float s = ed->boxScale;
+      DrawCube(ed->hitPos, s, s, s, (Color){255, 255, 100, 60});
+      DrawCubeWires(ed->hitPos, s, s, s, YELLOW);
+    } else {
+      Color col = (ed->placeType == 1) ? RED : BLUE;
+      DrawSphere(ed->hitPos, 1.5f, (Color){col.r, col.g, col.b, 80});
+      DrawSphereWires(ed->hitPos, 1.5f, 8, 8, col);
+    }
+  }
+
+  // Nav grid overlay
+  if (ed->navImageLoaded) {
+    if (!s_navHeightCacheValid) {
+      for (int gz = 0; gz < 180; gz++)
+        for (int gx = 0; gx < 180; gx++) {
+          float wx = gx * 2.0f - 180.0f + 1.0f;
+          float wz = gz * 2.0f - 180.0f + 1.0f;
+          s_navHeightCache[gz][gx] =
+              HeightMap_GetHeightCatmullRom(&gw->terrainHeightMap, wx, wz);
+        }
+      s_navHeightCacheValid = true;
+    }
+    unsigned char *px = (unsigned char *)ed->navImage.data;
+    rlDisableDepthMask();
+    rlBegin(RL_QUADS);
+    for (int gz = 0; gz < 180; gz++) {
+      for (int gx = 0; gx < 180; gx++) {
+        int img_y = 179 - gz;
+        int base  = (img_y * 180 + gx) * 4;
+        uint8_t r = px[base], g = px[base+1], b = px[base+2];
+        bool isWall  = (r < 10 && g < 10 && b < 10);
+        bool isCover = (b > 200 && r < 50 && g < 50);
+        if (!isWall && !isCover) continue;
+        float x0 = gx * 2.0f - 180.0f, x1 = x0 + 2.0f;
+        float z0 = gz * 2.0f - 180.0f, z1 = z0 + 2.0f;
+        float y  = s_navHeightCache[gz][gx] + 0.15f;
+        if (isWall) rlColor4ub(220, 40, 40, 160);
+        else        rlColor4ub(40, 100, 220, 160);
+        rlVertex3f(x0, y, z0);
+        rlVertex3f(x0, y, z1);
+        rlVertex3f(x1, y, z1);
+        rlVertex3f(x1, y, z0);
+      }
+    }
+    rlEnd();
+    rlEnableDepthMask();
+  }
+
+  // Nav brush cursor
+  if (ed->navPaintMode && ed->hasHit) {
+    float dia = (float)((ed->navBrushSize * 2 - 1) * 2);
+    Color col = (ed->navPaintType == 1) ? RED :
+                (ed->navPaintType == 2) ? BLUE : RAYWHITE;
+    DrawCubeWires(ed->hitPos, dia, 0.3f, dia, col);
   }
 
   EndMode3D();
@@ -439,7 +635,40 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
   // Header
   DrawText("LEVEL EDITOR", 20, 20, 20, RAYWHITE);
 
-  if (ed->transformMode) {
+  if (ed->navPaintMode) {
+    static const char *typeNames[]  = {"EMPTY", "WALL", "LOW COVER"};
+    static Color       typeColors[] = {RAYWHITE, RED, BLUE};
+    int pt = ed->navPaintType;
+    DrawText(TextFormat("[ NAV PAINT ]  Type: %s  Brush: %d",
+                        typeNames[pt], ed->navBrushSize),
+             20, 48, 18, typeColors[pt]);
+    DrawText("[LMB] Paint  [RMB] Erase  [Scroll] Brush size  [P] Palette  "
+             "[N] Exit  [Ctrl+S] Save  [ESC] Menu",
+             20, GetScreenHeight() - 28, 14, WHITE);
+
+    if (ed->navPaletteOpen) {
+      int sw = GetScreenWidth(), sh = GetScreenHeight();
+      int pw = 300, ph = 210;
+      int ppx = sw/2 - pw/2, ppy = sh/2 - ph/2;
+      DrawRectangle(ppx, ppy, pw, ph, (Color){20, 20, 35, 230});
+      DrawRectangleLines(ppx, ppy, pw, ph, RAYWHITE);
+      DrawText("SELECT TYPE", ppx + 76, ppy + 14, 18, RAYWHITE);
+      static const char *labels[]     = {"1: EMPTY", "2: WALL", "3: LOW COVER"};
+      static Color swatchColors[]     = {{200,200,200,255}, {50,50,50,255}, {40,100,220,255}};
+      Vector2 mp = GetMousePosition();
+      for (int i = 0; i < 3; i++) {
+        int sy  = ppy + 50 + i * 48;
+        bool sel = (i == pt);
+        bool hov = CheckCollisionPointRec(mp, (Rectangle){(float)(ppx+20),(float)sy,(float)(pw-40),38});
+        DrawRectangle(ppx+20, sy, pw-40, 38, sel ? (Color){50,80,130,255} : (Color){30,30,50,255});
+        DrawRectangleLines(ppx+20, sy, pw-40, 38, (hov||sel) ? SKYBLUE : (Color){55,55,75,255});
+        DrawRectangle(ppx+30, sy+7, 24, 24, swatchColors[i]);
+        DrawRectangleLines(ppx+30, sy+7, 24, 24, LIGHTGRAY);
+        DrawText(labels[i], ppx+62, sy+10, 18, sel ? YELLOW : LIGHTGRAY);
+      }
+      DrawText("[1/2/3] Select  [P/ESC] Close", ppx+20, ppy+ph-28, 13, GRAY);
+    }
+  } else if (ed->transformMode) {
     DrawText("[ TRANSFORM MODE ]", 20, 48, 18, SKYBLUE);
 
     if (ed->selectedIndex >= 0) {
@@ -459,10 +688,15 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
                20, GetScreenHeight() - 28, 14, WHITE);
     }
   } else {
-    DrawText(TextFormat("Boxes: %d  |  Scale: %.1f", ed->placedCount, ed->boxScale),
-             20, 48, 18, LIGHTGRAY);
-    DrawText("[LMB] Place  [Z] Undo  [Ctrl+S] Save  [ESC] Exit  "
-             "[Scroll] Resize  [Q/E] Up/Down  [Shift] Fast  [TAB] Transform",
+    static const char *placeTypeNames[] = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER"};
+    static Color placeTypeColors[]      = {LIGHTGRAY, RED, BLUE};
+    int pt = ed->placeType < 3 ? ed->placeType : 0;
+    DrawText(TextFormat("[ %s ]  Boxes: %d  Spawners: %d  Scale: %.1f",
+                        placeTypeNames[pt], ed->placedCount,
+                        ed->spawnerCount, ed->boxScale),
+             20, 48, 18, placeTypeColors[pt]);
+    DrawText("[LMB] Place  [Z] Undo  [B] Box  [G] Grunt Spwn  [R] Ranger Spwn  "
+             "[Scroll] Resize  [TAB] Transform  [N] Nav Paint  [Ctrl+S] Save  [ESC] Menu",
              20, GetScreenHeight() - 28, 14, WHITE);
   }
 
@@ -561,6 +795,15 @@ void EditorSave(EditorState *ed, const char *path) {
             b->position.x, b->position.y, b->position.z,
             b->scale.x, b->scale.y, b->scale.z, comma);
   }
+  fprintf(f, "  ],\n  \"spawners\": [\n");
+  for (int i = 0; i < ed->spawnerCount; i++) {
+    EditorPlacedSpawner *s = &ed->placedSpawners[i];
+    const char *comma = (i < ed->spawnerCount - 1) ? "," : "";
+    fprintf(f, "    {\"x\": %.3f, \"y\": %.3f, \"z\": %.3f, \"type\": %d}%s\n",
+            s->position.x, s->position.y, s->position.z, s->enemyType, comma);
+  }
   fprintf(f, "  ]\n}\n");
   fclose(f);
+
+  ExportImage(ed->navImage, "assets/navmap.png");
 }

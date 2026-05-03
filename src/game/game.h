@@ -29,6 +29,14 @@ enum CollisionLayer {
   LAYER_TRIGGER = 4
 };
 
+typedef struct {
+  int   currentWave;       // 1-indexed; 0 = not started
+  int   enemiesAlive;
+  float nextWaveTimer;
+  bool  waveActive;
+  bool  allWavesComplete;
+} WaveState;
+
 enum gameState {
   GAMESTATE_MAINMENU = 0,
   GAMESTATE_INLEVEL,
@@ -64,7 +72,9 @@ typedef struct GameWorld {
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
-      tutorialBoxArchId, missileArchId, wallSegArchId;
+      tutorialBoxArchId, missileArchId, wallSegArchId, spawnerArchId;
+
+  WaveState waveState;
 
   float arenaRadius;
 

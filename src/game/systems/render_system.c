@@ -118,6 +118,24 @@ void DrawWallSegmentWireframes(world_t *world, uint32_t wallSegArchId) {
   }
 }
 
+void DrawSpawnerWireframes(world_t *world, uint32_t spawnerArchId) {
+  archetype_t *arch = WorldGetArchetype(world, spawnerArchId);
+  if (!arch) return;
+
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+    Position     *pos = ECS_GET(world, e, Position,     COMP_POSITION);
+    EnemySpawner *sp  = ECS_GET(world, e, EnemySpawner, COMP_ENEMY_SPAWNER);
+    if (!pos || !sp) continue;
+    Color col = (sp->enemyType == 0) ? RED : BLUE;
+    DrawSphereWires(pos->value, 1.5f, 8, 8, col);
+    DrawLine3D(Vector3Add(pos->value, (Vector3){-2,0,0}),
+               Vector3Add(pos->value, (Vector3){ 2,0,0}), col);
+    DrawLine3D(Vector3Add(pos->value, (Vector3){0,0,-2}),
+               Vector3Add(pos->value, (Vector3){0,0, 2}), col);
+  }
+}
+
 void DrawTriggerAABBs(world_t *world, uint32_t triggerArchId) {
   archetype_t *arch = WorldGetArchetype(world, triggerArchId);
   if (!arch)
@@ -173,6 +191,7 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
       DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
     }
 
+    // DEBUG continue
     // continue;
 
     // Debug Render Muzzles (if present)
@@ -328,6 +347,7 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   DrawTriggerAABBs(world, game->tutorialBoxArchId);
   DrawWallSegmentWireframes(world, game->wallSegArchId);
+  DrawSpawnerWireframes(world, game->spawnerArchId);
 
   // NavGrid *grid = &game->navGrid;
 
@@ -404,6 +424,25 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
     char hpBuf[32];
     snprintf(hpBuf, sizeof(hpBuf), "HP  %d / %d", (int)hp->current, (int)hp->max);
     DrawText(hpBuf, barX + 6, barY + 3, 14, WHITE);
+  }
+
+  // Wave HUD
+  {
+    WaveState *ws = &game->waveState;
+    if (ws->allWavesComplete) {
+      DrawText("ALL WAVES COMPLETE", screenW/2 - 155, 50, 28, GOLD);
+    } else if (ws->currentWave > 0) {
+      DrawText(TextFormat("WAVE %d", ws->currentWave), screenW/2 - 55, 50, 32, RAYWHITE);
+      if (ws->waveActive) {
+        DrawText(TextFormat("Enemies: %d", ws->enemiesAlive), screenW/2 - 55, 90, 20, ORANGE);
+      } else {
+        int secs = (int)ws->nextWaveTimer + 1;
+        DrawText(TextFormat("Next wave in %d", secs), screenW/2 - 90, 90, 20, YELLOW);
+      }
+    } else {
+      int secs = (int)ws->nextWaveTimer + 1;
+      DrawText(TextFormat("Wave starts in %d", secs), screenW/2 - 105, 50, 24, YELLOW);
+    }
   }
 
   EndDrawing();

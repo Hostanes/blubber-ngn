@@ -35,4 +35,7 @@ entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,
                           Vector3 localA, Vector3 localB,
                           float localYBottom, float localYTop, float radius);
 
+entity_t SpawnEnemySpawner(world_t *world, GameWorld *gw,
+                           Vector3 position, int enemyType);
+
 #endif

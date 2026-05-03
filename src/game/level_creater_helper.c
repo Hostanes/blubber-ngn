@@ -291,11 +291,16 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
 
   CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
   if (combat) {
-    combat->combatYaw = PI / 4;
-    combat->aimPitch = 0.0f;
-    combat->moveYaw = PI / 4;
-    combat->isAiming = false;
-    combat->state = ENEMY_STATE_COMBAT;
+    combat->combatYaw           = PI / 4;
+    combat->aimPitch            = 0.0f;
+    combat->moveYaw             = PI / 4;
+    combat->isAiming            = false;
+    combat->state               = ENEMY_STATE_COMBAT;
+    combat->settleTimer         = 1.2f;
+    combat->pathPending         = false;
+    combat->burstShotsRemaining = 0;
+    combat->burstTimer          = 0.0f;
+    combat->burstType           = 0;
   }
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -391,14 +396,16 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
 
   CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
   if (combat) {
-    combat->combatYaw = PI / 4;
-    combat->aimPitch = 0.0f;
-    combat->moveYaw = PI / 4;
-    combat->isAiming = false;
-    combat->state = ENEMY_STATE_MOVING;
+    combat->combatYaw           = PI / 4;
+    combat->aimPitch            = 0.0f;
+    combat->moveYaw             = PI / 4;
+    combat->isAiming            = false;
+    combat->state               = ENEMY_STATE_MOVING;
+    combat->settleTimer         = 0.0f; // will be set when path completes
+    combat->pathPending         = false;
     combat->burstShotsRemaining = 0;
-    combat->burstTimer = 0.0f;
-    combat->burstType = 0;
+    combat->burstTimer          = 0.0f;
+    combat->burstType           = 0;
   }
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -679,6 +686,18 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
 
   OnDeath *od = ECS_GET(world, m, OnDeath, COMP_ONDEATH);
   od->fn = OnMissileDeath;
+}
+
+entity_t SpawnEnemySpawner(world_t *world, GameWorld *gw,
+                           Vector3 position, int enemyType) {
+  archetype_t *arch = WorldGetArchetype(world, gw->spawnerArchId);
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  ECS_GET(world, e, Position,     COMP_POSITION)->value          = position;
+  ECS_GET(world, e, Active,       COMP_ACTIVE)->value            = true;
+  ECS_GET(world, e, EnemySpawner, COMP_ENEMY_SPAWNER)->enemyType = enemyType;
+
+  return e;
 }
 
 entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,

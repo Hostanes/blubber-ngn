@@ -7,6 +7,7 @@
 #include "bullet_owner.h"
 #include "collision.h"
 #include "combat_state.h"
+#include "enemy_spawner.h"
 #include "event_triggers.h"
 #include "health.h"
 #include "movement.h"
@@ -51,4 +52,5 @@ enum {
   COMP_TYPE_PLAYER,
   COMP_HOMINGMISSILE,
   COMP_WALL_SEGMENT_COLLIDER,
+  COMP_ENEMY_SPAWNER,
 };

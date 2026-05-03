@@ -3,6 +3,7 @@
 #include "game.h"
 #include "rlgl.h"
 #include "systems/systems.h"
+#include "systems/wave_system.h"
 #include "world_spawn.h"
 #include <dirent.h>
 #include <raylib.h>
@@ -257,6 +258,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       WorldClear(world);
 
       SpawnLevelFromFile(world, game, game->targetLevelPath);
+      WaveSystem_Init(game);
 
       game->gameState = GAMESTATE_INLEVEL;
       DisableCursor();
@@ -279,6 +281,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
     } break;
 
     case GAMESTATE_INLEVEL: {
+      WaveSystem_Update(world, game, dt);
       TimerSystem(&engine->timerPool, dt);
 
       PlayerControlSystem(world, game, game->player, dt);
@@ -293,22 +296,18 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       PlayerMoveAndCollide(world, game, dt);
 
+      // Deliver queued paths before state machines run
+      EnemyPathQueue_Flush(NAV_PATHS_PER_FRAME);
+
       EnemyGruntAISystem(world, game,
                          WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      EnemyRangerAISystem(world, game,
+                          WorldGetArchetype(world, game->enemyRangerArchId), dt);
 
-      EnemyRangerAISystem(
-          world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
-
-      EnemyAISystem(world, game,
-                    WorldGetArchetype(world, game->enemyGruntArchId), dt);
-      EnemyAISystem(world, game,
-                    WorldGetArchetype(world, game->enemyRangerArchId), dt);
-
-      EnemyRangerAimSystem(
-          world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);
-
-      // EnemyAimSystem(world, game,
-      //                WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      EnemyAimSystem(world, game,
+                     WorldGetArchetype(world, game->enemyGruntArchId), dt);
+      EnemyRangerAimSystem(world, game,
+                           WorldGetArchetype(world, game->enemyRangerArchId), dt);
 
       EnemyRangerFireSystem(
           world, game, WorldGetArchetype(world, game->enemyRangerArchId), dt);

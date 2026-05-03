@@ -33,6 +33,17 @@ void RegisterAllArchetypes(Engine *engine, GameWorld *gw, world_t *world) {
     ArchetypeAddInline(arch, COMP_ACTIVE,               sizeof(Active));
   }
 
+  // Spawner archetype (position + type + active; no model, no collision)
+  {
+    uint32_t bits[] = {COMP_POSITION, COMP_ENEMY_SPAWNER, COMP_ACTIVE};
+    bitset_t mask = MakeMask(bits, 3);
+    gw->spawnerArchId = WorldCreateArchetype(world, &mask);
+    archetype_t *arch = WorldGetArchetype(world, gw->spawnerArchId);
+    ArchetypeAddInline(arch, COMP_POSITION,      sizeof(Position));
+    ArchetypeAddInline(arch, COMP_ENEMY_SPAWNER, sizeof(EnemySpawner));
+    ArchetypeAddInline(arch, COMP_ACTIVE,        sizeof(Active));
+  }
+
   // Bullet archetype
   {
     uint32_t bits[] = {
@@ -114,9 +125,11 @@ static void SpawnBulletPool(world_t *world, GameWorld *gw) {
 
 // --- JSON LEVEL LOADING ---
 
-#define MAX_LEVEL_BOXES 1024
+#define MAX_LEVEL_BOXES    1024
+#define MAX_LEVEL_SPAWNERS 256
 
 typedef struct { Vector3 pos; Vector3 scale; } LevelBox;
+typedef struct { Vector3 pos; int enemyType; } LevelSpawner;
 
 static int LoadBoxesFromJSON(const char *text, LevelBox *boxes, int maxCount) {
   const char *p = strstr(text, "\"boxes\"");
@@ -158,10 +171,43 @@ static int LoadBoxesFromJSON(const char *text, LevelBox *boxes, int maxCount) {
   return count;
 }
 
+static int LoadSpawnersFromJSON(const char *text, LevelSpawner *spawners, int maxCount) {
+  const char *p = strstr(text, "\"spawners\"");
+  if (!p) return 0;
+  p = strchr(p, '[');
+  if (!p) return 0;
+  p++;
+
+  int count = 0;
+  while (*p && *p != ']' && count < maxCount) {
+    while (*p && *p != '{' && *p != ']') p++;
+    if (*p != '{') break;
+    const char *obj = p;
+    while (*p && *p != '}') p++;
+    if (!*p) break;
+    p++;
+
+    int len = (int)(p - obj);
+    if (len >= 256) continue;
+    char buf[256];
+    memcpy(buf, obj, len);
+    buf[len] = '\0';
+
+    float x = 0, y = 0, z = 0, type = 0;
+    JsonReadFloat(buf, "x",    &x);
+    JsonReadFloat(buf, "y",    &y);
+    JsonReadFloat(buf, "z",    &z);
+    JsonReadFloat(buf, "type", &type);
+
+    spawners[count++] = (LevelSpawner){.pos = {x, y, z}, .enemyType = (int)type};
+  }
+  return count;
+}
+
 static void SpawnLevelBase(world_t *world, GameWorld *gw) {
   gw->terrainHeightMap =
       HeightMap_FromMesh(gw->terrainModel.meshes[0], MatrixIdentity());
-  NavGrid_LoadFromImage(&gw->navGrid, "navmap.png", 2, (Vector3){-180, 0, -180});
+  NavGrid_LoadFromImage(&gw->navGrid, "assets/navmap.png", 2, (Vector3){-180, 0, -180});
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
   SpawnLevelModel(world, gw, gw->ruinsModel,     (Vector3){0,0,0}, (Vector3){0,0,0}, (Vector3){1,1,1});
   SpawnLevelModel(world, gw, gw->skyBox,         (Vector3){0,0,0}, (Vector3){0,0,0}, (Vector3){1,1,1});
@@ -178,12 +224,16 @@ void SpawnLevelFromFile(world_t *world, GameWorld *gw, const char *path) {
     return;
   }
 
-  static LevelBox boxes[MAX_LEVEL_BOXES];
-  int count = LoadBoxesFromJSON(text, boxes, MAX_LEVEL_BOXES);
+  static LevelBox    boxes[MAX_LEVEL_BOXES];
+  static LevelSpawner spawners[MAX_LEVEL_SPAWNERS];
+  int nBoxes    = LoadBoxesFromJSON(text, boxes, MAX_LEVEL_BOXES);
+  int nSpawners = LoadSpawnersFromJSON(text, spawners, MAX_LEVEL_SPAWNERS);
   UnloadFileText(text);
 
-  for (int i = 0; i < count; i++)
+  for (int i = 0; i < nBoxes; i++)
     SpawnBoxModel(world, gw, boxes[i].pos, boxes[i].scale);
+  for (int i = 0; i < nSpawners; i++)
+    SpawnEnemySpawner(world, gw, spawners[i].pos, spawners[i].enemyType);
 }
 
 // --- LEVEL 1 SPAWNER (hardcoded enemies) ---

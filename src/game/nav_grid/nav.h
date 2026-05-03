@@ -27,23 +27,21 @@ typedef struct {
 
 typedef struct {
   int x, y;
-
   int gCost;
   int hCost;
   int fCost;
-
   int parentIndex;
-
   bool open;
   bool closed;
+  int  heapIndex; // position in the open-set heap; -1 if not present
 } AStarNode;
 
 typedef struct {
   int width;
   int height;
   float cellSize;
-  Vector3 origin; // world-space bottom-left corner
-  NavCell *cells; // width * height
+  Vector3 origin;
+  NavCell *cells;
 } NavGrid;
 
 static inline int NavGrid_Index(NavGrid *g, int x, int y) {

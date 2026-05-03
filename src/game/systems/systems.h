@@ -43,8 +43,10 @@ void CollisionSystem(world_t *world);
 
 void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                         float dt);
-void EnemyAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
-                   float dt);
+bool EnemyFollowPath(world_t *world, GameWorld *game, entity_t e,
+                     float maxSpeed, float rotateSpeed, float dt);
+#define NAV_PATHS_PER_FRAME 2
+void EnemyPathQueue_Flush(int maxPerFrame);
 void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                     float dt);
 void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch);
@@ -61,3 +63,5 @@ void EnemyRangerAimSystem(world_t *world, GameWorld *game,
 // void MissileBot_SetTargets(world_t *world, entity_t e, GameWorld *game);
 
 void CollisionSyncSystem(world_t *world);
+
+void DrawSpawnerWireframes(world_t *world, uint32_t spawnerArchId);
