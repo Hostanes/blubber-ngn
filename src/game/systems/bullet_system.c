@@ -42,10 +42,10 @@ static void SpawnOneBullet(world_t *world, GameWorld *game, entity_t shooter,
     active->value = true;
 
     BulletType *bt  = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
-    bt->type        = m->bulletType;
-    bt->shieldMult  = m->shieldMult;
-    bt->healthMult  = m->healthMult;
-    bt->pierce      = m->pierce;
+    bt->type       = m->bulletType;
+    bt->shieldMult = m->shieldMult != 0.0f ? m->shieldMult : 1.0f;
+    bt->healthMult = m->healthMult != 0.0f ? m->healthMult : 1.0f;
+    bt->pierce     = m->pierce;
 
     float mv = muzzleVelocities[bt->type];
 

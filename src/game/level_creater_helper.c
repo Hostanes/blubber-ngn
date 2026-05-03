@@ -162,7 +162,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
   CapsuleCollider *cap =
       ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
 
-  cap->radius = 0.35f;
+  cap->radius = 0.5f;
   cap->localA = (Vector3){0, -1.55f, 0};
   cap->localB = (Vector3){0, 0, 0};
 
@@ -196,7 +196,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
       .positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
       .bulletType  = BULLET_TYPE_STANDARD,
       .shieldMult  = 0.1f,
-      .healthMult  = 1.5f,
+      .healthMult  = 2.5f,
       .pierce      = false,
       .spreadCount = 1,
       .spreadAngle = 0.0f,
@@ -212,7 +212,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
       .pierce      = false,
       .spreadCount = 1,
       .spreadAngle = 0.05f, // ~5 degree random deviation per shot
-      .fireRate    = 8.0f,  // 8 rounds/sec
+      .fireRate    = 15.0f,  // 8 rounds/sec
   };
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -312,7 +312,7 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
 
   muzzles->Muzzles[0] =
       (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 1.5f}},
-                 .bulletType = BULLET_TYPE_STANDARD};
+                 .bulletType = BULLET_TYPE_ENEMY};
 
   CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
   if (combat) {
@@ -415,7 +415,7 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
   muzzles->Muzzles = calloc(2, sizeof(Muzzle_t));
   // Gun
   muzzles->Muzzles[0] = (Muzzle_t){.positionOffset = {.value = {0, 3.0f, 1.5f}},
-                                   .bulletType = BULLET_TYPE_STANDARD};
+                                   .bulletType = BULLET_TYPE_ENEMY};
 
   // Missile
   muzzles->Muzzles[1] = (Muzzle_t){.positionOffset = {.value = {0, 4.5f, -0.5}},
@@ -511,7 +511,7 @@ entity_t SpawnEnemyMissile(world_t *world, GameWorld *game, Vector3 position) {
 
   muzzles->Muzzles[0] =
       (Muzzle_t){.positionOffset = {.value = {0.0f, 3.0f, 0.0f}},
-                 .bulletType = BULLET_TYPE_STANDARD};
+                 .bulletType = BULLET_TYPE_ENEMY};
 
   ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE)->combatYaw = 0;
   ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE)->moveYaw = 0;
@@ -690,7 +690,7 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
   HomingMissile *hm = ECS_GET(world, m, HomingMissile, COMP_HOMINGMISSILE);
   hm->owner = shooter;
   hm->target = target;
-  hm->turnSpeed = 1.5f;
+  hm->turnSpeed = 4.0f;
   hm->maxSpeed = 50.0f;
 
   /* --- Lifetime --- */
