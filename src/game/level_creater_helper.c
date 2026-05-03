@@ -113,6 +113,8 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
   ECS_GET(world, e, Active, COMP_ACTIVE)->value = true;
   ECS_GET(world, e, Health, COMP_HEALTH)->current = 100;
   ECS_GET(world, e, Health, COMP_HEALTH)->max = 100;
+  ECS_GET(world, e, Shield, COMP_SHIELD)->current = 0.0f;
+  ECS_GET(world, e, Shield, COMP_SHIELD)->max = 0.0f;
 
   /* ---------------- Model Setup ---------------- */
 
@@ -141,9 +143,9 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
                                            .isActive = true});
 
   // Gun 2 (index 2)
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->gunModel,
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->plasmaGunModel,
                                            .offset = (Vector3){0, -0.5f, 0},
-                                           .scale = (Vector3){1, 1, 2},
+                                           .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL,
                                            .parentIndex = -1,
                                            .isActive = false});
@@ -186,13 +188,32 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
   MuzzleCollection_t *muzzles =
       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
-  muzzles->count = 1;
-  muzzles->Muzzles = calloc(1, sizeof(Muzzle_t));
+  muzzles->count = 2;
+  muzzles->Muzzles = calloc(2, sizeof(Muzzle_t));
 
-  muzzles->Muzzles[0] =
-      (Muzzle_t){.positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
-                 .weaponOffset = {0, -PI / 2},
-                 .bulletType = BULLET_TYPE_AUTOCANNON};
+  // Weapon 1: anti-health machine gun — full damage vs health, half vs shields
+  muzzles->Muzzles[0] = (Muzzle_t){
+      .positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
+      .bulletType  = BULLET_TYPE_STANDARD,
+      .shieldMult  = 0.1f,
+      .healthMult  = 1.5f,
+      .pierce      = false,
+      .spreadCount = 1,
+      .spreadAngle = 0.0f,
+      .fireRate    = 3.0f, // 10 rounds/sec
+  };
+
+  // Weapon 2: anti-shield plasma — 2.5x vs shields, half vs health, inaccurate
+  muzzles->Muzzles[1] = (Muzzle_t){
+      .positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
+      .bulletType  = BULLET_TYPE_PLASMA,
+      .shieldMult  = 2.5f,
+      .healthMult  = 0.5f,
+      .pierce      = false,
+      .spreadCount = 1,
+      .spreadAngle = 0.05f, // ~5 degree random deviation per shot
+      .fireRate    = 8.0f,  // 8 rounds/sec
+  };
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
   od->fn = Player_OnDeath;
@@ -218,6 +239,10 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
   Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
   hp->max = 150.0f;
   hp->current = 150.0f;
+
+  Shield *sh = ECS_GET(world, e, Shield, COMP_SHIELD);
+  sh->max = 50.0f;
+  sh->current = 50.0f;
 
   Orientation *ori = ECS_GET(world, e, Orientation, COMP_ORIENTATION);
   ori->yaw = PI / 4;
@@ -327,6 +352,10 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
   Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
   hp->max = 200;
   hp->current = 200;
+
+  Shield *sh = ECS_GET(world, e, Shield, COMP_SHIELD);
+  sh->max = 100.0f;
+  sh->current = 100.0f;
 
   /* --- Model --- */
   ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);

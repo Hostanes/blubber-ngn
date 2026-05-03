@@ -80,6 +80,7 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.obstacleModel = LoadModel("assets/models/obstacle.glb");
   gw.skyBox        = LoadModel("assets/models/skybox.glb");
   gw.gunModel      = LoadModel("assets/models/gun1.glb");
+  gw.plasmaGunModel = LoadModel("assets/models/gun2-plasma.glb");
   gw.bulletModel   = LoadModel("assets/models/bullet.glb");
   gw.shadowModel   = LoadModel("assets/models/shadow.glb");
   gw.enemyModel    = LoadModel("assets/models/enemy-target.glb");

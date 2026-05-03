@@ -192,7 +192,7 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
     }
 
     // DEBUG continue
-    // continue;
+    continue;
 
     // Debug Render Muzzles (if present)
     if (ArchetypeHas(arch, COMP_MUZZLES)) {
@@ -316,6 +316,84 @@ void ComputeArchetypeTransforms(world_t *world, archetype_t *arch) {
   }
 }
 
+static void DrawHealthBars(world_t *world, Camera *camera) {
+  const int BAR_W      = 60;
+  const int BAR_H      = 5;
+  const int Y_OFFSET   = 40; // pixels above projected position
+
+  for (uint32_t i = 0; i < world->archetypeCount; ++i) {
+    archetype_t *arch = &world->archetypes[i];
+
+    if (!ArchetypeHas(arch, COMP_HEALTH))  continue;
+    if (!ArchetypeHas(arch, COMP_POSITION)) continue;
+    if (ArchetypeHas(arch, COMP_TYPE_PLAYER)) continue; // player uses HUD bar
+
+    bool hasShield = ArchetypeHas(arch, COMP_SHIELD);
+
+    for (uint32_t j = 0; j < arch->count; ++j) {
+      entity_t e = arch->entities[j];
+
+      Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+      if (!active || !active->value) continue;
+
+      Position *pos   = ECS_GET(world, e, Position, COMP_POSITION);
+      Health   *hp    = ECS_GET(world, e, Health,   COMP_HEALTH);
+      if (!pos || !hp || hp->max <= 0.0f) continue;
+
+      Shield *sh = hasShield ? ECS_GET(world, e, Shield, COMP_SHIELD) : NULL;
+
+      // Skip entities behind the camera — GetWorldToScreen mirrors them
+      Vector3 above     = {pos->value.x, pos->value.y + 2.8f, pos->value.z};
+      Vector3 camFwd    = Vector3Normalize(Vector3Subtract(camera->target, camera->position));
+      Vector3 toEntity  = Vector3Subtract(above, camera->position);
+      if (Vector3DotProduct(camFwd, toEntity) < 0.1f) continue;
+
+      Vector2 screen = GetWorldToScreen(above, *camera);
+
+      if (screen.x < -BAR_W || screen.x > GetScreenWidth() + BAR_W) continue;
+      if (screen.y < 0 || screen.y > GetScreenHeight()) continue;
+
+      int bx = (int)screen.x - BAR_W / 2;
+      int by = (int)screen.y - Y_OFFSET;
+
+      float shieldMax = (sh && sh->max > 0.0f) ? sh->max : 0.0f;
+      float totalMax  = hp->max + shieldMax;
+
+      // Width of each section proportional to its max value
+      int shW = (shieldMax > 0.0f) ? (int)(BAR_W * (shieldMax / totalMax)) : 0;
+      int hpW = BAR_W - shW;
+
+      // --- Health section (left) ---
+      {
+        float hpRatio = hp->current / hp->max;
+        if (hpRatio < 0.0f) hpRatio = 0.0f;
+        if (hpRatio > 1.0f) hpRatio = 1.0f;
+        int hpFill = (int)(hpW * hpRatio);
+
+        Color hpColor = hpRatio > 0.5f ? RED
+                      : hpRatio > 0.25f ? ORANGE : MAROON;
+
+        DrawRectangle(bx,       by, hpW, BAR_H, (Color){50, 10, 10, 200});
+        DrawRectangle(bx,       by, hpFill, BAR_H, hpColor);
+        DrawRectangleLines(bx,  by, hpW, BAR_H, (Color){200, 80, 80, 200});
+      }
+
+      // --- Shield section (right) ---
+      if (shW > 0) {
+        float shRatio = (sh->current > 0.0f) ? (sh->current / sh->max) : 0.0f;
+        int   shFill  = (int)(shW * shRatio);
+
+        DrawRectangle(bx + hpW,       by, shW, BAR_H, (Color){10, 20, 60, 200});
+        DrawRectangle(bx + hpW,       by, shFill, BAR_H, (Color){60, 140, 255, 230});
+        DrawRectangleLines(bx + hpW,  by, shW, BAR_H, (Color){80, 160, 255, 200});
+      }
+
+      // Outer border encompassing the full bar
+      DrawRectangleLines(bx, by, BAR_W, BAR_H, (Color){180, 180, 180, 160});
+    }
+  }
+}
+
 void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   EnsureModelMask();
@@ -354,6 +432,7 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   // DrawNavGridBatched(grid);
 
   EndMode3D();
+  DrawHealthBars(world, camera);
   DrawFPS(10, 10);
 
   int screenW = GetScreenWidth();
@@ -400,30 +479,60 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   DrawText(buf, screenW - 260, 10, 16, WHITE);
 
-  // --- Health bar (bottom-right) ---
+  // --- Player HP + Shield bar (bottom-left) ---
   Health *hp = ECS_GET(world, player, Health, COMP_HEALTH);
+  Shield *sh = ECS_GET(world, player, Shield, COMP_SHIELD);
   if (hp && hp->max > 0.0f) {
-    int barW = 220;
-    int barH = 20;
-    int margin = 20;
-    int barX = margin;
-    int barY = screenH - margin - barH;
+    const int margin  = 20;
+    const int barH    = 20;
+    const int barX    = margin;
+    const int barY    = screenH - margin - barH;
 
-    float ratio = hp->current / hp->max;
-    if (ratio < 0.0f) ratio = 0.0f;
-    if (ratio > 1.0f) ratio = 1.0f;
+    float shMax   = (sh && sh->max > 0.0f) ? sh->max : 0.0f;
+    float totalMax = hp->max + shMax;
 
-    int fillW = (int)(barW * ratio);
+    // Total bar width scales with total max EHP, capped at 300px
+    int barW = (int)(300.0f * (totalMax / (hp->max > 0 ? hp->max : 1)));
+    if (barW > 300) barW = 300;
+    if (barW < 100) barW = 100;
 
-    Color fill = ratio > 0.5f ? GREEN : (ratio > 0.25f ? YELLOW : RED);
+    int shW = (shMax > 0.0f) ? (int)(barW * (shMax / totalMax)) : 0;
+    int hpW = barW - shW;
 
-    DrawRectangle(barX, barY, barW, barH, (Color){30, 10, 10, 200});
-    DrawRectangle(barX, barY, fillW, barH, fill);
+    // Health section (left)
+    {
+      float hpRatio = hp->current / hp->max;
+      if (hpRatio < 0.0f) hpRatio = 0.0f;
+      if (hpRatio > 1.0f) hpRatio = 1.0f;
+      int hpFill = (int)(hpW * hpRatio);
+
+      Color fill = hpRatio > 0.5f ? GREEN : (hpRatio > 0.25f ? YELLOW : RED);
+
+      DrawRectangle(barX,      barY, hpW, barH, (Color){30, 10, 10, 200});
+      DrawRectangle(barX,      barY, hpFill, barH, fill);
+      DrawRectangleLines(barX, barY, hpW, barH, (Color){200, 200, 200, 200});
+
+      char hpBuf[24];
+      snprintf(hpBuf, sizeof(hpBuf), "HP %d", (int)hp->current);
+      DrawText(hpBuf, barX + 4, barY + 3, 14, WHITE);
+    }
+
+    // Shield section (right)
+    if (shW > 0 && sh) {
+      float shRatio = (sh->current > 0.0f) ? (sh->current / sh->max) : 0.0f;
+      int   shFill  = (int)(shW * shRatio);
+
+      DrawRectangle(barX + hpW,       barY, shW, barH, (Color){10, 20, 60, 200});
+      DrawRectangle(barX + hpW,       barY, shFill, barH, (Color){60, 140, 255, 230});
+      DrawRectangleLines(barX + hpW,  barY, shW, barH, (Color){80, 180, 255, 255});
+
+      char shBuf[24];
+      snprintf(shBuf, sizeof(shBuf), "%d", (int)sh->current);
+      DrawText(shBuf, barX + hpW + 4, barY + 3, 14, WHITE);
+    }
+
+    // Outer border
     DrawRectangleLines(barX, barY, barW, barH, WHITE);
-
-    char hpBuf[32];
-    snprintf(hpBuf, sizeof(hpBuf), "HP  %d / %d", (int)hp->current, (int)hp->max);
-    DrawText(hpBuf, barX + 6, barY + 3, 14, WHITE);
   }
 
   // Wave HUD

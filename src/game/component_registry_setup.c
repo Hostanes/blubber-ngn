@@ -26,6 +26,7 @@ void SetupComponentRegistry(ComponentRegistry *reg, Engine *engine) {
 
   /* ---- Stats ---- */
   REG_INLINE("Health",      COMP_HEALTH,      Health);
+  REG_INLINE("Shield",      COMP_SHIELD,      Shield);
   REG_INLINE("Active",      COMP_ACTIVE,      Active);
 
   /* ---- Collision ---- */

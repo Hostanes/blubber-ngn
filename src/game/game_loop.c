@@ -289,7 +289,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       ApplyGravity(world, game, dt);
 
       PlayerWeaponSystem(world, game, game->player, dt);
-      PlayerShootSystem(world, game, game->player);
+      PlayerShootSystem(world, game, game->player, dt);
       PlayerWeaponSwitchSystem(world, game, game->player);
 
       CollisionSyncSystem(world);

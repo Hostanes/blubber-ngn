@@ -30,11 +30,11 @@ enum CollisionLayer {
 };
 
 typedef struct {
-  int   currentWave;       // 1-indexed; 0 = not started
-  int   enemiesAlive;
+  int currentWave; // 1-indexed; 0 = not started
+  int enemiesAlive;
   float nextWaveTimer;
-  bool  waveActive;
-  bool  allWavesComplete;
+  bool waveActive;
+  bool allWavesComplete;
 } WaveState;
 
 enum gameState {
@@ -83,6 +83,7 @@ typedef struct GameWorld {
   Model bulletModel;
   Model enemyModel;
   Model gunModel;
+  Model plasmaGunModel;
   Model shadowModel;
 
   Model missileEnemyModel;

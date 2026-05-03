@@ -10,6 +10,7 @@
 #include "enemy_spawner.h"
 #include "event_triggers.h"
 #include "health.h"
+#include "shield.h"
 #include "movement.h"
 #include "muzzle.h"
 #include "renderable.h"
@@ -53,4 +54,5 @@ enum {
   COMP_HOMINGMISSILE,
   COMP_WALL_SEGMENT_COLLIDER,
   COMP_ENEMY_SPAWNER,
+  COMP_SHIELD,
 };

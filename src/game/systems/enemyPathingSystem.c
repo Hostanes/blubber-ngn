@@ -242,7 +242,7 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game,
 void EnemyRangerAISystem(world_t *world, GameWorld *game,
                          archetype_t *enemyArch, float dt) {
   const float minDist        = 25.0f;
-  const float maxDist        = 90.0f;
+  const float maxDist        = 150.0f;
   const float repathInterval = 8.0f;
 
   Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);

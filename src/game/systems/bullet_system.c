@@ -5,20 +5,32 @@
 #include "systems.h"
 #include <stdint.h>
 
-void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
-                int shooterArchId, Muzzle_t *m) {
-  archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
-
-  if (m->bulletType == BULLET_TYPE_MISSILE) {
-
-    Vector3 muzzlePos = m->worldPosition;
-    Vector3 forward = m->forward;
-
-    SpawnHomingMissile(world, game, shooter,
-                       game->player, // target
-                       muzzlePos, forward);
-    return;
+// Shield absorbs first (scaled by shieldMult). If shield survives, health is
+// fully protected. If shield breaks, health takes the full healthMult hit.
+static void ApplyDamage(world_t *world, entity_t target, archetype_t *arch,
+                        float damage, float shieldMult, float healthMult) {
+  if (ArchetypeHas(arch, COMP_SHIELD)) {
+    Shield *sh = ECS_GET(world, target, Shield, COMP_SHIELD);
+    if (sh && sh->current > 0.0f) {
+      sh->current -= damage * shieldMult;
+      if (sh->current > 0.0f)
+        return; // shield held — health fully protected
+      sh->current = 0.0f;
+    }
   }
+  if (ArchetypeHas(arch, COMP_HEALTH)) {
+    Health *hp = ECS_GET(world, target, Health, COMP_HEALTH);
+    if (hp) {
+      hp->current -= damage * healthMult;
+      if (hp->current <= 0.0f)
+        TryKillEntity(world, target);
+    }
+  }
+}
+
+static void SpawnOneBullet(world_t *world, GameWorld *game, entity_t shooter,
+                           int shooterArchId, Muzzle_t *m, Vector3 forward) {
+  archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
 
   for (uint32_t i = 0; i < bulletArch->count; i++) {
     entity_t b = bulletArch->entities[i];
@@ -29,56 +41,63 @@ void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
 
     active->value = true;
 
-    BulletType *bt = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
-    bt->type = m->bulletType;
+    BulletType *bt  = ECS_GET(world, b, BulletType, COMP_BULLETTYPE);
+    bt->type        = m->bulletType;
+    bt->shieldMult  = m->shieldMult;
+    bt->healthMult  = m->healthMult;
+    bt->pierce      = m->pierce;
 
-    float muzzleVelocity = muzzleVelocities[bt->type];
+    float mv = muzzleVelocities[bt->type];
 
-    Vector3 muzzlePos = m->worldPosition;
-    Vector3 forward = m->forward;
+    ECS_GET(world, b, Position, COMP_POSITION)->value = m->worldPosition;
+    ECS_GET(world, b, Velocity, COMP_VELOCITY)->value = Vector3Scale(forward, mv);
 
-    // --- Position ---
-    ECS_GET(world, b, Position, COMP_POSITION)->value = muzzlePos;
-
-    // --- Velocity ---
-    ECS_GET(world, b, Velocity, COMP_VELOCITY)->value =
-        Vector3Scale(forward, muzzleVelocity);
-
-    // --- Orientation ---
     Orientation *bori = ECS_GET(world, b, Orientation, COMP_ORIENTATION);
+    bori->yaw   = atan2f(forward.x, forward.z);
+    bori->pitch = asinf(Clamp(forward.y, -1.0f, 1.0f));
 
-    bori->yaw = atan2f(forward.x, forward.z);
-    bori->pitch = asinf(forward.y);
-
-    // --- Model rotation ---
     ModelCollection_t *bmc = ECS_GET(world, b, ModelCollection_t, COMP_MODEL);
-
     bmc->models[0].rotation = (Vector3){-bori->pitch, 0.0f, 0.0f};
 
-    // --- Owner ---
     BulletOwner *owner = ECS_GET(world, b, BulletOwner, COMP_BULLET_OWNER);
-
-    owner->eId = shooter.id;
+    owner->eId   = shooter.id;
     owner->archId = shooterArchId;
 
-    // --- Lifetime ---
-    Timer *life = ECS_GET(world, b, Timer, COMP_TIMER);
-    life->value = 5.0f;
+    Timer *life   = ECS_GET(world, b, Timer, COMP_TIMER);
+    life->value   = 5.0f;
 
-    // --- Collision mask ---
-    CollisionInstance *ci =
-        ECS_GET(world, b, CollisionInstance, COMP_COLLISION_INSTANCE);
+    CollisionInstance *ci = ECS_GET(world, b, CollisionInstance, COMP_COLLISION_INSTANCE);
+    ci->layerMask   = 1 << LAYER_BULLET;
+    ci->collideMask = (shooterArchId == game->playerArchId)
+                          ? ((1 << LAYER_ENEMY) | (1 << LAYER_WORLD))
+                          : ((1 << LAYER_PLAYER) | (1 << LAYER_WORLD));
+    break;
+  }
+}
 
-    ci->layerMask = 1 << LAYER_BULLET;
+void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
+                int shooterArchId, Muzzle_t *m) {
+  if (m->bulletType == BULLET_TYPE_MISSILE) {
+    SpawnHomingMissile(world, game, shooter, game->player,
+                       m->worldPosition, m->forward);
+    return;
+  }
 
-    if (shooterArchId == game->playerArchId) {
-      ci->collideMask = (1 << LAYER_ENEMY) | (1 << LAYER_WORLD);
-    } else {
-      ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_WORLD);
+  int pellets = m->spreadCount > 0 ? m->spreadCount : 1;
+
+  float baseYaw   = atan2f(m->forward.x, m->forward.z);
+  float basePitch = asinf(Clamp(m->forward.y, -1.0f, 1.0f));
+
+  for (int s = 0; s < pellets; s++) {
+    Vector3 fwd = m->forward;
+
+    if (m->spreadAngle > 0.0f) {
+      float yaw   = baseYaw   + ((float)GetRandomValue(-1000, 1000) / 1000.0f) * m->spreadAngle;
+      float pitch = basePitch + ((float)GetRandomValue(-1000, 1000) / 1000.0f) * m->spreadAngle;
+      fwd = (Vector3){cosf(pitch) * sinf(yaw), sinf(pitch), cosf(pitch) * cosf(yaw)};
     }
 
-    // printf("spawned bullet\n");
-    break;
+    SpawnOneBullet(world, game, shooter, shooterArchId, m, fwd);
   }
 }
 
@@ -204,13 +223,8 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
       active->value = false;                                                   \
       pos->value = prevPos;                                                    \
                                                                                \
-      if (ArchetypeHas(archPtr, COMP_HEALTH)) {                                \
-        Health *hp = ECS_GET(world, target, Health, COMP_HEALTH);              \
-        hp->current -= bulletDamages[bulletType->type];                        \
-        if (hp->current <= 0.0f) {                                             \
-          TryKillEntity(world, target);                                        \
-        }                                                                      \
-      }                                                                        \
+      ApplyDamage(world, target, archPtr, bulletDamages[bulletType->type],      \
+                  bulletType->shieldMult, bulletType->healthMult);             \
                                                                                \
       hit = true;                                                              \
       break;                                                                   \
@@ -338,12 +352,7 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
       TryKillEntity(world, e);                                                 \
       pos->value = prevPos;                                                    \
                                                                                \
-      if (ArchetypeHas(archPtr, COMP_HEALTH)) {                                \
-        Health *hp = ECS_GET(world, target, Health, COMP_HEALTH);              \
-        hp->current -= 100.0f;                                                 \
-        if (hp->current <= 0.0f)                                               \
-          TryKillEntity(world, target);                                        \
-      }                                                                        \
+      ApplyDamage(world, target, archPtr, 100.0f, 1.0f, 1.0f);                 \
                                                                                \
       hit = true;                                                              \
       break;                                                                   \

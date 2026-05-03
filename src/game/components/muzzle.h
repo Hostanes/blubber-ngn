@@ -4,14 +4,21 @@
 #include "transform.h"
 
 typedef struct {
-  Position positionOffset; // mount position relative to entity
+  Position    positionOffset;
+  Orientation weaponOffset;
+  Orientation aimRot;
+  Orientation worldRot;
 
-  Orientation weaponOffset; // static mount bias (constant)
-  Orientation aimRot;       // dynamic aim (changes every frame)
+  int   bulletType;
+  float shieldMult;   // forwarded to BulletType on spawn
+  float healthMult;
+  bool  pierce;
 
-  Orientation worldRot; // final computed world rotation
+  int   spreadCount;  // pellets per shot (1 = single)
+  float spreadAngle;  // half-cone in radians
 
-  int bulletType;
+  float fireRate;     // shots/sec; 0 = click-to-fire (not held)
+  float fireTimer;    // countdown between shots (runtime)
 
   // runtime computed
   Vector3 worldPosition;

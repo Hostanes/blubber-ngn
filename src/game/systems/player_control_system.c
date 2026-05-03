@@ -24,19 +24,34 @@ static Vector3 GetForwardFromOrientation(const Orientation *ori) {
   };
 }
 
-void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player) {
-  if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-    return;
-
+void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player,
+                       float dt) {
   MuzzleCollection_t *muzzles =
       ECS_GET(world, player, MuzzleCollection_t, COMP_MUZZLES);
 
   if (!muzzles || muzzles->count == 0)
     return;
 
-  Muzzle_t *m = &muzzles->Muzzles[0];
+  int wi = (int)game->playerActiveWeapon;
+  if (wi < 0 || wi >= muzzles->count)
+    return;
+
+  Muzzle_t *m = &muzzles->Muzzles[wi];
+
+  if (m->fireTimer > 0.0f) {
+    m->fireTimer -= dt;
+    return;
+  }
+
+  bool trigger = (m->fireRate > 0.0f) ? IsMouseButtonDown(MOUSE_BUTTON_LEFT)
+                                      : IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+  if (!trigger)
+    return;
 
   FireMuzzle(world, game, player, game->playerArchId, m);
+
+  if (m->fireRate > 0.0f)
+    m->fireTimer = 1.0f / m->fireRate;
 }
 
 void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
