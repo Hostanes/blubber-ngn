@@ -24,4 +24,5 @@ typedef struct {
   entity_t target;
   float turnSpeed; // radians/sec
   float maxSpeed;
+  bool armed; // true once within arming distance — flies straight from then on
 } HomingMissile;

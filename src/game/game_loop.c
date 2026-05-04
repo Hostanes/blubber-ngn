@@ -303,6 +303,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                          WorldGetArchetype(world, game->enemyGruntArchId), dt);
       EnemyRangerAISystem(world, game,
                           WorldGetArchetype(world, game->enemyRangerArchId), dt);
+      EnemyMeleeAISystem(world, game,
+                         WorldGetArchetype(world, game->enemyMeleeArchId), dt);
 
       EnemyAimSystem(world, game,
                      WorldGetArchetype(world, game->enemyGruntArchId), dt);
@@ -318,9 +320,13 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                      dt);
       MovementSystem(world, WorldGetArchetype(world, game->enemyRangerArchId),
                      dt);
+      MovementSystem(world, WorldGetArchetype(world, game->enemyMeleeArchId),
+                     dt);
 
       BulletSystem(world, game, WorldGetArchetype(world, game->bulletArchId),
                    dt);
+
+      ParticleSystem(world, WorldGetArchetype(world, game->particleArchId), dt);
 
       MovementSystem(world, WorldGetArchetype(world, game->missileArchId), dt);
       HomingMissileSystem(world, game,

@@ -6,6 +6,7 @@
 #include "../components/movement.h"
 #include "../components/transform.h"
 #include "../ecs_get.h"
+#include "../nav_grid/nav.h"
 #include "raylib.h"
 #include "raymath.h"
 #include <stdint.h>
@@ -45,6 +46,9 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                         float dt);
 bool EnemyFollowPath(world_t *world, GameWorld *game, entity_t e,
                      float maxSpeed, float rotateSpeed, float dt);
+bool EnemyPathQueue_Submit(NavGrid *grid, Vector3 start, Vector3 goal,
+                           NavPath *outPath, bool *pendingFlag,
+                           CombatState_t *combat);
 #define NAV_PATHS_PER_FRAME 2
 void EnemyPathQueue_Flush(int maxPerFrame);
 void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
@@ -63,5 +67,12 @@ void EnemyRangerAimSystem(world_t *world, GameWorld *game,
 // void MissileBot_SetTargets(world_t *world, entity_t e, GameWorld *game);
 
 void CollisionSyncSystem(world_t *world);
+
+void SpawnParticle(world_t *world, GameWorld *game, Vector3 pos, Vector3 vel,
+                   float radius, float lifetime, Color color);
+void ParticleSystem(world_t *world, archetype_t *arch, float dt);
+
+void EnemyMeleeAISystem(world_t *world, GameWorld *game,
+                         archetype_t *arch, float dt);
 
 void DrawSpawnerWireframes(world_t *world, uint32_t spawnerArchId);

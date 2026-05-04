@@ -13,6 +13,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position);
 
 entity_t SpawnEnemyGrunt(world_t *world, GameWorld *gw, Vector3 position);
 entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position);
+entity_t SpawnEnemyMelee(world_t *world, GameWorld *game, Vector3 position);
 
 entity_t SpawnEnemyMissile(world_t *world, GameWorld *gw, Vector3 position);
 

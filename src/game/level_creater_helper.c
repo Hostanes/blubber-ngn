@@ -688,10 +688,11 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
 
   /* --- Homing Data --- */
   HomingMissile *hm = ECS_GET(world, m, HomingMissile, COMP_HOMINGMISSILE);
-  hm->owner = shooter;
-  hm->target = target;
+  hm->owner     = shooter;
+  hm->target    = target;
   hm->turnSpeed = 4.0f;
-  hm->maxSpeed = 50.0f;
+  hm->maxSpeed  = 50.0f;
+  hm->armed     = false;
 
   /* --- Lifetime --- */
   Timer *life = ECS_GET(world, m, Timer, COMP_TIMER);
@@ -754,6 +755,87 @@ entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,
   ci->collideMask = (1 << LAYER_PLAYER) | (1 << LAYER_BULLET) | (1 << LAYER_ENEMY);
 
   Collision_UpdateWallSegment(ci, wall, position);
+
+  return e;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Melee enemy                                                        */
+/* ------------------------------------------------------------------ */
+
+static void Melee_OnDeath(world_t *world, entity_t entity) {
+  NavPath *nav = ECS_GET(world, entity, NavPath, COMP_NAVPATH);
+  if (nav && nav->points) NavPath_Destroy(nav);
+
+  ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
+  if (mc) ModelCollectionFree(mc);
+}
+
+entity_t SpawnEnemyMelee(world_t *world, GameWorld *game, Vector3 position) {
+  archetype_t *arch = WorldGetArchetype(world, game->enemyMeleeArchId);
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                              position.x, position.z);
+
+  ECS_GET(world, e, Active,  COMP_ACTIVE)->value    = true;
+  ECS_GET(world, e, Position, COMP_POSITION)->value = position;
+  ECS_GET(world, e, Health,  COMP_HEALTH)->current  = 60.0f;
+  ECS_GET(world, e, Health,  COMP_HEALTH)->max      = 60.0f;
+  ECS_GET(world, e, Shield,  COMP_SHIELD)->current  = 0.0f;
+  ECS_GET(world, e, Shield,  COMP_SHIELD)->max      = 0.0f;
+
+  /* --- Model: torso + legs, no gun --- */
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+  ModelCollectionInit(mc, 2);
+  ModelCollectionAdd(mc, (ModelInstance_t){
+      .model        = game->gruntLegs,
+      .scale        = (Vector3){1, 1, 1},
+      .rotationMode = MODEL_ROT_YAW_ONLY,
+      .parentIndex  = -1,
+      .isActive     = true,
+  });
+  ModelCollectionAdd(mc, (ModelInstance_t){
+      .model        = game->gruntTorso,
+      .scale        = (Vector3){1, 1, 1},
+      .rotationMode = MODEL_ROT_YAW_ONLY,
+      .parentIndex  = -1,
+      .isActive     = true,
+  });
+
+  /* --- Collider --- */
+  CapsuleCollider *cap = ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+  cap->radius = 1.0f;
+  cap->localA = (Vector3){0, 0.0f, 0};
+  cap->localB = (Vector3){0, 2.5f, 0};
+  Capsule_UpdateWorld(cap, position);
+
+  CollisionInstance *ci = ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+  ci->owner       = e;
+  ci->type        = COLLIDER_CAPSULE;
+  ci->layerMask   = 1 << LAYER_ENEMY;
+  ci->collideMask = 1 << LAYER_BULLET;
+
+  /* --- Melee state --- */
+  MeleeEnemy *me   = ECS_GET(world, e, MeleeEnemy, COMP_MELEE_ENEMY);
+  me->state        = MELEE_CHASING;
+  me->windupTimer  = 0.0f;
+  me->lungeTimer   = 0.0f;
+  me->recoverTimer = 0.0f;
+  me->lungeTarget  = (Vector3){0, 0, 0};
+  me->hasHit       = false;
+  me->pathPending  = false;
+  me->repathTimer  = 0.0f;
+
+  /* --- Nav --- */
+  NavPath *nav = ECS_GET(world, e, NavPath, COMP_NAVPATH);
+  NavPath_Init(nav, 32);
+
+  Timer *moveTimer = ECS_GET(world, e, Timer, COMP_MOVE_TIMER);
+  moveTimer->value = 0.0f;
+
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  od->fn = Melee_OnDeath;
 
   return e;
 }

@@ -28,6 +28,8 @@ void SetupComponentRegistry(ComponentRegistry *reg, Engine *engine) {
   REG_INLINE("Health",      COMP_HEALTH,      Health);
   REG_INLINE("Shield",      COMP_SHIELD,      Shield);
   REG_INLINE("Active",      COMP_ACTIVE,      Active);
+  REG_INLINE("Particle",    COMP_PARTICLE,    Particle);
+  REG_INLINE("MeleeEnemy",  COMP_MELEE_ENEMY, MeleeEnemy);
 
   /* ---- Collision ---- */
   REG_INLINE("CollisionInstance",    COMP_COLLISION_INSTANCE,    CollisionInstance);
@@ -62,6 +64,7 @@ void SetupComponentRegistry(ComponentRegistry *reg, Engine *engine) {
   REG_TAG("TypePlayer", COMP_TYPE_PLAYER);
   REG_TAG("TypeGrunt",  COMP_TYPE_GRUNT);
   REG_TAG("TypeRanger", COMP_TYPE_RANGER);
+  REG_TAG("TypeMelee",  COMP_TYPE_MELEE);
 
   /* ---- Handle components (data lives in a shared pool) ---- */
   REG_HANDLE("Model",        COMP_MODEL,            ModelCollection_t, &engine->modelPool);

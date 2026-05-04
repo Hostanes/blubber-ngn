@@ -5,15 +5,15 @@
 #define NEXT_WAVE_DELAY  5.0f
 #define FIRST_WAVE_DELAY 3.0f
 
-typedef struct { int grunts; int rangers; } WaveDef;
+typedef struct { int grunts; int rangers; int melee; } WaveDef;
 
 static const WaveDef kWaves[] = {
-  {3, 0},
-  {5, 1},
-  {6, 2},
-  {8, 3},
-  {10, 4},
-  {12, 5},
+  { 2, 0, 2},
+  { 4, 1, 3},
+  { 5, 2, 4},
+  { 7, 3, 4},
+  { 8, 4, 5},
+  {10, 5, 6},
 };
 #define WAVE_COUNT ((int)(sizeof(kWaves) / sizeof(kWaves[0])))
 
@@ -27,15 +27,18 @@ void WaveSystem_Init(GameWorld *gw) {
 
 static int CountLiveEnemies(world_t *world, GameWorld *gw) {
   int count = 0;
-  archetype_t *ga = WorldGetArchetype(world, gw->enemyGruntArchId);
-  archetype_t *ra = WorldGetArchetype(world, gw->enemyRangerArchId);
-  for (uint32_t i = 0; i < ga->count; i++) {
-    Active *a = ECS_GET(world, ga->entities[i], Active, COMP_ACTIVE);
-    if (a && a->value) count++;
-  }
-  for (uint32_t i = 0; i < ra->count; i++) {
-    Active *a = ECS_GET(world, ra->entities[i], Active, COMP_ACTIVE);
-    if (a && a->value) count++;
+  archetype_t *archs[] = {
+      WorldGetArchetype(world, gw->enemyGruntArchId),
+      WorldGetArchetype(world, gw->enemyRangerArchId),
+      WorldGetArchetype(world, gw->enemyMeleeArchId),
+  };
+  for (int t = 0; t < 3; t++) {
+    archetype_t *a = archs[t];
+    if (!a) continue;
+    for (uint32_t i = 0; i < a->count; i++) {
+      Active *act = ECS_GET(world, a->entities[i], Active, COMP_ACTIVE);
+      if (act && act->value) count++;
+    }
   }
   return count;
 }
@@ -73,8 +76,9 @@ static void SpawnFromSpawners(world_t *world, GameWorld *gw, int enemyType, int 
     // Small jitter so stacked spawners don't overlap
     p.x += (float)GetRandomValue(-300, 300) * 0.01f;
     p.z += (float)GetRandomValue(-300, 300) * 0.01f;
-    if (enemyType == 0) SpawnEnemyGrunt(world, gw, p);
-    else                SpawnEnemyRanger(world, gw, p);
+    if (enemyType == 0)      SpawnEnemyGrunt(world, gw, p);
+    else if (enemyType == 1) SpawnEnemyRanger(world, gw, p);
+    else                     SpawnEnemyMelee(world, gw, p);
   }
 }
 
@@ -89,6 +93,7 @@ static void StartWave(world_t *world, GameWorld *gw) {
   ws->waveActive = true;
   SpawnFromSpawners(world, gw, 0, kWaves[idx].grunts);
   SpawnFromSpawners(world, gw, 1, kWaves[idx].rangers);
+  SpawnFromSpawners(world, gw, 2, kWaves[idx].melee);
 }
 
 void WaveSystem_Update(world_t *world, GameWorld *gw, float dt) {

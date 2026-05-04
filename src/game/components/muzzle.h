@@ -20,6 +20,8 @@ typedef struct {
   float fireRate;     // shots/sec; 0 = click-to-fire (not held)
   float fireTimer;    // countdown between shots (runtime)
 
+  float recoil;       // current recoil displacement (0 = rest, decays back each frame)
+
   // runtime computed
   Vector3 worldPosition;
   Vector3 forward;

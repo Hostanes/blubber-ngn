@@ -142,11 +142,6 @@ void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch) {
     // Settle: wait for body to rotate before firing
     if (combat->settleTimer > 0.0f) continue;
 
-    Velocity *vel = ECS_GET(world, e, Velocity, COMP_VELOCITY);
-    if (!vel) continue;
-    float speedSq = vel->value.x * vel->value.x + vel->value.z * vel->value.z;
-    if (speedSq > 0.1f) continue;
-
     Timer *fireTimer = ECS_GET(world, e, Timer, COMP_GRUNT_FIRE_TIMER);
     if (!fireTimer || fireTimer->value > 0.0f) continue;
 

@@ -8,7 +8,7 @@ static const float bodyAimSpeeds[]   = { 5.0f,  4.0f};
 static const float muzzleAimSpeeds[] = { 8.0f,  6.0f};
 
 // Seconds after arriving at destination before firing is allowed
-#define ENEMY_SETTLE_TIME        1.2f
+#define ENEMY_SETTLE_TIME        0.5f
 
 // Movement smoothing
 #define ENEMY_DECEL_DIST         4.0f    // world units — ramp-down zone before final waypoint

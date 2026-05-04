@@ -5,7 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_BULLETS 2048
+#define MAX_BULLETS   2048
+#define MAX_PARTICLES  128
 
 // --- ARCHETYPE REGISTRATION ---
 // Call once after EngineInit. Archetypes persist through WorldClear.
@@ -19,6 +20,7 @@ void RegisterAllArchetypes(Engine *engine, GameWorld *gw, world_t *world) {
   gw->levelModelArchId  = ArchetypeLoader_FromFile(world, reg, "assets/entities/level_model.json");
   gw->tutorialBoxArchId = ArchetypeLoader_FromFile(world, reg, "assets/entities/trigger.json");
   gw->missileArchId     = ArchetypeLoader_FromFile(world, reg, "assets/entities/homing_missile.json");
+  gw->enemyMeleeArchId  = ArchetypeLoader_FromFile(world, reg, "assets/entities/melee.json");
 
   // Wall segment archetype
   {
@@ -31,6 +33,18 @@ void RegisterAllArchetypes(Engine *engine, GameWorld *gw, world_t *world) {
     ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE,   sizeof(CollisionInstance));
     ArchetypeAddInline(arch, COMP_WALL_SEGMENT_COLLIDER, sizeof(WallSegmentCollider));
     ArchetypeAddInline(arch, COMP_ACTIVE,               sizeof(Active));
+  }
+
+  // Particle archetype (pooled, rendered as primitive spheres)
+  {
+    uint32_t bits[] = {COMP_ACTIVE, COMP_POSITION, COMP_VELOCITY, COMP_PARTICLE};
+    bitset_t mask = MakeMask(bits, 4);
+    gw->particleArchId = WorldCreateArchetype(world, &mask);
+    archetype_t *arch  = WorldGetArchetype(world, gw->particleArchId);
+    ArchetypeAddInline(arch, COMP_ACTIVE,   sizeof(Active));
+    ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
+    ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
+    ArchetypeAddInline(arch, COMP_PARTICLE, sizeof(Particle));
   }
 
   // Spawner archetype (position + type + active; no model, no collision)
@@ -124,6 +138,16 @@ static void SpawnBulletPool(world_t *world, GameWorld *gw) {
   }
 }
 
+// --- PARTICLE POOL SPAWN ---
+static void SpawnParticlePool(world_t *world, GameWorld *gw) {
+  archetype_t *arch = WorldGetArchetype(world, gw->particleArchId);
+  bitset_t mask = arch->mask;
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    entity_t e = WorldCreateEntity(world, &mask);
+    ECS_GET(world, e, Active, COMP_ACTIVE)->value = false;
+  }
+}
+
 // --- JSON LEVEL LOADING ---
 
 #define MAX_LEVEL_BOXES    1024
@@ -214,6 +238,7 @@ static void SpawnLevelBase(world_t *world, GameWorld *gw) {
   SpawnLevelModel(world, gw, gw->skyBox,         (Vector3){0,0,0}, (Vector3){0,0,0}, (Vector3){1,1,1});
   SpawnLevelModel(world, gw, gw->ArenaModel175,  (Vector3){0,0,0}, (Vector3){0,0,0}, (Vector3){1,1,1});
   SpawnBulletPool(world, gw);
+  SpawnParticlePool(world, gw);
 }
 
 void SpawnLevelFromFile(world_t *world, GameWorld *gw, const char *path) {

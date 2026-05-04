@@ -24,9 +24,9 @@ static int         s_pathHead  = 0;
 static int         s_pathTail  = 0;
 static int         s_pathCount = 0;
 
-static bool PathQueue_Submit(NavGrid *grid, Vector3 start, Vector3 goal,
-                             NavPath *outPath, bool *pendingFlag,
-                             CombatState_t *combat) {
+bool EnemyPathQueue_Submit(NavGrid *grid, Vector3 start, Vector3 goal,
+                           NavPath *outPath, bool *pendingFlag,
+                           CombatState_t *combat) {
   if (s_pathCount >= PATH_QUEUE_CAP) return false;
 
   s_pathQueue[s_pathTail] = (PathRequest){
@@ -52,7 +52,7 @@ void EnemyPathQueue_Flush(int maxPerFrame) {
 
     bool ok = NavGrid_FindPath(req->grid, req->start, req->goal, req->outPath);
     *req->pendingFlag = false;
-    if (ok)
+    if (ok && req->combat)
       req->combat->state = ENEMY_STATE_MOVING;
     // on failure: state stays COMBAT; repath timer will allow retry
     processed++;
@@ -163,8 +163,8 @@ bool EnemyFollowPath(world_t *world, GameWorld *game, entity_t e,
 
 void EnemyGruntAISystem(world_t *world, GameWorld *game,
                         archetype_t *enemyArch, float dt) {
-  const float minDist        = 10.0f;
-  const float maxDist        = 50.0f;
+  const float minDist        = 5.0f;
+  const float maxDist        = 100.0f;
   const float repathInterval = 5.0f;
 
   Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
@@ -219,8 +219,8 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game,
           if (game->navGrid.cells[NavGrid_Index(&game->navGrid, cx, cy)].type
               == NAV_CELL_WALL) continue;
 
-          if (PathQueue_Submit(&game->navGrid, pos->value, cand, path,
-                               &combat->pathPending, combat)) {
+          if (EnemyPathQueue_Submit(&game->navGrid, pos->value, cand, path,
+                                    &combat->pathPending, combat)) {
             repathTimer->value = repathInterval;
             break;
           }
@@ -241,8 +241,8 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game,
 
 void EnemyRangerAISystem(world_t *world, GameWorld *game,
                          archetype_t *enemyArch, float dt) {
-  const float minDist        = 25.0f;
-  const float maxDist        = 150.0f;
+  const float minDist        = 10.0f;
+  const float maxDist        = 250.0f;
   const float repathInterval = 8.0f;
 
   Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
@@ -290,8 +290,8 @@ void EnemyRangerAISystem(world_t *world, GameWorld *game,
                                               Vector3Scale(dir, desiredDist));
         ringTarget.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
                                                       ringTarget.x, ringTarget.z);
-        if (PathQueue_Submit(&game->navGrid, pos->value, ringTarget, path,
-                             &combat->pathPending, combat)) {
+        if (EnemyPathQueue_Submit(&game->navGrid, pos->value, ringTarget, path,
+                                  &combat->pathPending, combat)) {
           repathTimer->value = repathInterval;
         }
       }

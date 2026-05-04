@@ -11,6 +11,8 @@
 #include "event_triggers.h"
 #include "health.h"
 #include "shield.h"
+#include "particle.h"
+#include "melee_state.h"
 #include "movement.h"
 #include "muzzle.h"
 #include "renderable.h"
@@ -55,4 +57,7 @@ enum {
   COMP_WALL_SEGMENT_COLLIDER,
   COMP_ENEMY_SPAWNER,
   COMP_SHIELD,
+  COMP_PARTICLE,
+  COMP_MELEE_ENEMY,
+  COMP_TYPE_MELEE,
 };

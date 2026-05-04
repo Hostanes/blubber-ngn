@@ -50,6 +50,9 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player,
 
   FireMuzzle(world, game, player, game->playerArchId, m);
 
+  m->recoil += 0.15f;
+  if (m->recoil > 0.25f) m->recoil = 0.25f;
+
   if (m->fireRate > 0.0f)
     m->fireTimer = 1.0f / m->fireRate;
 }
@@ -220,20 +223,32 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
   Vector3 finalOffset = Vector3Add((Vector3){0, -0.25f, 0},
                                    Vector3Add(playerWeaponSway, idleSway));
 
-  // ---- Update gun models (skip index 0 = body, skip last = shadow) ----
-  uint32_t gunEnd = mc->count > 3 ? mc->count - 1 : mc->count;
-  for (uint32_t i = 1; i < gunEnd; ++i) {
-    ModelInstance_t *gun = &mc->models[i];
-    gun->rotation.x = -ori->pitch;
-    gun->offset = finalOffset;
-  }
-
-  // ---- Update all muzzles ----
   MuzzleCollection_t *muzzles =
       ECS_GET(world, player, MuzzleCollection_t, COMP_MUZZLES);
 
   if (!muzzles)
     return;
+
+  // ---- Update gun models (skip index 0 = body, skip last = shadow) ----
+  uint32_t gunEnd = mc->count > 3 ? mc->count - 1 : mc->count;
+  for (uint32_t i = 1; i < gunEnd; ++i) {
+    ModelInstance_t *gun = &mc->models[i];
+    gun->rotation.x = -ori->pitch;
+
+    // Recoil: muzzle index = model index - 1
+    float recoilZ = 0.0f;
+    uint32_t mi = i - 1;
+    if (mi < (uint32_t)muzzles->count) {
+      Muzzle_t *mz = &muzzles->Muzzles[mi];
+      mz->recoil *= 1.0f - 14.0f * dt;
+      if (mz->recoil < 0.001f) mz->recoil = 0.0f;
+      recoilZ = -mz->recoil;
+    }
+
+    gun->offset = (Vector3){finalOffset.x, finalOffset.y, finalOffset.z + recoilZ};
+  }
+
+  // ---- Update all muzzles ----
 
   Vector3 forward3D = {cosf(ori->pitch) * sinf(ori->yaw), sinf(ori->pitch),
                        cosf(ori->pitch) * cosf(ori->yaw)};

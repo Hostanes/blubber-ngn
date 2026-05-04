@@ -72,7 +72,8 @@ typedef struct GameWorld {
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
-      tutorialBoxArchId, missileArchId, wallSegArchId, spawnerArchId;
+      tutorialBoxArchId, missileArchId, wallSegArchId, spawnerArchId,
+      particleArchId, enemyMeleeArchId;
 
   WaveState waveState;
 

@@ -427,9 +427,30 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   DrawWallSegmentWireframes(world, game->wallSegArchId);
   DrawSpawnerWireframes(world, game->spawnerArchId);
 
-  // NavGrid *grid = &game->navGrid;
+  // Draw particles (explosion fire + smoke) with alpha blending
+  {
+    archetype_t *pArch = WorldGetArchetype(world, game->particleArchId);
+    if (pArch) {
+      BeginBlendMode(BLEND_ALPHA);
+      for (uint32_t i = 0; i < pArch->count; i++) {
+        entity_t e = pArch->entities[i];
+        Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+        if (!active || !active->value) continue;
 
-  // DrawNavGridBatched(grid);
+        Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+        Particle *p   = ECS_GET(world, e, Particle, COMP_PARTICLE);
+        if (!pos || !p) continue;
+
+        float ratio = p->lifetime / p->maxLifetime;
+        float r     = p->radius * ratio;
+        Color c     = p->color;
+        c.a = (uint8_t)(p->color.a * ratio);
+
+        DrawSphere(pos->value, r, c);
+      }
+      EndBlendMode();
+    }
+  }
 
   EndMode3D();
   DrawHealthBars(world, camera);

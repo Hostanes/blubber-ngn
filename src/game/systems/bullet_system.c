@@ -151,11 +151,9 @@ static bool SweptSphereVsAABB(Vector3 start, Vector3 end, float radius,
 void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
                   float dt) {
   archetype_t *playerArch = WorldGetArchetype(world, game->playerArchId);
-
-  archetype_t *enemyArch = WorldGetArchetype(world, game->enemyGruntArchId);
-
+  archetype_t *enemyArch  = WorldGetArchetype(world, game->enemyGruntArchId);
   archetype_t *rangerArch = WorldGetArchetype(world, game->enemyRangerArchId);
-
+  archetype_t *meleeArch  = WorldGetArchetype(world, game->enemyMeleeArchId);
   archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
   archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
 
@@ -236,14 +234,46 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     /* --- Collision checks --- */
     CHECK_ARCH(playerArch);
     CHECK_ARCH(enemyArch);
-    CHECK_ARCH(obstacleArch);
     CHECK_ARCH(rangerArch);
+    CHECK_ARCH(meleeArch);
+    CHECK_ARCH(obstacleArch);
     CHECK_ARCH(wallSegArch);
 
 #undef CHECK_ARCH
 
     if (!hit)
       pos->value = nextPos;
+  }
+}
+
+static void SpawnExplosion(world_t *world, GameWorld *game, Vector3 center) {
+  const float blastRadius = 8.0f;
+  const float maxDamage   = 80.0f;
+
+  SpawnParticle(world, game, center, (Vector3){0.0f, 3.0f, 0.0f},
+                blastRadius * 0.7f, 0.45f, (Color){255, 120, 30, 200});
+  SpawnParticle(world, game, center, (Vector3){0.0f, 1.5f, 0.0f},
+                blastRadius * 0.5f, 1.1f,  (Color){80, 70, 70, 150});
+
+  archetype_t *archs[] = {
+      WorldGetArchetype(world, game->playerArchId),
+      WorldGetArchetype(world, game->enemyGruntArchId),
+      WorldGetArchetype(world, game->enemyRangerArchId),
+  };
+  for (int t = 0; t < 3; t++) {
+    archetype_t *arch = archs[t];
+    if (!arch) continue;
+    for (uint32_t i = 0; i < arch->count; i++) {
+      entity_t ent    = arch->entities[i];
+      Active  *active = ECS_GET(world, ent, Active, COMP_ACTIVE);
+      if (!active || !active->value) continue;
+      Position *epos = ECS_GET(world, ent, Position, COMP_POSITION);
+      if (!epos) continue;
+      float dist = Vector3Distance(center, epos->value);
+      if (dist >= blastRadius) continue;
+      float falloff = 1.0f - (dist / blastRadius);
+      ApplyDamage(world, ent, arch, maxDamage * falloff, 1.0f, 1.0f);
+    }
   }
 }
 
@@ -272,25 +302,31 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     if (!targetPos)
       continue;
 
-    Vector3 toTarget = Vector3Subtract(targetPos->value, pos->value);
+    Vector3 toTarget   = Vector3Subtract(targetPos->value, pos->value);
+    float   distToTgt  = Vector3Length(toTarget);
 
-    Vector3 desiredDir = Vector3Normalize(toTarget);
-    Vector3 currentDir = Vector3Normalize(vel->value);
+    // Arm once within x units — missile flies straight from this point on
+    if (!hm->armed && distToTgt < 20.0f)
+      hm->armed = true;
 
-    float maxTurn = hm->turnSpeed * dt;
+    if (!hm->armed) {
+      Vector3 desiredDir = Vector3Normalize(toTarget);
+      Vector3 currentDir = Vector3Normalize(vel->value);
 
-    Vector3 newDir = Vector3Lerp(currentDir, desiredDir, maxTurn);
-    newDir = Vector3Normalize(newDir);
+      float maxTurn = hm->turnSpeed * dt;
 
-    float speed = Vector3Length(vel->value);
-    if (speed > hm->maxSpeed)
-      speed = hm->maxSpeed;
+      Vector3 newDir = Vector3Lerp(currentDir, desiredDir, maxTurn);
+      newDir = Vector3Normalize(newDir);
 
-    vel->value = Vector3Scale(newDir, speed);
+      float speed = Vector3Length(vel->value);
+      if (speed > hm->maxSpeed)
+        speed = hm->maxSpeed;
 
-    ori->yaw = atan2f(newDir.x, newDir.z);
+      vel->value = Vector3Scale(newDir, speed);
 
-    ori->pitch = asinf(newDir.y);
+      ori->yaw   = atan2f(newDir.x, newDir.z);
+      ori->pitch = asinf(newDir.y);
+    }
 
     /* --- Model orientation toward movement direction --- */
     ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
@@ -299,9 +335,10 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
       mc->models[0].rotation = (Vector3){-ori->pitch, 0.0f, 0.0f};
     }
 
-    archetype_t *playerArch  = WorldGetArchetype(world, game->playerArchId);
-    archetype_t *enemyArch   = WorldGetArchetype(world, game->enemyGruntArchId);
-    archetype_t *rangerArch  = WorldGetArchetype(world, game->enemyRangerArchId);
+    archetype_t *playerArch   = WorldGetArchetype(world, game->playerArchId);
+    archetype_t *enemyArch    = WorldGetArchetype(world, game->enemyGruntArchId);
+    archetype_t *rangerArch   = WorldGetArchetype(world, game->enemyRangerArchId);
+    archetype_t *meleeArch    = WorldGetArchetype(world, game->enemyMeleeArchId);
     archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
     archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
 
@@ -319,6 +356,7 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
 
     /* --- Terrain collision --- */
     if (prevPos.y <= terrainY) {
+      SpawnExplosion(world, game, prevPos);
       TryKillEntity(world, e);
       continue;
     }
@@ -349,11 +387,9 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
       continue;                                                                \
                                                                                \
     if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {        \
+      SpawnExplosion(world, game, prevPos);                                    \
       TryKillEntity(world, e);                                                 \
       pos->value = prevPos;                                                    \
-                                                                               \
-      ApplyDamage(world, target, archPtr, 100.0f, 1.0f, 1.0f);                 \
-                                                                               \
       hit = true;                                                              \
       break;                                                                   \
     }                                                                          \
@@ -363,8 +399,9 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
 
     CHECK_ARCH(playerArch);
     CHECK_ARCH(enemyArch);
-    CHECK_ARCH(obstacleArch);
     CHECK_ARCH(rangerArch);
+    CHECK_ARCH(meleeArch);
+    CHECK_ARCH(obstacleArch);
     CHECK_ARCH(wallSegArch);
 
 #undef CHECK_ARCH
