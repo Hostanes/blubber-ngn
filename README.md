@@ -1,4 +1,4 @@
-
+<img width="556" height="320" alt="Pasted image 20260224033844" src="https://github.com/user-attachments/assets/88a3c71b-ad32-4a09-9d30-e8a4d694244d" />
 ```
   A mech fps shooter written in C and using raylib for rendering.
   Built to showcase data oriented design in a standard gaming context
@@ -110,7 +110,8 @@ Additionally using `perf` we measure:
 
 **Results**
 
-![[Pasted image 20260224033844.png]]
+<img width="556" height="320" alt="BenchA-1" src="https://github.com/user-attachments/assets/59e39a2f-a573-4e40-8e79-aa7e5aab249a" />
+
 - SIMD provides strong speedups at lower counts (around 2.8 to 3x at 100k to 300k).
 - Peak SIMD performance occurs around 300k to 400k entities.
 - After 400k, SIMD performance drops sharply.    
@@ -118,14 +119,16 @@ Additionally using `perf` we measure:
 
 ---
 
-![[Pasted image 20260224033847.png]]
+<img width="606" height="341" alt="BenchA-2" src="https://github.com/user-attachments/assets/060ec44d-b409-4d89-bcbe-3e429150488e" />
+
 - SIMD consistently outperforms scalar.
 - Speedup is strongest between 300k–400k (around 4x).
 - After 400k, SIMD performance degrades significantly but remains faster than scalar.
 
 ---
 
-![[Pasted image 20260224033852.png]]
+<img width="606" height="341" alt="BenchA-3" src="https://github.com/user-attachments/assets/0847b978-6aaf-4ae4-bfe3-091b8445ab30" />
+
 
 - Scalar cache miss rate stays low and stable (around 3 to 4%).
 - SIMD shows much higher miss rates (10 to 28%).  
@@ -201,7 +204,10 @@ This table has the mean Updates/sec in Million Entities/sec as Archetype count i
 | 32         | 262.43      | 588.49      |
 | 256        | 148.01      | 315.34      |
 | 1024       | 59.83       | 121.83      |
-![[Pasted image 20260224025035.png]]
+
+
+<img width="429" height="319" alt="BenchB-1" src="https://github.com/user-attachments/assets/6b27ebe0-693a-49e9-b0cd-ed15e7f6cf8b" />
+
 Both degrade over time (due to the inline velocity and position for both cases). But the Pooled version remains consistently faster.
 
 ---
@@ -215,7 +221,9 @@ This table shows the total L1 cache misses for each configuration in Million
 | 32         | 953.8                     | 636.35                    |
 | 256        | 1067.27                   | 696.51                    |
 | 1024       | 1417.78                   | 880.81                    |
-![[Pasted image 20260224025743.png]]
+
+<img width="606" height="341" alt="BenchB-2" src="https://github.com/user-attachments/assets/9cfe6dbd-656b-4bc7-bcfe-32da774d95c5" />
+
 
 Both degrade over time, however Pooled is consistently lower.
 
