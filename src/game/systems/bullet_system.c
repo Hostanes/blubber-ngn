@@ -157,6 +157,9 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
   archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
   archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
 
+  Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
+  Vector3 playerSoundPos = playerPos ? playerPos->value : (Vector3){0,0,0};
+
 #pragma omp parallel for if (bulletArch->count >= OMP_MIN_ITERATIONS)
   for (uint32_t i = 0; i < bulletArch->count; i++) {
     entity_t b = bulletArch->entities[i];
@@ -196,7 +199,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     bool hit = false;
 
     /* helper macro to check one archetype */
-#define CHECK_ARCH(archPtr)                                                    \
+#define CHECK_ARCH(archPtr, hitSound, soundPos)                                \
   for (uint32_t j = 0; j < (archPtr)->count; j++) {                            \
     entity_t target = (archPtr)->entities[j];                                  \
                                                                                \
@@ -224,6 +227,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
       ApplyDamage(world, target, archPtr, bulletDamages[bulletType->type],      \
                   bulletType->shieldMult, bulletType->healthMult);             \
                                                                                \
+      QueueSound(&game->soundSystem, hitSound, soundPos, 0.2f, 1.0f);         \
       hit = true;                                                              \
       break;                                                                   \
     }                                                                          \
@@ -232,12 +236,12 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     continue;
 
     /* --- Collision checks --- */
-    CHECK_ARCH(playerArch);
-    CHECK_ARCH(enemyArch);
-    CHECK_ARCH(rangerArch);
-    CHECK_ARCH(meleeArch);
-    CHECK_ARCH(obstacleArch);
-    CHECK_ARCH(wallSegArch);
+    CHECK_ARCH(playerArch,   SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(enemyArch,    SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(rangerArch,   SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(meleeArch,    SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(obstacleArch, SOUND_CLANG,     prevPos);
+    CHECK_ARCH(wallSegArch,  SOUND_CLANG,     prevPos);
 
 #undef CHECK_ARCH
 
@@ -249,6 +253,8 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
 static void SpawnExplosion(world_t *world, GameWorld *game, Vector3 center) {
   const float blastRadius = 8.0f;
   const float maxDamage   = 80.0f;
+
+  QueueSound(&game->soundSystem, SOUND_EXPLOSION, center, 1.0f, 1.0f);
 
   SpawnParticle(world, game, center, (Vector3){0.0f, 3.0f, 0.0f},
                 blastRadius * 0.7f, 0.45f, (Color){255, 120, 30, 200});

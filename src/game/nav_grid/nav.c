@@ -53,7 +53,10 @@ void NavPath_Clear(NavPath *path) {
 
 void NavPath_Destroy(NavPath *path) {
   free(path->points);
-  path->points = NULL;
+  path->points       = NULL;
+  path->capacity     = 0;
+  path->count        = 0;
+  path->currentIndex = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -228,6 +231,11 @@ bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
 
   // Reconstruct path
   NavPath_Clear(outPath);
+  if (outPath->capacity == 0 || outPath->points == NULL) {
+    outPath->capacity = 16;
+    outPath->points   = malloc(sizeof(Vector3) * 16);
+    if (!outPath->points) return false;
+  }
   int current = goalIndex;
   while (current != -1) {
     if (outPath->count >= outPath->capacity) {

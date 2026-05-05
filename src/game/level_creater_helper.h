@@ -26,6 +26,9 @@ entity_t SpawnBoxModel(world_t *world, GameWorld *gw, Vector3 position,
 entity_t SpawnLevelModel(world_t *world, GameWorld *gw, Model model,
                          Vector3 position, Vector3 rotation, Vector3 scale);
 
+entity_t SpawnProp(world_t *world, GameWorld *gw, Model model,
+                   Vector3 position, float yaw, Vector3 scale);
+
 entity_t SpawnTrigger(world_t *world, uint32_t triggerArchId, Vector3 position,
                       Vector3 size);
 
@@ -38,5 +41,9 @@ entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,
 
 entity_t SpawnEnemySpawner(world_t *world, GameWorld *gw,
                            Vector3 position, int enemyType);
+
+entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
+                      Vector3 position, float halfExtent,
+                      const char *message, float duration);
 
 #endif

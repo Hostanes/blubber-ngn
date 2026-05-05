@@ -43,6 +43,9 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player,
     return;
   }
 
+  if (m->isOverheated)
+    return;
+
   bool trigger = (m->fireRate > 0.0f) ? IsMouseButtonDown(MOUSE_BUTTON_LEFT)
                                       : IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
   if (!trigger)
@@ -50,8 +53,29 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player,
 
   FireMuzzle(world, game, player, game->playerArchId, m);
 
+  float fireVol = (wi == 1) ? 0.45f : 0.8f;
+  QueueSound(&game->soundSystem, SOUND_WEAPON_FIRE, m->worldPosition, fireVol, 1.0f);
+
   m->recoil += 0.15f;
   if (m->recoil > 0.25f) m->recoil = 0.25f;
+
+  // Gunshot particles — 2 small puffs that drift upward with jitter
+  for (int p = 0; p < 2; p++) {
+    float jx = ((float)GetRandomValue(-80, 80)) / 100.0f;
+    float jz = ((float)GetRandomValue(-80, 80)) / 100.0f;
+    Vector3 pvel = {jx * 0.4f,
+                    0.6f + ((float)GetRandomValue(20, 60)) / 100.0f,
+                    jz * 0.4f};
+    Color pCol = {255, 200, 80, 200};
+    SpawnParticle(world, game, m->worldPosition, pvel, 0.06f, 0.35f, pCol);
+  }
+
+  m->heat += m->heatPerShot;
+  if (m->heat >= 1.0f) {
+    m->heat = 1.0f;
+    m->isOverheated = true;
+  }
+  m->coolDelayTimer = m->coolDelay;
 
   if (m->fireRate > 0.0f)
     m->fireTimer = 1.0f / m->fireRate;
@@ -176,6 +200,17 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
 
   vel->value.x = horiz.x;
   vel->value.z = horiz.z;
+
+  // Footstep sound — play while grounded and moving
+  static float stepTimer = 0.0f;
+  stepTimer -= dt;
+  float horizSpeed = sqrtf(vel->value.x * vel->value.x + vel->value.z * vel->value.z);
+  if (*isgrounded && horizSpeed > 1.0f && stepTimer <= 0.0f) {
+    float interval = 0.45f - 0.15f * Clamp(horizSpeed / 15.0f, 0.0f, 1.0f);
+    QueueSound(&game->soundSystem, SOUND_FOOTSTEP, pos->value,
+               0.4f, 0.9f + GetRandomValue(-10, 10) / 100.0f);
+    stepTimer = interval;
+  }
 }
 
 void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float dt) {
@@ -261,6 +296,18 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
   for (uint32_t i = 0; i < muzzles->count; ++i) {
     Muzzle_t *m = &muzzles->Muzzles[i];
 
+    // Cool heat every frame regardless of which weapon is active,
+    // but only after the post-fire delay has elapsed
+    if (m->coolDelayTimer > 0.0f) {
+      m->coolDelayTimer -= dt;
+    } else {
+      float rate = m->isOverheated ? m->coolRateOverheated : m->coolRate;
+      m->heat -= rate * dt;
+      if (m->heat < 0.0f) m->heat = 0.0f;
+      if (m->isOverheated && m->heat <= m->overheatThreshold)
+        m->isOverheated = false;
+    }
+
     Vector3 offset = m->positionOffset.value;
 
     Vector3 worldOffset =
@@ -271,5 +318,35 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
     m->worldPosition = Vector3Add(pos->value, worldOffset);
 
     m->forward = forward3D;
+
+    // Tint the corresponding gun model redder as heat rises.
+    // Weapon i is at model index i+1 (index 0 = body, last = shadow).
+    uint32_t modelIdx = i + 1;
+    if (modelIdx < mc->count - 1) {
+      float t = m->heat;
+      unsigned char g = (unsigned char)(255.0f * (1.0f - t * 0.65f));
+      unsigned char b = (unsigned char)(255.0f * (1.0f - t * 0.65f));
+      mc->models[modelIdx].tint = (Color){255, g, b, 255};
+    }
+
+    // Smoke particles while overheated and this weapon is equipped
+    if (m->isOverheated && i == game->playerActiveWeapon) {
+      m->smokeTimer -= dt;
+      if (m->smokeTimer <= 0.0f) {
+        m->smokeTimer = 0.06f;
+        float rx = ((float)GetRandomValue(-60, 60)) / 100.0f;
+        float rz = ((float)GetRandomValue(-60, 60)) / 100.0f;
+        Vector3 smokePos = {m->worldPosition.x + rx * 0.3f,
+                            m->worldPosition.y + 0.1f,
+                            m->worldPosition.z + rz * 0.3f};
+        Vector3 smokeVel = {rx * 0.3f,
+                            0.4f + ((float)GetRandomValue(0, 40)) / 100.0f,
+                            rz * 0.3f};
+        Color smokeCol = {80, 80, 80, 180};
+        SpawnParticle(world, game, smokePos, smokeVel, 0.12f, 0.9f, smokeCol);
+      }
+    } else {
+      m->smokeTimer = 0.0f;
+    }
   }
 }

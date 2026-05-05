@@ -20,6 +20,7 @@ typedef struct {
   Vector3 scale;
   ModelRotationMode rotationMode;
   int32_t parentIndex; // -1 = entity root; >= 0 = index into ModelCollection_t (must be < own index)
+  Color tint;         // draw tint; zero value treated as WHITE
 
   Matrix finalTransform;
 } ModelInstance_t;

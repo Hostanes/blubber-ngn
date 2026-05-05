@@ -10,6 +10,7 @@
 #include "enemy_spawner.h"
 #include "event_triggers.h"
 #include "health.h"
+#include "infobox.h"
 #include "shield.h"
 #include "particle.h"
 #include "melee_state.h"
@@ -60,4 +61,5 @@ enum {
   COMP_PARTICLE,
   COMP_MELEE_ENEMY,
   COMP_TYPE_MELEE,
+  COMP_INFOBOX,
 };

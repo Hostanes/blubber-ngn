@@ -50,6 +50,9 @@ void SetupComponentRegistry(ComponentRegistry *reg, Engine *engine) {
   /* ---- Spawner ---- */
   REG_INLINE("EnemySpawner", COMP_ENEMY_SPAWNER, EnemySpawner);
 
+  /* ---- Info box trigger ---- */
+  REG_INLINE("InfoBox", COMP_INFOBOX, InfoBox);
+
   /* ---- Events ---- */
   REG_INLINE("OnDeath",     COMP_ONDEATH,     OnDeath);
   REG_INLINE("OnCollision", COMP_ONCOLLISION, OnCollision);

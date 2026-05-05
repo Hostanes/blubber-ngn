@@ -28,6 +28,15 @@ bool DrawButton(const char *text, Vector2 pos) {
   return hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
 }
 
+// Small arrow button: "<" or ">"
+static bool DrawArrowButton(const char *label, int x, int y) {
+  Rectangle r = {(float)x, (float)y, 36, 36};
+  bool hov = CheckCollisionPointRec(GetMousePosition(), r);
+  DrawRectangleRec(r, hov ? GRAY : LIGHTGRAY);
+  DrawText(label, x + 10, y + 8, 20, hov ? YELLOW : BLACK);
+  return hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+}
+
 void RenderMainMenu(GameWorld *game) {
   BeginDrawing();
   ClearBackground(BLACK);
@@ -43,6 +52,7 @@ void RenderMainMenu(GameWorld *game) {
   }
 
   if (DrawButton("SETTINGS", (Vector2){GetScreenWidth() / 2 - 100, 460})) {
+    game->settingsPrevState = GAMESTATE_MAINMENU;
     game->gameState = GAMESTATE_SETTINGS;
   }
 
@@ -152,24 +162,91 @@ void RenderLevelSelect(GameWorld *game) {
   EndDrawing();
 }
 
-void RenderSettingsMenu(GameWorld *game) {
+static const int s_resW[] = {1280, 1600, 1920, 2560};
+static const int s_resH[] = {720,  900,  1080, 1440};
+#define NUM_RES 4
+
+static int CurrentResIndex(GameWorld *game) {
+  for (int i = 0; i < NUM_RES; i++)
+    if (s_resW[i] == game->resWidth && s_resH[i] == game->resHeight)
+      return i;
+  return 0;
+}
+
+void RenderSettingsMenu(GameWorld *game, Camera3D *camera) {
+  int sw = GetScreenWidth(), sh = GetScreenHeight();
+  int cx = sw / 2;
+
   BeginDrawing();
-  ClearBackground(BLACK);
+  ClearBackground((Color){10, 10, 18, 255});
 
-  DrawText("SETTINGS", GetScreenWidth() / 2 - 80, 100, 40, RAYWHITE);
+  DrawText("SETTINGS", cx - MeasureText("SETTINGS", 40) / 2, 60, 40, RAYWHITE);
 
-  // Placeholder settings logic
-  DrawText(TextFormat("Target FPS: %d", game->targetFPS), 100, 250, 20,
-           RAYWHITE);
-  if (IsKeyPressed(KEY_RIGHT))
-    game->targetFPS += 30;
-  if (IsKeyPressed(KEY_LEFT))
-    game->targetFPS -= 30;
+  int rowY   = 180;
+  int rowGap = 80;
+  int labelX = cx - 300;
+  int valX   = cx - 60;
+  int arrowL = cx - 110;
+  int arrowR = cx + 80;
 
-  DrawText("Press [ESC] to go back", GetScreenWidth() / 2 - 120, 600, 20, GRAY);
+  // ---- FOV ----
+  DrawText("FIELD OF VIEW", labelX, rowY + 8, 20, LIGHTGRAY);
+  if (DrawArrowButton("<", arrowL, rowY)) {
+    game->fov -= 5.0f;
+    if (game->fov < 45.0f) game->fov = 45.0f;
+    camera->fovy = game->fov;
+  }
+  DrawText(TextFormat("%.0f", game->fov), valX, rowY + 8, 20, RAYWHITE);
+  if (DrawArrowButton(">", arrowR, rowY)) {
+    game->fov += 5.0f;
+    if (game->fov > 120.0f) game->fov = 120.0f;
+    camera->fovy = game->fov;
+  }
+  rowY += rowGap;
 
-  if (IsKeyPressed(KEY_ESCAPE)) {
-    game->gameState = GAMESTATE_MAINMENU;
+  // ---- Fullscreen / Windowed ----
+  DrawText("DISPLAY MODE", labelX, rowY + 8, 20, LIGHTGRAY);
+  {
+    const char *modeLabel = game->fullscreen ? "FULLSCREEN" : "WINDOWED";
+    Rectangle r = {(float)(cx - 110), (float)rowY, 220, 40};
+    bool hov = CheckCollisionPointRec(GetMousePosition(), r);
+    DrawRectangleRec(r, hov ? GRAY : LIGHTGRAY);
+    int tw = MeasureText(modeLabel, 20);
+    DrawText(modeLabel, (int)(r.x + r.width / 2 - tw / 2), rowY + 10, 20,
+             hov ? YELLOW : BLACK);
+    if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+      game->fullscreen = !game->fullscreen;
+      ToggleFullscreen();
+    }
+  }
+  rowY += rowGap;
+
+  // ---- Resolution (windowed only) ----
+  Color resColor = game->fullscreen ? DARKGRAY : LIGHTGRAY;
+  DrawText("RESOLUTION", labelX, rowY + 8, 20, resColor);
+  {
+    int ri = CurrentResIndex(game);
+    if (!game->fullscreen && DrawArrowButton("<", arrowL, rowY)) {
+      ri = (ri - 1 + NUM_RES) % NUM_RES;
+      game->resWidth  = s_resW[ri];
+      game->resHeight = s_resH[ri];
+      SetWindowSize(game->resWidth, game->resHeight);
+    }
+    const char *resLabel = TextFormat("%dx%d", s_resW[ri], s_resH[ri]);
+    DrawText(resLabel, valX - 20, rowY + 8, 20, game->fullscreen ? DARKGRAY : RAYWHITE);
+    if (!game->fullscreen && DrawArrowButton(">", arrowR, rowY)) {
+      ri = (ri + 1) % NUM_RES;
+      game->resWidth  = s_resW[ri];
+      game->resHeight = s_resH[ri];
+      SetWindowSize(game->resWidth, game->resHeight);
+    }
+  }
+  rowY += rowGap + 20;
+
+  // ---- Back ----
+  if (DrawButton("BACK", (Vector2){(float)(cx - 100), (float)rowY}) ||
+      IsKeyPressed(KEY_ESCAPE)) {
+    game->gameState = game->settingsPrevState;
   }
 
   EndDrawing();
@@ -239,7 +316,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       break;
 
     case GAMESTATE_SETTINGS:
-      RenderSettingsMenu(game);
+      RenderSettingsMenu(game, camera);
       break;
 
     case GAMESTATE_LEVELSELECT:
@@ -253,6 +330,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                GetScreenHeight() / 2, 30, RAYWHITE);
       EndDrawing();
 
+      EnemyPathQueue_Reset();
       HeightMap_Free(&game->terrainHeightMap);
       NavGrid_Destroy(&game->navGrid);
       WorldClear(world);
@@ -281,7 +359,11 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
     } break;
 
     case GAMESTATE_INLEVEL: {
+      camera->fovy = game->fov;
+      UpdateSoundSystem(&game->soundSystem, world, game, dt);
       WaveSystem_Update(world, game, dt);
+      InfoBoxTriggerSystem(world, game);
+      MessageSystem_Update(&game->messageSystem, dt);
       TimerSystem(&engine->timerPool, dt);
 
       PlayerControlSystem(world, game, game->player, dt);
@@ -297,7 +379,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       PlayerMoveAndCollide(world, game, dt);
 
       // Deliver queued paths before state machines run
-      EnemyPathQueue_Flush(NAV_PATHS_PER_FRAME);
+      EnemyPathQueue_Flush(world, NAV_PATHS_PER_FRAME);
 
       EnemyGruntAISystem(world, game,
                          WorldGetArchetype(world, game->enemyGruntArchId), dt);
@@ -361,11 +443,15 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       ClearBackground(BLACK);
       DrawText("PAUSED", sw/2 - 55, sh/2 - 150, 40, RAYWHITE);
 
-      if (DrawButton("RESUME", (Vector2){(float)(sw/2 - 100), (float)(sh/2 - 50)})) {
+      if (DrawButton("RESUME", (Vector2){(float)(sw/2 - 100), (float)(sh/2 - 80)})) {
         game->gameState = GAMESTATE_INLEVEL;
         DisableCursor();
       }
-      if (DrawButton("MAIN MENU", (Vector2){(float)(sw/2 - 100), (float)(sh/2 + 30)})) {
+      if (DrawButton("SETTINGS", (Vector2){(float)(sw/2 - 100), (float)(sh/2)})) {
+        game->settingsPrevState = GAMESTATE_PAUSED;
+        game->gameState = GAMESTATE_SETTINGS;
+      }
+      if (DrawButton("MAIN MENU", (Vector2){(float)(sw/2 - 100), (float)(sh/2 + 80)})) {
         game->gameState = GAMESTATE_MAINMENU;
         WorldClear(world);
         EnableCursor();

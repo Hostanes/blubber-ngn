@@ -48,9 +48,10 @@ bool EnemyFollowPath(world_t *world, GameWorld *game, entity_t e,
                      float maxSpeed, float rotateSpeed, float dt);
 bool EnemyPathQueue_Submit(NavGrid *grid, Vector3 start, Vector3 goal,
                            NavPath *outPath, bool *pendingFlag,
-                           CombatState_t *combat);
+                           CombatState_t *combat, entity_t owner);
+void EnemyPathQueue_Reset(void);
 #define NAV_PATHS_PER_FRAME 2
-void EnemyPathQueue_Flush(int maxPerFrame);
+void EnemyPathQueue_Flush(world_t *world, int maxPerFrame);
 void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
                     float dt);
 void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch);
@@ -76,3 +77,5 @@ void EnemyMeleeAISystem(world_t *world, GameWorld *game,
                          archetype_t *arch, float dt);
 
 void DrawSpawnerWireframes(world_t *world, uint32_t spawnerArchId);
+
+void InfoBoxTriggerSystem(world_t *world, GameWorld *game);

@@ -13,6 +13,74 @@
 static float s_navHeightCache[180][180];
 static bool  s_navHeightCacheValid = false;
 
+static void NavmapPathFromLevel(const char *levelPath, char *out, int maxLen) {
+  strncpy(out, levelPath, maxLen - 1);
+  out[maxLen - 1] = '\0';
+  char *dot = strrchr(out, '.');
+  if (dot) strcpy(dot, ".navmap.png");
+  else strncat(out, ".navmap.png", maxLen - (int)strlen(out) - 1);
+}
+
+/* ---- Editor-side model cache (load-on-demand, persists across editor sessions) ---- */
+#define ED_MODEL_CACHE_CAP 32
+typedef struct { char path[256]; Model model; bool loaded; } EdModelEntry;
+static EdModelEntry s_edModels[ED_MODEL_CACHE_CAP];
+static int          s_edModelCount = 0;
+
+static Model EditorGetModel(const char *path) {
+  for (int i = 0; i < s_edModelCount; i++)
+    if (strcmp(s_edModels[i].path, path) == 0) return s_edModels[i].model;
+  if (s_edModelCount < ED_MODEL_CACHE_CAP) {
+    strncpy(s_edModels[s_edModelCount].path, path, 255);
+    s_edModels[s_edModelCount].model = LoadModel(path);
+    s_edModels[s_edModelCount].loaded = true;
+    return s_edModels[s_edModelCount++].model;
+  }
+  return s_edModels[0].model; // cache full
+}
+
+#define PICKER_IH   34   // item height
+#define PICKER_GAP   3   // gap between items
+#define PICKER_HDR  42   // header area height
+#define PICKER_FTR  26   // footer area height
+#define PICKER_VIS  12   // max visible items
+
+static void ScanModelFiles(EditorState *ed) {
+  ed->edModelCount = 0;
+  DIR *dir = opendir("assets/models");
+  if (!dir) return;
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL && ed->edModelCount < 48) {
+    if (entry->d_name[0] == '.') continue;
+    const char *name = entry->d_name;
+    int len = (int)strlen(name);
+    if (len < 5 || strcmp(name + len - 4, ".glb") != 0) continue;
+    snprintf(ed->edModelPaths[ed->edModelCount], 256, "assets/models/%s", name);
+    snprintf(ed->edModelNames[ed->edModelCount], 64, "%.*s", len - 4, name);
+    ed->edModelCount++;
+  }
+  closedir(dir);
+}
+
+// Terrain picker only lists files whose names begin with "terrain"
+static void ScanTerrainFiles(EditorState *ed) {
+  ed->edModelCount = 0;
+  DIR *dir = opendir("assets/models");
+  if (!dir) return;
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL && ed->edModelCount < 48) {
+    if (entry->d_name[0] == '.') continue;
+    const char *name = entry->d_name;
+    int len = (int)strlen(name);
+    if (len < 5 || strcmp(name + len - 4, ".glb") != 0) continue;
+    if (strncmp(name, "terrain", 7) != 0) continue;
+    snprintf(ed->edModelPaths[ed->edModelCount], 256, "assets/models/%s", name);
+    snprintf(ed->edModelNames[ed->edModelCount], 64, "%.*s", len - 4, name);
+    ed->edModelCount++;
+  }
+  closedir(dir);
+}
+
 void EditorInit(EditorState *ed, GameWorld *gw, world_t *world) {
   WorldClear(world);
 
@@ -42,24 +110,39 @@ void EditorInit(EditorState *ed, GameWorld *gw, world_t *world) {
   ed->edLevelCount    = 0;
   ed->edLevelSelected = 0;
 
-  ed->spawnerCount = 0;
-  ed->placeType    = 0;
-  ed->historyTop   = 0;
+  ed->spawnerCount      = 0;
+  ed->placeType         = 0;
+  ed->historyTop        = 0;
+  ed->propCount         = 0;
+  ed->propPlaceYaw      = 0.0f;
+  ed->propPlaceScale    = 3.0f;
+  ed->objectPanelOpen   = false;
+  ed->selectedType      = 0;
+  ed->modelPickerOpen    = false;
+  ed->terrainPickerOpen  = false;
+  ed->modelPickerScroll  = 0;
+  ed->edModelCount       = 0;
+  strncpy(ed->propPlaceModel, "assets/models/obstacle.glb",
+          sizeof(ed->propPlaceModel) - 1);
 
   HeightMap_Free(&gw->terrainHeightMap);
   gw->terrainHeightMap =
       HeightMap_FromMesh(gw->terrainModel.meshes[0], MatrixIdentity());
+
+  ed->missionType       = MISSION_WAVES;
+  ed->infoBoxCount      = 0;
+  ed->infoBoxHalfExtent = 2.5f;
+  ed->infoBoxEditOpen   = false;
+  ed->infoBoxTextLen    = 0;
+  ed->infoBoxTextBuf[0] = '\0';
+  ed->infoBoxDuration   = 5.0f;
 
   ed->navPaintMode   = false;
   ed->navPaintType   = 0;
   ed->navPaletteOpen = false;
   ed->navBrushSize   = 1;
   if (ed->navImageLoaded) UnloadImage(ed->navImage);
-  ed->navImage = LoadImage("assets/navmap.png");
-  if (ed->navImage.width != 180 || ed->navImage.height != 180) {
-    if (ed->navImage.data) UnloadImage(ed->navImage);
-    ed->navImage = GenImageColor(180, 180, WHITE);
-  }
+  ed->navImage = GenImageColor(180, 180, WHITE);
   ImageFormat(&ed->navImage, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
   ed->navImageLoaded = true;
   s_navHeightCacheValid = false;
@@ -102,6 +185,29 @@ static int PickBox(EditorState *ed) {
     BoundingBox bb = {
         Vector3Subtract(b->position, Vector3Scale(b->scale, 0.5f)),
         Vector3Add(b->position,      Vector3Scale(b->scale, 0.5f)),
+    };
+    RayCollision col = GetRayCollisionBox(ray, bb);
+    if (col.hit && col.distance < bestT) {
+      bestT = col.distance;
+      best  = i;
+    }
+  }
+  return best;
+}
+
+// Ray-picks the nearest placed prop from the screen center. Returns index or -1.
+static int PickProp(EditorState *ed) {
+  Vector2 center = {(float)GetScreenWidth() / 2.0f,
+                    (float)GetScreenHeight() / 2.0f};
+  Ray ray = GetScreenToWorldRay(center, ed->camera);
+
+  float bestT = 1e9f;
+  int   best  = -1;
+  for (int i = 0; i < ed->propCount; i++) {
+    EditorPlacedProp *p = &ed->placedProps[i];
+    BoundingBox bb = {
+        Vector3Subtract(p->position, Vector3Scale(p->scale, 0.5f)),
+        Vector3Add(p->position,      Vector3Scale(p->scale, 0.5f)),
     };
     RayCollision col = GetRayCollisionBox(ray, bb);
     if (col.hit && col.distance < bestT) {
@@ -160,10 +266,50 @@ void EditorLoad(EditorState *ed, GameWorld *gw, world_t *world, const char *path
   ed->placedCount   = 0;
   ed->selectedIndex = -1;
   ed->spawnerCount  = 0;
+  ed->propCount     = 0;
   ed->historyTop    = 0;
 
   char *text = LoadFileText(path);
   if (!text) return;
+
+  // Parse terrain — load if different from current
+  {
+    char terrainPath[256];
+    strncpy(terrainPath, gw->terrainModelPath, 255);
+    JsonReadString(text, "terrain", terrainPath, sizeof(terrainPath));
+    if (strcmp(terrainPath, gw->terrainModelPath) != 0) {
+      UnloadModel(gw->terrainModel);
+      gw->terrainModel = LoadModel(terrainPath);
+      strncpy(gw->terrainModelPath, terrainPath, sizeof(gw->terrainModelPath)-1);
+      HeightMap_Free(&gw->terrainHeightMap);
+      gw->terrainHeightMap = HeightMap_FromMesh(gw->terrainModel.meshes[0], MatrixIdentity());
+      s_navHeightCacheValid = false;
+    }
+  }
+
+  // Mission type
+  {
+    char missionBuf[32] = "waves";
+    JsonReadString(text, "mission", missionBuf, sizeof(missionBuf));
+    ed->missionType =
+        (strcmp(missionBuf, "exploration") == 0) ? MISSION_EXPLORATION : MISSION_WAVES;
+  }
+
+  // Load navmap — derive path from level path, allow JSON override
+  {
+    char navPath[256];
+    NavmapPathFromLevel(path, navPath, sizeof(navPath));
+    JsonReadString(text, "navmap", navPath, sizeof(navPath));
+    if (ed->navImageLoaded) UnloadImage(ed->navImage);
+    ed->navImage = LoadImage(navPath);
+    if (!ed->navImage.data || ed->navImage.width != 180 || ed->navImage.height != 180) {
+      if (ed->navImage.data) UnloadImage(ed->navImage);
+      ed->navImage = GenImageColor(180, 180, WHITE);
+    }
+    ImageFormat(&ed->navImage, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    ed->navImageLoaded = true;
+    s_navHeightCacheValid = false;
+  }
 
   // Parse boxes
   {
@@ -218,6 +364,66 @@ void EditorLoad(EditorState *ed, GameWorld *gw, world_t *world, const char *path
     }
   }
 
+  // Parse props
+  {
+    const char *p = strstr(text, "\"props\"");
+    if (p) {
+      p = strchr(p, '[');
+      if (p) { p++;
+        while (*p && *p != ']' && ed->propCount < EDITOR_MAX_PROPS) {
+          while (*p && *p != '{' && *p != ']') p++;
+          if (*p != '{') break;
+          const char *obj = p;
+          while (*p && *p != '}') p++;
+          if (!*p) break; p++;
+          int len = (int)(p - obj);
+          if (len >= 512) continue;
+          char buf[512]; memcpy(buf, obj, len); buf[len] = '\0';
+          float x=0,y=0,z=0,yaw=0,sx=3,sy=3,sz=3;
+          char modelPath[256] = "assets/models/obstacle.glb";
+          JsonReadFloat(buf,"x",&x); JsonReadFloat(buf,"y",&y); JsonReadFloat(buf,"z",&z);
+          JsonReadFloat(buf,"yaw",&yaw);
+          JsonReadFloat(buf,"sx",&sx); JsonReadFloat(buf,"sy",&sy); JsonReadFloat(buf,"sz",&sz);
+          JsonReadString(buf,"model",modelPath,sizeof(modelPath));
+          EditorPlacedProp *pp = &ed->placedProps[ed->propCount++];
+          pp->position = (Vector3){x,y,z};
+          pp->yaw      = yaw;
+          pp->scale    = (Vector3){sx,sy,sz};
+          strncpy(pp->modelPath, modelPath, 255);
+        }
+      }
+    }
+  }
+
+  // Parse info boxes
+  {
+    ed->infoBoxCount = 0;
+    const char *p = strstr(text, "\"infoboxes\"");
+    if (p) {
+      p = strchr(p, '[');
+      if (p) { p++;
+        while (*p && *p != ']' && ed->infoBoxCount < EDITOR_MAX_INFOBOXES) {
+          while (*p && *p != '{' && *p != ']') p++;
+          if (*p != '{') break;
+          const char *obj = p;
+          while (*p && *p != '}') p++;
+          if (!*p) break; p++;
+          int len = (int)(p - obj);
+          if (len >= 512) continue;
+          char buf[512]; memcpy(buf, obj, len); buf[len] = '\0';
+          EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->infoBoxCount++];
+          ib->halfExtent = 2.5f; ib->duration = 5.0f;
+          JsonReadFloat(buf, "x",   &ib->position.x);
+          JsonReadFloat(buf, "y",   &ib->position.y);
+          JsonReadFloat(buf, "z",   &ib->position.z);
+          JsonReadFloat(buf, "ext", &ib->halfExtent);
+          JsonReadFloat(buf, "dur", &ib->duration);
+          JsonReadString(buf, "msg", ib->message, sizeof(ib->message));
+        }
+      }
+    }
+  }
+
   UnloadFileText(text);
 }
 
@@ -240,7 +446,7 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
     if (IsKeyPressed(KEY_ENTER) && ed->nameLen > 0) {
       char path[256];
       snprintf(path, sizeof(path), "assets/levels/%s.json", ed->nameBuffer);
-      EditorSave(ed, path);
+      EditorSave(ed, gw, path);
       ed->isNaming = false;
     }
     if (IsKeyPressed(KEY_ESCAPE))
@@ -248,10 +454,75 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
     return;
   }
 
+  // --- Info box text dialog (blocks all other input) ---
+  if (ed->infoBoxEditOpen) {
+    // Scroll adjusts trigger size even during dialog
+    float sc = GetMouseWheelMove();
+    if (sc != 0.0f) {
+      ed->infoBoxHalfExtent += sc * 0.25f;
+      if (ed->infoBoxHalfExtent < 0.5f)  ed->infoBoxHalfExtent = 0.5f;
+      if (ed->infoBoxHalfExtent > 20.0f) ed->infoBoxHalfExtent = 20.0f;
+    }
+    int ch;
+    while ((ch = GetCharPressed()) != 0) {
+      if (ch == '"' || ch == '{' || ch == '}' || ch == '\\') continue;
+      if (ed->infoBoxTextLen < 255) {
+        ed->infoBoxTextBuf[ed->infoBoxTextLen++] = (char)ch;
+        ed->infoBoxTextBuf[ed->infoBoxTextLen]   = '\0';
+      }
+    }
+    if (IsKeyPressed(KEY_BACKSPACE) && ed->infoBoxTextLen > 0)
+      ed->infoBoxTextBuf[--ed->infoBoxTextLen] = '\0';
+    {
+      int sw2 = GetScreenWidth(), sh2 = GetScreenHeight();
+      int pw2 = 520, px2 = sw2 / 2 - pw2 / 2, py2 = sh2 / 2 - 125;
+      Vector2 mouse      = GetMousePosition();
+      Rectangle btnMinus = {(float)(px2 + 170), (float)(py2 + 115), 44, 24};
+      Rectangle btnPlus  = {(float)(px2 + 224), (float)(py2 + 115), 44, 24};
+      if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (CheckCollisionPointRec(mouse, btnMinus)) {
+          ed->infoBoxDuration -= 5.0f;
+          if (ed->infoBoxDuration < 1.0f) ed->infoBoxDuration = 1.0f;
+        }
+        if (CheckCollisionPointRec(mouse, btnPlus)) {
+          ed->infoBoxDuration += 5.0f;
+          if (ed->infoBoxDuration > 120.0f) ed->infoBoxDuration = 120.0f;
+        }
+      }
+    }
+    if (IsKeyPressed(KEY_ENTER) && ed->infoBoxTextLen > 0) {
+      int histCap = EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS + EDITOR_MAX_PROPS + EDITOR_MAX_INFOBOXES;
+      if (ed->infoBoxCount < EDITOR_MAX_INFOBOXES && ed->historyTop < histCap) {
+        EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->infoBoxCount++];
+        ib->position   = ed->infoBoxPendingPos;
+        ib->halfExtent = ed->infoBoxHalfExtent;
+        ib->duration   = ed->infoBoxDuration;
+        strncpy(ib->message, ed->infoBoxTextBuf, 255);
+        ib->message[255] = '\0';
+        ed->history[ed->historyTop++] = 4;
+      }
+      ed->infoBoxEditOpen = false;
+      DisableCursor();
+    }
+    if (IsKeyPressed(KEY_ESCAPE)) {
+      ed->infoBoxEditOpen = false;
+      DisableCursor();
+    }
+    return;
+  }
+
   // --- ESC toggles pause menu ---
   if (IsKeyPressed(KEY_ESCAPE)) {
     if (ed->navPaletteOpen) {
       ed->navPaletteOpen = false;
+    } else if (ed->objectPanelOpen) {
+      ed->objectPanelOpen = false;
+    } else if (ed->modelPickerOpen) {
+      ed->modelPickerOpen = false;
+      DisableCursor();
+    } else if (ed->terrainPickerOpen) {
+      ed->terrainPickerOpen = false;
+      DisableCursor();
     } else if (ed->isSelectingLevel) {
       ed->isSelectingLevel = false;
     } else {
@@ -318,21 +589,121 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
 
   // --- Mode toggle ---
   if (IsKeyPressed(KEY_TAB)) {
-    ed->navPaintMode  = false;
-    ed->transformMode = !ed->transformMode;
-    ed->selectedIndex = -1;
+    ed->navPaintMode      = false;
+    ed->transformMode     = !ed->transformMode;
+    ed->selectedIndex     = -1;
+    ed->objectPanelOpen   = false;
+    ed->modelPickerOpen   = false;
+    ed->terrainPickerOpen = false;
   }
 
   // --- Nav paint toggle ---
   if (IsKeyPressed(KEY_N)) {
-    ed->navPaintMode  = !ed->navPaintMode;
+    ed->navPaintMode      = !ed->navPaintMode;
     if (ed->navPaintMode) ed->transformMode = false;
-    ed->navPaletteOpen = false;
+    ed->navPaletteOpen    = false;
+    ed->objectPanelOpen   = false;
+    ed->modelPickerOpen   = false;
+    ed->terrainPickerOpen = false;
   }
 
-  // --- Camera (always active) ---
+  // --- Model picker: M (prop model), T (terrain model) ---
+  // Available in place mode (prop type) or transform mode (prop selected)
+  bool canPickPropModel = (!ed->navPaintMode) &&
+      ((!ed->transformMode && ed->placeType == 3) ||
+       (ed->transformMode && ed->selectedIndex >= 0 && ed->selectedType == 1));
+  if (IsKeyPressed(KEY_M) && canPickPropModel) {
+    ed->modelPickerOpen = !ed->modelPickerOpen;
+    if (ed->modelPickerOpen) { ScanModelFiles(ed); ed->modelPickerScroll = 0; EnableCursor(); }
+    else                     DisableCursor();
+    ed->terrainPickerOpen = false;
+  }
+  if (IsKeyPressed(KEY_T) && !ed->navPaintMode) {
+    ed->terrainPickerOpen = !ed->terrainPickerOpen;
+    if (ed->terrainPickerOpen) { ScanTerrainFiles(ed); ed->modelPickerScroll = 0; EnableCursor(); }
+    else                       DisableCursor();
+    ed->modelPickerOpen = false;
+  }
+  if (IsKeyPressed(KEY_F) && !ed->navPaintMode) {
+    ed->missionType = (ed->missionType == MISSION_WAVES) ? MISSION_EXPLORATION : MISSION_WAVES;
+  }
+
+  // Handle picker input (model or terrain) — scroll and click
+  if (ed->modelPickerOpen || ed->terrainPickerOpen) {
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    int vis   = (ed->edModelCount < PICKER_VIS) ? ed->edModelCount : PICKER_VIS;
+    int maxSc = ed->edModelCount - vis;
+    if (maxSc < 0) maxSc = 0;
+
+    float wheel = GetMouseWheelMove();
+    if (wheel != 0.0f) {
+      ed->modelPickerScroll -= (int)wheel;
+      if (ed->modelPickerScroll < 0)     ed->modelPickerScroll = 0;
+      if (ed->modelPickerScroll > maxSc) ed->modelPickerScroll = maxSc;
+    }
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+      int pw = 340;
+      int px = sw/2 - pw/2;
+      int py = sh/2 - (PICKER_HDR + vis*(PICKER_IH+PICKER_GAP) + PICKER_FTR)/2;
+      Vector2 mp = GetMousePosition();
+
+      for (int j = 0; j < vis; j++) {
+        int i  = ed->modelPickerScroll + j;
+        if (i >= ed->edModelCount) break;
+        Rectangle r = {(float)px,
+                       (float)(py + PICKER_HDR + j*(PICKER_IH+PICKER_GAP)),
+                       (float)pw, (float)PICKER_IH};
+        if (!CheckCollisionPointRec(mp, r)) continue;
+
+        if (ed->modelPickerOpen) {
+          strncpy(ed->propPlaceModel, ed->edModelPaths[i], 255);
+          if (ed->transformMode && ed->selectedIndex >= 0 && ed->selectedType == 1)
+            strncpy(ed->placedProps[ed->selectedIndex].modelPath, ed->edModelPaths[i], 255);
+          ed->modelPickerOpen = false;
+        } else {
+          const char *newPath = ed->edModelPaths[i];
+          if (strcmp(newPath, gw->terrainModelPath) != 0) {
+            UnloadModel(gw->terrainModel);
+            gw->terrainModel = LoadModel(newPath);
+            strncpy(gw->terrainModelPath, newPath, sizeof(gw->terrainModelPath)-1);
+            HeightMap_Free(&gw->terrainHeightMap);
+            gw->terrainHeightMap = HeightMap_FromMesh(gw->terrainModel.meshes[0], MatrixIdentity());
+            s_navHeightCacheValid = false;
+          }
+          ed->terrainPickerOpen = false;
+        }
+        DisableCursor();
+        break;
+      }
+    }
+  }
+
+  // --- Object picker panel: V toggles, cursor enabled while open ---
+  if (!ed->transformMode && !ed->navPaintMode && IsKeyPressed(KEY_V)) {
+    ed->objectPanelOpen = !ed->objectPanelOpen;
+    if (ed->objectPanelOpen) EnableCursor();
+    else                     DisableCursor();
+  }
+
+  if (ed->objectPanelOpen) {
+    int sw = GetScreenWidth();
+    int px = sw - 185, py = 50;
+    int pw = 170, ih = 38;
+    Vector2 mp = GetMousePosition();
+    for (int i = 0; i < 5; i++) {
+      Rectangle r = {(float)px, (float)(py + i * (ih + 4)), (float)pw, (float)ih};
+      if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mp, r)) {
+        ed->placeType       = i;
+        ed->objectPanelOpen = false;
+        DisableCursor();
+      }
+    }
+  }
+
+  // --- Camera (always active unless panel is open) ---
   float speed = IsKeyDown(KEY_LEFT_SHIFT) ? 80.0f : 30.0f;
-  Vector2 mouse = GetMouseDelta();
+  Vector2 mouse = ed->objectPanelOpen ? (Vector2){0,0} : GetMouseDelta();
   ed->yaw   -= mouse.x * 0.002f;
   ed->pitch -= mouse.y * 0.002f;
   if (ed->pitch >  PI / 2 - 0.01f) ed->pitch =  PI / 2 - 0.01f;
@@ -418,16 +789,39 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
 
   } else if (ed->transformMode) {
 
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-      ed->selectedIndex = PickBox(ed);
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+      // Pick nearest of box or prop; prefer whichever is closer
+      int   bi = PickBox(ed),  pi = PickProp(ed);
+      float bt = 1e9f,         pt = 1e9f;
+      if (bi >= 0) {
+        Vector2 c = {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f};
+        Ray ray = GetScreenToWorldRay(c, ed->camera);
+        BoundingBox bb = {
+            Vector3Subtract(ed->placed[bi].position, Vector3Scale(ed->placed[bi].scale, 0.5f)),
+            Vector3Add(ed->placed[bi].position,      Vector3Scale(ed->placed[bi].scale, 0.5f)),
+        };
+        bt = GetRayCollisionBox(ray, bb).distance;
+      }
+      if (pi >= 0) {
+        Vector2 c = {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f};
+        Ray ray = GetScreenToWorldRay(c, ed->camera);
+        BoundingBox bb = {
+            Vector3Subtract(ed->placedProps[pi].position, Vector3Scale(ed->placedProps[pi].scale, 0.5f)),
+            Vector3Add(ed->placedProps[pi].position,      Vector3Scale(ed->placedProps[pi].scale, 0.5f)),
+        };
+        pt = GetRayCollisionBox(ray, bb).distance;
+      }
+      if (bi >= 0 && bt <= pt) { ed->selectedIndex = bi; ed->selectedType = 0; }
+      else if (pi >= 0)        { ed->selectedIndex = pi; ed->selectedType = 1; }
+      else                     { ed->selectedIndex = -1; }
+    }
 
-    if (ed->selectedIndex >= 0) {
+    if (ed->selectedIndex >= 0 && ed->selectedType == 0) {
       EditorPlacedBox *b = &ed->placed[ed->selectedIndex];
       bool ctrl  = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
       float step = ctrl ? 5.0f : 0.5f;
       bool changed = false;
 
-      // Move on world axes
       if (IsKeyPressed(KEY_RIGHT))     { b->position.x += step; changed = true; }
       if (IsKeyPressed(KEY_LEFT))      { b->position.x -= step; changed = true; }
       if (IsKeyPressed(KEY_UP))        { b->position.z -= step; changed = true; }
@@ -435,30 +829,19 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
       if (IsKeyPressed(KEY_PAGE_UP))   { b->position.y += step; changed = true; }
       if (IsKeyPressed(KEY_PAGE_DOWN)) { b->position.y -= step; changed = true; }
 
-      // Scale via scroll; hold X/Y/Z to constrain axis
       float scroll = GetMouseWheelMove();
       if (scroll != 0.0f) {
         float ss = 0.5f * scroll;
-        if (IsKeyDown(KEY_X)) {
-          b->scale.x = fmaxf(0.5f, b->scale.x + ss);
-        } else if (IsKeyDown(KEY_Y)) {
-          b->scale.y = fmaxf(0.5f, b->scale.y + ss);
-        } else if (IsKeyDown(KEY_Z)) {
-          b->scale.z = fmaxf(0.5f, b->scale.z + ss);
-        } else {
-          float ns = fmaxf(0.5f, b->scale.x + ss);
-          b->scale = (Vector3){ns, ns, ns};
-        }
+        if (IsKeyDown(KEY_X))      b->scale.x = fmaxf(0.5f, b->scale.x + ss);
+        else if (IsKeyDown(KEY_Y)) b->scale.y = fmaxf(0.5f, b->scale.y + ss);
+        else if (IsKeyDown(KEY_Z)) b->scale.z = fmaxf(0.5f, b->scale.z + ss);
+        else { float ns = fmaxf(0.5f, b->scale.x + ss); b->scale = (Vector3){ns,ns,ns}; }
         changed = true;
       }
+      if (changed) SyncBoxEntity(ed, world, ed->selectedIndex);
 
-      if (changed)
-        SyncBoxEntity(ed, world, ed->selectedIndex);
-
-      // Delete selected box
       if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) {
-        ModelCollection_t *mc =
-            ECS_GET(world, b->entity, ModelCollection_t, COMP_MODEL);
+        ModelCollection_t *mc = ECS_GET(world, b->entity, ModelCollection_t, COMP_MODEL);
         if (mc) ModelCollectionFree(mc);
         WorldDestroyEntity(world, b->entity);
         for (int i = ed->selectedIndex; i < ed->placedCount - 1; i++)
@@ -468,26 +851,67 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
       }
     }
 
+    if (ed->selectedIndex >= 0 && ed->selectedType == 1) {
+      EditorPlacedProp *p = &ed->placedProps[ed->selectedIndex];
+      bool ctrl  = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+      float step = ctrl ? 5.0f : 0.5f;
+
+      if (IsKeyPressed(KEY_RIGHT))     p->position.x += step;
+      if (IsKeyPressed(KEY_LEFT))      p->position.x -= step;
+      if (IsKeyPressed(KEY_UP))        p->position.z -= step;
+      if (IsKeyPressed(KEY_DOWN))      p->position.z += step;
+      if (IsKeyPressed(KEY_PAGE_UP))   p->position.y += step;
+      if (IsKeyPressed(KEY_PAGE_DOWN)) p->position.y -= step;
+
+      float scroll = GetMouseWheelMove();
+      if (scroll != 0.0f) {
+        if (IsKeyDown(KEY_R)) {
+          p->yaw += scroll * 0.2f;
+        } else {
+          float ns = fmaxf(0.25f, p->scale.x + scroll * 0.25f);
+          p->scale = (Vector3){ns, ns, ns};
+        }
+      }
+
+      if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) {
+        for (int i = ed->selectedIndex; i < ed->propCount - 1; i++)
+          ed->placedProps[i] = ed->placedProps[i + 1];
+        ed->propCount--;
+        ed->selectedIndex = -1;
+      }
+    }
+
   } else {
     // --- Place mode ---
 
-    // Sub-type switching: B=box, G=grunt spawner, R=ranger spawner
-    if (IsKeyPressed(KEY_B)) ed->placeType = 0;
-    if (IsKeyPressed(KEY_G)) ed->placeType = 1;
-    if (IsKeyPressed(KEY_R)) ed->placeType = 2;
-
-    // Scroll resizes box scale (only relevant in box mode)
-    if (ed->placeType == 0) {
-      float scroll = GetMouseWheelMove();
-      if (scroll != 0.0f) {
-        ed->boxScale += scroll * 0.5f;
-        if (ed->boxScale < 0.5f) ed->boxScale = 0.5f;
+    // Scroll: resize box scale in box mode, rotate prop yaw in prop mode
+    float scroll = GetMouseWheelMove();
+    if (ed->placeType == 0 && scroll != 0.0f) {
+      ed->boxScale += scroll * 0.5f;
+      if (ed->boxScale < 0.5f) ed->boxScale = 0.5f;
+    }
+    if (ed->placeType == 3 && scroll != 0.0f) {
+      if (IsKeyDown(KEY_LEFT_SHIFT)) {
+        ed->propPlaceScale += scroll * 0.25f;
+        if (ed->propPlaceScale < 0.25f) ed->propPlaceScale = 0.25f;
+      } else {
+        ed->propPlaceYaw += scroll * 0.2f;
       }
+    }
+    if (ed->placeType == 4 && scroll != 0.0f) {
+      ed->infoBoxHalfExtent += scroll * 0.25f;
+      if (ed->infoBoxHalfExtent < 0.5f)  ed->infoBoxHalfExtent = 0.5f;
+      if (ed->infoBoxHalfExtent > 20.0f) ed->infoBoxHalfExtent = 20.0f;
     }
 
     ed->hasHit = RaycastTerrain(ed, gw, &ed->hitPos);
 
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && ed->hasHit) {
+    // Only place on LMB when the object panel is not intercepting clicks
+    bool panelConsumedClick = false;
+    if (ed->objectPanelOpen) panelConsumedClick = true;
+
+    if (!panelConsumedClick && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && ed->hasHit) {
+      int histCap = EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS + EDITOR_MAX_PROPS + EDITOR_MAX_INFOBOXES;
       if (ed->placeType == 0 && ed->placedCount < EDITOR_MAX_BOXES) {
         Vector3 scale = {ed->boxScale, ed->boxScale, ed->boxScale};
         entity_t e = SpawnBoxModel(world, gw, ed->hitPos, scale);
@@ -496,18 +920,35 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
             .position = ed->hitPos,
             .scale    = scale,
         };
-        int top = ed->historyTop;
-        if (top < EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS)
-          ed->history[ed->historyTop++] = 0;
-      } else if (ed->placeType > 0 && ed->spawnerCount < EDITOR_MAX_SPAWNERS) {
+        if (ed->historyTop < histCap) ed->history[ed->historyTop++] = 0;
+      } else if ((ed->placeType == 1 || ed->placeType == 2) &&
+                 ed->spawnerCount < EDITOR_MAX_SPAWNERS) {
         int enemyType = ed->placeType - 1; // 0=grunt, 1=ranger
         ed->placedSpawners[ed->spawnerCount++] = (EditorPlacedSpawner){
             .position  = ed->hitPos,
             .enemyType = enemyType,
         };
-        int top = ed->historyTop;
-        if (top < EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS)
-          ed->history[ed->historyTop++] = 1;
+        if (ed->historyTop < histCap) ed->history[ed->historyTop++] = 1;
+      } else if (ed->placeType == 3 && ed->propCount < EDITOR_MAX_PROPS) {
+        float s = ed->propPlaceScale;
+        EditorPlacedProp *pp = &ed->placedProps[ed->propCount++];
+        pp->position = ed->hitPos;
+        pp->yaw      = ed->propPlaceYaw;
+        pp->scale    = (Vector3){s, s, s};
+        strncpy(pp->modelPath, ed->propPlaceModel, 255);
+        if (ed->historyTop < histCap) ed->history[ed->historyTop++] = 2;
+      } else if (ed->placeType == 4 && ed->infoBoxCount < EDITOR_MAX_INFOBOXES
+                 && !ed->infoBoxEditOpen) {
+        float hy = HeightMap_GetHeightCatmullRom(
+            &gw->terrainHeightMap, ed->hitPos.x, ed->hitPos.z);
+        ed->infoBoxPendingPos = (Vector3){
+            ed->hitPos.x,
+            hy + ed->infoBoxHalfExtent,
+            ed->hitPos.z};
+        ed->infoBoxTextLen    = 0;
+        ed->infoBoxTextBuf[0] = '\0';
+        ed->infoBoxEditOpen   = true;
+        EnableCursor();
       }
     }
 
@@ -521,6 +962,10 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
         WorldDestroyEntity(world, last->entity);
       } else if (t == 1 && ed->spawnerCount > 0) {
         ed->spawnerCount--;
+      } else if (t == 2 && ed->propCount > 0) {
+        ed->propCount--;
+      } else if (t == 4 && ed->infoBoxCount > 0) {
+        ed->infoBoxCount--;
       }
     }
   }
@@ -555,6 +1000,17 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
     DrawCubeWires(b->position, b->scale.x, b->scale.y, b->scale.z, wires);
   }
 
+  // Placed props (visual-only)
+  for (int i = 0; i < ed->propCount; i++) {
+    EditorPlacedProp *p = &ed->placedProps[i];
+    bool sel = (ed->transformMode && ed->selectedType == 1 && i == ed->selectedIndex);
+    Model m = (p->modelPath[0] != '\0') ? EditorGetModel(p->modelPath) : gw->obstacleModel;
+    DrawModelEx(m, p->position, (Vector3){0,1,0},
+                p->yaw * RAD2DEG, p->scale, sel ? YELLOW : WHITE);
+    DrawCubeWires(p->position, p->scale.x, p->scale.y, p->scale.z,
+                  sel ? SKYBLUE : GREEN);
+  }
+
   // Placed spawner wireframes
   for (int i = 0; i < ed->spawnerCount; i++) {
     EditorPlacedSpawner *s = &ed->placedSpawners[i];
@@ -566,16 +1022,38 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
                Vector3Add(s->position, (Vector3){0,0, 2}), col);
   }
 
+  // Placed info box wireframes
+  for (int i = 0; i < ed->infoBoxCount; i++) {
+    EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[i];
+    float s = ib->halfExtent * 2.0f;
+    DrawCube(ib->position, s, s, s, (Color){0, 200, 180, 18});
+    DrawCubeWires(ib->position, s, s, s, (Color){0, 220, 200, 255});
+  }
+
   // Place-mode preview ghost
-  if (!ed->transformMode && !ed->navPaintMode && ed->hasHit) {
+  if (!ed->transformMode && !ed->navPaintMode && ed->hasHit && !ed->objectPanelOpen) {
     if (ed->placeType == 0) {
       float s = ed->boxScale;
       DrawCube(ed->hitPos, s, s, s, (Color){255, 255, 100, 60});
       DrawCubeWires(ed->hitPos, s, s, s, YELLOW);
-    } else {
+    } else if (ed->placeType == 1 || ed->placeType == 2) {
       Color col = (ed->placeType == 1) ? RED : BLUE;
       DrawSphere(ed->hitPos, 1.5f, (Color){col.r, col.g, col.b, 80});
       DrawSphereWires(ed->hitPos, 1.5f, 8, 8, col);
+    } else if (ed->placeType == 3) {
+      float s = ed->propPlaceScale;
+      Model m = EditorGetModel(ed->propPlaceModel);
+      DrawModelEx(m, ed->hitPos, (Vector3){0,1,0},
+                  ed->propPlaceYaw * RAD2DEG, (Vector3){s,s,s},
+                  (Color){100, 255, 100, 80});
+      DrawCubeWires(ed->hitPos, s, s, s, GREEN);
+    } else if (ed->placeType == 4) {
+      float s = ed->infoBoxHalfExtent * 2.0f;
+      float hy = HeightMap_GetHeightCatmullRom(
+          &gw->terrainHeightMap, ed->hitPos.x, ed->hitPos.z);
+      Vector3 gp = {ed->hitPos.x, hy + ed->infoBoxHalfExtent, ed->hitPos.z};
+      DrawCube(gp, s, s, s, (Color){0, 200, 180, 35});
+      DrawCubeWires(gp, s, s, s, (Color){0, 220, 200, 200});
     }
   }
 
@@ -671,33 +1149,100 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
   } else if (ed->transformMode) {
     DrawText("[ TRANSFORM MODE ]", 20, 48, 18, SKYBLUE);
 
-    if (ed->selectedIndex >= 0) {
+    if (ed->selectedIndex >= 0 && ed->selectedType == 0) {
       EditorPlacedBox *b = &ed->placed[ed->selectedIndex];
-      DrawText(TextFormat("Pos  X:%.2f  Y:%.2f  Z:%.2f",
+      DrawText(TextFormat("BOX  Pos X:%.2f Y:%.2f Z:%.2f",
                           b->position.x, b->position.y, b->position.z),
                20, 74, 16, YELLOW);
-      DrawText(TextFormat("Scale  X:%.2f  Y:%.2f  Z:%.2f",
+      DrawText(TextFormat("Scale X:%.2f Y:%.2f Z:%.2f",
                           b->scale.x, b->scale.y, b->scale.z),
                20, 94, 16, YELLOW);
-      DrawText("[Arrows] Move XZ   [PgUp/Dn] Move Y   [Ctrl] x10 step\n"
-               "[Scroll] Scale uniform   [X/Y/Z]+Scroll Scale axis   [Del] Delete",
+      DrawText("[Arrows] Move XZ  [PgUp/Dn] Move Y  [Ctrl] x10\n"
+               "[Scroll] Scale uniform  [X/Y/Z]+Scroll Scale axis  [Del] Delete",
+               20, GetScreenHeight() - 42, 14, WHITE);
+    } else if (ed->selectedIndex >= 0 && ed->selectedType == 1) {
+      EditorPlacedProp *p = &ed->placedProps[ed->selectedIndex];
+      DrawText(TextFormat("PROP  Pos X:%.2f Y:%.2f Z:%.2f",
+                          p->position.x, p->position.y, p->position.z),
+               20, 74, 16, GREEN);
+      DrawText(TextFormat("Scale: %.2f  Yaw: %.1f°", p->scale.x, p->yaw * RAD2DEG),
+               20, 94, 16, GREEN);
+      DrawText("[Arrows] Move XZ  [PgUp/Dn] Move Y  [Ctrl] x10\n"
+               "[R]+Scroll Rotate  [Scroll] Scale  [Del] Delete",
                20, GetScreenHeight() - 42, 14, WHITE);
     } else {
-      DrawText(TextFormat("Boxes: %d", ed->placedCount), 20, 74, 16, LIGHTGRAY);
-      DrawText("[LMB] Select box   [TAB] Place mode   [Ctrl+S] Save   [ESC] Exit",
+      DrawText(TextFormat("Boxes: %d  Props: %d", ed->placedCount, ed->propCount),
+               20, 74, 16, LIGHTGRAY);
+      DrawText("[LMB] Select  [TAB] Place mode   [Ctrl+S] Save   [ESC] Menu",
                20, GetScreenHeight() - 28, 14, WHITE);
     }
   } else {
-    static const char *placeTypeNames[] = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER"};
-    static Color placeTypeColors[]      = {LIGHTGRAY, RED, BLUE};
-    int pt = ed->placeType < 3 ? ed->placeType : 0;
-    DrawText(TextFormat("[ %s ]  Boxes: %d  Spawners: %d  Scale: %.1f",
+    static const char *placeTypeNames[] = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER", "PROP (VISUAL)", "INFO BOX"};
+    static Color placeTypeColors[]      = {LIGHTGRAY, RED, BLUE, GREEN, {0,220,200,255}};
+    int pt = (ed->placeType < 5) ? ed->placeType : 0;
+
+    const char *extraInfo = "";
+    char extraBuf[64] = "";
+    if (ed->placeType == 0)
+      snprintf(extraBuf, sizeof(extraBuf), "  Scale: %.1f", ed->boxScale);
+    else if (ed->placeType == 3)
+      snprintf(extraBuf, sizeof(extraBuf), "  Scale: %.2f  Yaw: %.1f°",
+               ed->propPlaceScale, ed->propPlaceYaw * RAD2DEG);
+    else if (ed->placeType == 4)
+      snprintf(extraBuf, sizeof(extraBuf), "  Size: %.1f  [Scroll] Adjust",
+               ed->infoBoxHalfExtent * 2.0f);
+    extraInfo = extraBuf;
+
+    DrawText(TextFormat("[ %s ]  Boxes: %d  Spawners: %d  Props: %d  InfoBoxes: %d%s",
                         placeTypeNames[pt], ed->placedCount,
-                        ed->spawnerCount, ed->boxScale),
+                        ed->spawnerCount, ed->propCount, ed->infoBoxCount, extraInfo),
              20, 48, 18, placeTypeColors[pt]);
-    DrawText("[LMB] Place  [Z] Undo  [B] Box  [G] Grunt Spwn  [R] Ranger Spwn  "
-             "[Scroll] Resize  [TAB] Transform  [N] Nav Paint  [Ctrl+S] Save  [ESC] Menu",
-             20, GetScreenHeight() - 28, 14, WHITE);
+
+    // Show active terrain model name (strip directory prefix for brevity)
+    const char *terrainFull = gw->terrainModelPath;
+    const char *terrainSlash = strrchr(terrainFull, '/');
+    const char *terrainName = terrainSlash ? terrainSlash + 1 : terrainFull;
+    DrawText(TextFormat("TERRAIN: %s  [T] Change", terrainName),
+             20, 72, 14, (Color){120, 200, 255, 220});
+    {
+      const char *mLabel = (ed->missionType == MISSION_EXPLORATION) ? "EXPLORATION" : "WAVES";
+      Color mCol = (ed->missionType == MISSION_EXPLORATION) ? (Color){80, 220, 120, 220}
+                                                             : (Color){255, 180, 60, 220};
+      DrawText(TextFormat("MISSION: %s  [F] Toggle", mLabel), 20, 90, 14, mCol);
+    }
+
+    if (ed->objectPanelOpen) {
+      static const char *labels[]     = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER", "PROP (VISUAL)", "INFO BOX"};
+      static Color       itemColors[] = {LIGHTGRAY, RED, BLUE, GREEN, {0,220,200,255}};
+      int sw = GetScreenWidth();
+      int px = sw - 185, py = 50;
+      int pw = 170, ih = 38;
+      Vector2 mp = GetMousePosition();
+      DrawRectangle(px - 4, py - 4, pw + 8, 5 * (ih + 4) + 8, (Color){10,18,10,240});
+      DrawRectangleLines(px - 4, py - 4, pw + 8, 5 * (ih + 4) + 8, SKYBLUE);
+      DrawText("[V] Close", px + 4, py - 20, 14, GRAY);
+      for (int i = 0; i < 5; i++) {
+        bool sel = (ed->placeType == i);
+        bool hov = CheckCollisionPointRec(mp,
+            (Rectangle){(float)px, (float)(py + i*(ih+4)), (float)pw, (float)ih});
+        DrawRectangle(px, py + i*(ih+4), pw, ih,
+                      sel ? (Color){40,80,40,255} : (hov ? (Color){30,55,30,255} : (Color){20,35,20,255}));
+        DrawRectangleLines(px, py + i*(ih+4), pw, ih,
+                           (sel || hov) ? itemColors[i] : (Color){40,55,40,255});
+        DrawText(labels[i], px + 12, py + i*(ih+4) + 11, 16,
+                 sel ? YELLOW : itemColors[i]);
+      }
+    }
+
+    const char *hint = (ed->placeType == 3)
+        ? "[LMB] Place  [Scroll] Rotate  [Shift+Scroll] Scale  [Z] Undo  "
+          "[V] Objects  [TAB] Transform  [N] Nav Paint  [Ctrl+S] Save  [ESC] Menu"
+        : (ed->placeType == 4)
+        ? "[LMB] Place  [Scroll] Size  [Z] Undo  "
+          "[V] Objects  [TAB] Transform  [N] Nav Paint  [Ctrl+S] Save  [ESC] Menu"
+        : "[LMB] Place  [Scroll] Resize  [Z] Undo  "
+          "[V] Objects  [TAB] Transform  [N] Nav Paint  [Ctrl+S] Save  [ESC] Menu";
+    DrawText(hint, 20, GetScreenHeight() - 28, 14, WHITE);
   }
 
   // --- Pause overlay ---
@@ -757,6 +1302,118 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
     }
   }
 
+  // --- Model / terrain picker overlay ---
+  if (ed->modelPickerOpen || ed->terrainPickerOpen) {
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    DrawRectangle(0, 0, sw, sh, (Color){0, 0, 0, 160});
+
+    int vis    = (ed->edModelCount < PICKER_VIS) ? ed->edModelCount : PICKER_VIS;
+    int panelH = PICKER_HDR + vis * (PICKER_IH + PICKER_GAP) + PICKER_FTR;
+    int pw     = 360;
+    int px     = sw / 2 - pw / 2;
+    int py     = sh / 2 - panelH / 2;
+
+    DrawRectangle(px - 4, py - 4, pw + 8, panelH + 8, (Color){15, 20, 15, 240});
+    DrawRectangleLines(px - 4, py - 4, pw + 8, panelH + 8, SKYBLUE);
+    const char *title = ed->terrainPickerOpen ? "SELECT TERRAIN MODEL" : "SELECT PROP MODEL";
+    DrawText(title, px + 10, py + 10, 18, RAYWHITE);
+
+    const char *currentPath = ed->terrainPickerOpen
+        ? gw->terrainModelPath : ed->propPlaceModel;
+    if (ed->transformMode && ed->selectedIndex >= 0 && ed->selectedType == 1 && !ed->terrainPickerOpen)
+      currentPath = ed->placedProps[ed->selectedIndex].modelPath;
+
+    Vector2 mp = GetMousePosition();
+    for (int j = 0; j < vis; j++) {
+      int i  = ed->modelPickerScroll + j;
+      if (i >= ed->edModelCount) break;
+      int iy = py + PICKER_HDR + j * (PICKER_IH + PICKER_GAP);
+      bool sel = (strcmp(ed->edModelPaths[i], currentPath) == 0);
+      bool hov = CheckCollisionPointRec(mp,
+          (Rectangle){(float)px, (float)iy, (float)pw, (float)PICKER_IH});
+      DrawRectangle(px, iy, pw, PICKER_IH,
+                    sel ? (Color){30,70,30,255} : (hov ? (Color){25,45,25,255} : (Color){18,28,18,255}));
+      DrawRectangleLines(px, iy, pw, PICKER_IH,
+                         (sel||hov) ? SKYBLUE : (Color){40,55,40,255});
+      DrawText(ed->edModelNames[i], px + 10, iy + 9, 16,
+               sel ? YELLOW : LIGHTGRAY);
+    }
+
+    // Scrollbar when list overflows
+    if (ed->edModelCount > PICKER_VIS) {
+      int maxSc   = ed->edModelCount - PICKER_VIS;
+      int trackH  = vis * (PICKER_IH + PICKER_GAP);
+      int trackY  = py + PICKER_HDR;
+      int thumbH  = trackH * PICKER_VIS / ed->edModelCount;
+      if (thumbH < 12) thumbH = 12;
+      int thumbY  = trackY + (trackH - thumbH) * ed->modelPickerScroll / maxSc;
+      DrawRectangle(px + pw + 6, trackY, 6, trackH, (Color){30,40,30,255});
+      DrawRectangle(px + pw + 6, thumbY, 6, thumbH, SKYBLUE);
+    }
+
+    DrawText("[Scroll] Scroll  [LMB] Select  [M/T/ESC] Close",
+             px + 10, py + panelH - PICKER_FTR + 6, 12, GRAY);
+  }
+
+  // --- Info box text input dialog ---
+  if (ed->infoBoxEditOpen) {
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    int pw = 520, ph = 250;
+    int px = sw / 2 - pw / 2, py = sh / 2 - ph / 2;
+    DrawRectangle(0, 0, sw, sh, (Color){0, 0, 0, 140});
+    DrawRectangle(px, py, pw, ph, (Color){8, 14, 28, 245});
+    DrawRectangleLines(px, py, pw, ph, (Color){0, 210, 190, 255});
+    // Corner accents
+    DrawRectangle(px, py, 12, 2, (Color){0, 255, 230, 255});
+    DrawRectangle(px, py, 2, 12, (Color){0, 255, 230, 255});
+    DrawRectangle(px + pw - 12, py, 12, 2, (Color){0, 255, 230, 255});
+    DrawRectangle(px + pw - 2, py, 2, 12, (Color){0, 255, 230, 255});
+    DrawRectangle(px, py + ph - 2, 12, 2, (Color){0, 255, 230, 255});
+    DrawRectangle(px, py + ph - 12, 2, 12, (Color){0, 255, 230, 255});
+    DrawRectangle(px + pw - 12, py + ph - 2, 12, 2, (Color){0, 255, 230, 255});
+    DrawRectangle(px + pw - 2, py + ph - 12, 2, 12, (Color){0, 255, 230, 255});
+
+    DrawText("INFO BOX EDITOR", px + 16, py + 14, 18, (Color){0, 230, 210, 255});
+    DrawLine(px + 12, py + 38, px + pw - 12, py + 38, (Color){0, 80, 70, 200});
+
+    // Message field
+    DrawText("MESSAGE:", px + 16, py + 50, 14, LIGHTGRAY);
+    DrawRectangle(px + 16, py + 68, pw - 32, 34, (Color){4, 10, 22, 220});
+    DrawRectangleLines(px + 16, py + 68, pw - 32, 34, (Color){0, 150, 140, 255});
+    char disp[260];
+    snprintf(disp, sizeof(disp), "%s%s", ed->infoBoxTextBuf,
+             (((int)(GetTime() * 4)) % 2 == 0) ? "_" : " ");
+    DrawText(disp, px + 22, py + 76, 14, (Color){100, 255, 170, 255});
+
+    // Duration row
+    DrawText("DURATION:", px + 16, py + 120, 14, LIGHTGRAY);
+    DrawText(TextFormat("%.0f s", ed->infoBoxDuration), px + 110, py + 118, 18, YELLOW);
+    {
+      Vector2 mouse      = GetMousePosition();
+      Rectangle btnMinus = {(float)(px + 170), (float)(py + 115), 44, 24};
+      Rectangle btnPlus  = {(float)(px + 224), (float)(py + 115), 44, 24};
+      bool hovM = CheckCollisionPointRec(mouse, btnMinus);
+      bool hovP = CheckCollisionPointRec(mouse, btnPlus);
+      DrawRectangleRec(btnMinus, hovM ? (Color){0,160,140,255} : (Color){0,50,45,255});
+      DrawRectangleLinesEx(btnMinus, 1.0f, (Color){0,210,190,255});
+      DrawText("-5", px + 184, py + 119, 13, hovM ? WHITE : (Color){0,230,210,255});
+      DrawRectangleRec(btnPlus,  hovP ? (Color){0,160,140,255} : (Color){0,50,45,255});
+      DrawRectangleLinesEx(btnPlus,  1.0f, (Color){0,210,190,255});
+      DrawText("+5", px + 236, py + 119, 13, hovP ? WHITE : (Color){0,230,210,255});
+    }
+
+    // Trigger size row
+    DrawText("TRIGGER SIZE:", px + 16, py + 152, 14, LIGHTGRAY);
+    DrawText(TextFormat("%.1f m", ed->infoBoxHalfExtent * 2.0f), px + 130, py + 150, 18, YELLOW);
+    DrawText("scroll to adjust", px + 200, py + 154, 13, GRAY);
+
+    // Hints
+    if (ed->infoBoxTextLen == 0)
+      DrawText("(type message above)", px + 16, py + 185, 13, (Color){120, 120, 120, 255});
+    DrawText("[ENTER] Confirm", px + 16, py + ph - 36, 14, (Color){80, 230, 120, 255});
+    DrawText("[ESC] Cancel", px + pw - 130, py + ph - 36, 14, (Color){230, 80, 80, 255});
+  }
+
   // --- Naming overlay ---
   if (ed->isNaming) {
     int sw = GetScreenWidth(), sh = GetScreenHeight();
@@ -779,13 +1436,17 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
   EndDrawing();
 }
 
-void EditorSave(EditorState *ed, const char *path) {
+void EditorSave(EditorState *ed, GameWorld *gw, const char *path) {
   system("mkdir -p assets/levels");
   FILE *f = fopen(path, "w");
   if (!f)
     return;
 
-  fprintf(f, "{\n  \"boxes\": [\n");
+  char navPath[256];
+  NavmapPathFromLevel(path, navPath, sizeof(navPath));
+  const char *missionStr = (ed->missionType == MISSION_EXPLORATION) ? "exploration" : "waves";
+  fprintf(f, "{\n  \"terrain\": \"%s\",\n  \"navmap\": \"%s\",\n  \"mission\": \"%s\",\n  \"boxes\": [\n",
+          gw->terrainModelPath, navPath, missionStr);
   for (int i = 0; i < ed->placedCount; i++) {
     EditorPlacedBox *b = &ed->placed[i];
     const char *comma = (i < ed->placedCount - 1) ? "," : "";
@@ -802,8 +1463,38 @@ void EditorSave(EditorState *ed, const char *path) {
     fprintf(f, "    {\"x\": %.3f, \"y\": %.3f, \"z\": %.3f, \"type\": %d}%s\n",
             s->position.x, s->position.y, s->position.z, s->enemyType, comma);
   }
+  fprintf(f, "  ],\n  \"props\": [\n");
+  for (int i = 0; i < ed->propCount; i++) {
+    EditorPlacedProp *p = &ed->placedProps[i];
+    const char *comma = (i < ed->propCount - 1) ? "," : "";
+    fprintf(f,
+            "    {\"x\": %.3f, \"y\": %.3f, \"z\": %.3f"
+            ", \"yaw\": %.4f, \"sx\": %.3f, \"sy\": %.3f, \"sz\": %.3f"
+            ", \"model\": \"%s\"}%s\n",
+            p->position.x, p->position.y, p->position.z,
+            p->yaw, p->scale.x, p->scale.y, p->scale.z,
+            p->modelPath, comma);
+  }
+  fprintf(f, "  ],\n  \"infoboxes\": [\n");
+  for (int i = 0; i < ed->infoBoxCount; i++) {
+    EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[i];
+    const char *comma = (i < ed->infoBoxCount - 1) ? "," : "";
+    // Sanitize message: replace chars that break minimal JSON parser
+    char safemsg[256];
+    strncpy(safemsg, ib->message, 255);
+    safemsg[255] = '\0';
+    for (int j = 0; safemsg[j]; j++) {
+      if (safemsg[j] == '"' || safemsg[j] == '{' || safemsg[j] == '}' || safemsg[j] == '\\')
+        safemsg[j] = '\'';
+    }
+    fprintf(f,
+            "    {\"x\": %.3f, \"y\": %.3f, \"z\": %.3f"
+            ", \"ext\": %.2f, \"dur\": %.1f, \"msg\": \"%s\"}%s\n",
+            ib->position.x, ib->position.y, ib->position.z,
+            ib->halfExtent, ib->duration, safemsg, comma);
+  }
   fprintf(f, "  ]\n}\n");
   fclose(f);
 
-  ExportImage(ed->navImage, "assets/navmap.png");
+  ExportImage(ed->navImage, navPath);
 }

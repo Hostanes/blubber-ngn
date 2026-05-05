@@ -188,7 +188,8 @@ void RenderArchetype(world_t *world, archetype_t *arch) {
 
       mi->model.transform = mi->finalTransform;
 
-      DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, WHITE);
+      Color tint = (mi->tint.a == 0) ? WHITE : mi->tint;
+      DrawModel(mi->model, (Vector3){0, 0, 0}, 1.0f, tint);
     }
 
     // DEBUG continue
@@ -556,24 +557,97 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
     DrawRectangleLines(barX, barY, barW, barH, WHITE);
   }
 
-  // Wave HUD
+  // --- Weapon heat HUD (bottom-center, 5 slots) ---
   {
-    WaveState *ws = &game->waveState;
-    if (ws->allWavesComplete) {
-      DrawText("ALL WAVES COMPLETE", screenW/2 - 155, 50, 28, GOLD);
-    } else if (ws->currentWave > 0) {
-      DrawText(TextFormat("WAVE %d", ws->currentWave), screenW/2 - 55, 50, 32, RAYWHITE);
-      if (ws->waveActive) {
-        DrawText(TextFormat("Enemies: %d", ws->enemiesAlive), screenW/2 - 55, 90, 20, ORANGE);
-      } else {
-        int secs = (int)ws->nextWaveTimer + 1;
-        DrawText(TextFormat("Next wave in %d", secs), screenW/2 - 90, 90, 20, YELLOW);
+    MuzzleCollection_t *muzzles = ECS_GET(world, player, MuzzleCollection_t, COMP_MUZZLES);
+    if (muzzles && muzzles->count > 0) {
+      const int SLOTS      = 5;
+      const int slotW      = 56;
+      const int slotH      = 52;
+      const int slotGap    = 8;
+      const int barInset   = 6;
+      const int fillH      = 28;
+      const int totalW     = SLOTS * slotW + (SLOTS - 1) * slotGap;
+      const int startX     = screenW / 2 - totalW / 2;
+      const int slotY      = screenH - slotH - 16;
+
+      for (int i = 0; i < SLOTS; i++) {
+        int sx = startX + i * (slotW + slotGap);
+
+        bool hasWeapon = (i < muzzles->count);
+        bool isActive  = hasWeapon && ((uint32_t)i == game->playerActiveWeapon);
+
+        // Slot background
+        Color bgCol = isActive ? (Color){35, 40, 35, 220} : (Color){20, 22, 20, 180};
+        DrawRectangle(sx, slotY, slotW, slotH, bgCol);
+        DrawRectangleLines(sx, slotY, slotW, slotH,
+                           isActive ? RAYWHITE : (Color){70, 80, 70, 200});
+
+        if (!hasWeapon) continue;
+
+        Muzzle_t *m = &muzzles->Muzzles[i];
+        float heat = m->heat;
+        if (heat < 0.0f) heat = 0.0f;
+        if (heat > 1.0f) heat = 1.0f;
+
+        // Heat bar background
+        int bx = sx + barInset;
+        int by = slotY + slotH - fillH - barInset;
+        int bw = slotW - barInset * 2;
+        DrawRectangle(bx, by, bw, fillH, (Color){15, 15, 15, 240});
+
+        // Heat fill — color ramps green → yellow → orange → red
+        int fillW = (int)(bw * heat);
+        Color heatCol;
+        if (heat < 0.5f)
+          heatCol = (Color){(unsigned char)(heat * 2.0f * 255), 200, 0, 255};
+        else if (heat < 0.75f)
+          heatCol = (Color){255, (unsigned char)((1.0f - (heat - 0.5f) * 4.0f) * 200), 0, 255};
+        else
+          heatCol = (Color){255, (unsigned char)((1.0f - heat) * 80), 0, 255};
+
+        if (fillW > 0)
+          DrawRectangle(bx, by, fillW, fillH, heatCol);
+        DrawRectangleLines(bx, by, bw, fillH, (Color){100, 100, 100, 200});
+
+        // Percentage text inside bar
+        char pctBuf[8];
+        snprintf(pctBuf, sizeof(pctBuf), "%d%%", (int)(heat * 100.0f));
+        int tw = MeasureText(pctBuf, 12);
+        DrawText(pctBuf, bx + bw / 2 - tw / 2, by + fillH / 2 - 6, 12, WHITE);
+
+        // Weapon number label at top of slot
+        char lblBuf[4];
+        snprintf(lblBuf, sizeof(lblBuf), "%d", i + 1);
+        int lw = MeasureText(lblBuf, 13);
+        DrawText(lblBuf, sx + slotW / 2 - lw / 2, slotY + 4, 13,
+                 isActive ? RAYWHITE : GRAY);
       }
-    } else {
-      int secs = (int)ws->nextWaveTimer + 1;
-      DrawText(TextFormat("Wave starts in %d", secs), screenW/2 - 105, 50, 24, YELLOW);
     }
   }
+
+  // Wave HUD — hidden for exploration levels
+  {
+    WaveState *ws = &game->waveState;
+    if (ws->missionType != MISSION_EXPLORATION) {
+      if (ws->allWavesComplete) {
+        DrawText("ALL WAVES COMPLETE", screenW/2 - 155, 50, 28, GOLD);
+      } else if (ws->currentWave > 0) {
+        DrawText(TextFormat("WAVE %d", ws->currentWave), screenW/2 - 55, 50, 32, RAYWHITE);
+        if (ws->waveActive) {
+          DrawText(TextFormat("Enemies: %d", ws->enemiesAlive), screenW/2 - 55, 90, 20, ORANGE);
+        } else {
+          int secs = (int)ws->nextWaveTimer + 1;
+          DrawText(TextFormat("Next wave in %d", secs), screenW/2 - 90, 90, 20, YELLOW);
+        }
+      } else {
+        int secs = (int)ws->nextWaveTimer + 1;
+        DrawText(TextFormat("Wave starts in %d", secs), screenW/2 - 105, 50, 24, YELLOW);
+      }
+    }
+  }
+
+  MessageSystem_Render(&game->messageSystem);
 
   EndDrawing();
 }

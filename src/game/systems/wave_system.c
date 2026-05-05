@@ -18,11 +18,13 @@ static const WaveDef kWaves[] = {
 #define WAVE_COUNT ((int)(sizeof(kWaves) / sizeof(kWaves[0])))
 
 void WaveSystem_Init(GameWorld *gw) {
+  MissionType mt                 = gw->waveState.missionType; // preserve across init
   gw->waveState.currentWave      = 0;
   gw->waveState.enemiesAlive     = 0;
   gw->waveState.nextWaveTimer    = FIRST_WAVE_DELAY;
   gw->waveState.waveActive       = false;
   gw->waveState.allWavesComplete = false;
+  gw->waveState.missionType      = mt;
 }
 
 static int CountLiveEnemies(world_t *world, GameWorld *gw) {
@@ -99,6 +101,7 @@ static void StartWave(world_t *world, GameWorld *gw) {
 void WaveSystem_Update(world_t *world, GameWorld *gw, float dt) {
   WaveState *ws = &gw->waveState;
 
+  if (ws->missionType == MISSION_EXPLORATION) return;
   if (ws->allWavesComplete) return;
 
   ws->enemiesAlive = CountLiveEnemies(world, gw);

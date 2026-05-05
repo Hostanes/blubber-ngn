@@ -5,6 +5,8 @@
 #include "../engine/ecs/component_registry.h"
 #include "../engine/ecs/world.h"
 #include "../engine/math/heightmap.h"
+#include "../engine/sound/sound.h"
+#include "systems/message_system.h"
 #include "../engine/util/bitset.h"
 #include "components/components.h"
 #include "ecs_get.h"
@@ -29,7 +31,13 @@ enum CollisionLayer {
   LAYER_TRIGGER = 4
 };
 
+typedef enum {
+  MISSION_WAVES = 0,
+  MISSION_EXPLORATION = 1,
+} MissionType;
+
 typedef struct {
+  MissionType missionType;
   int currentWave; // 1-indexed; 0 = not started
   int enemiesAlive;
   float nextWaveTimer;
@@ -70,10 +78,16 @@ typedef struct GameWorld {
   int targetFPS;
   bool showFPS;
 
+  float fov;
+  int resWidth;
+  int resHeight;
+  bool fullscreen;
+  enum gameState settingsPrevState;
+
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
       tutorialBoxArchId, missileArchId, wallSegArchId, spawnerArchId,
-      particleArchId, enemyMeleeArchId;
+      particleArchId, enemyMeleeArchId, infoBoxArchId;
 
   WaveState waveState;
 
@@ -91,9 +105,11 @@ typedef struct GameWorld {
   Model gruntTorso;
   Model gruntLegs;
   Model gruntGun;
+  Model gruntSaw;
 
   HeightMap terrainHeightMap;
   Model terrainModel;
+  char terrainModelPath[256];
   Model ArenaModel175;
   Model ruinsModel;
   Model skyBox;
@@ -101,6 +117,9 @@ typedef struct GameWorld {
   Model obstacleModel;
 
   NavGrid navGrid;
+
+  SoundSystem_t soundSystem;
+  MessageSystem_t messageSystem;
 } GameWorld;
 
 static void TryKillEntity(world_t *world, entity_t e) {

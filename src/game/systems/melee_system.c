@@ -9,10 +9,26 @@
 #define MELEE_TRIGGER_DIST   20.0f
 #define MELEE_HIT_DIST        1.8f
 #define MELEE_DAMAGE         25.0f
-#define MELEE_REPATH_INTERVAL 3.0f
+#define MELEE_REPATH_INTERVAL 1.5f
 #define MELEE_ROTATE_SPEED   10.0f
 #define MELEE_SEP_RADIUS      2.5f
 #define MELEE_SEP_STRENGTH   12.0f
+
+static bool MeleeClearLOS(GameWorld *game, Vector3 from, Vector3 to) {
+  Vector3 diff = {to.x - from.x, 0.0f, to.z - from.z};
+  float dist = sqrtf(diff.x * diff.x + diff.z * diff.z);
+  if (dist < 0.001f) return true;
+  int steps = (int)(dist / 1.5f) + 1;
+  for (int s = 1; s < steps; s++) {
+    float t = (float)s / (float)steps;
+    Vector3 p = {from.x + diff.x * t, 0.0f, from.z + diff.z * t};
+    int cx, cy;
+    if (!NavGrid_WorldToCell(&game->navGrid, p, &cx, &cy)) return false;
+    if (game->navGrid.cells[NavGrid_Index(&game->navGrid, cx, cy)].type == NAV_CELL_WALL)
+      return false;
+  }
+  return true;
+}
 
 static void MeleeApplyDamage(world_t *world, entity_t target,
                               archetype_t *arch, float damage) {
@@ -60,10 +76,17 @@ void EnemyMeleeAISystem(world_t *world, GameWorld *game,
 
     if (me->repathTimer > 0.0f) me->repathTimer -= dt;
 
+    // Keep ground enemies glued to terrain except during lunge
+    if (me->state != MELEE_LUNGING) {
+      pos->value.y = terrainY;
+      vel->value.y = 0.0f;
+    }
+
     switch (me->state) {
 
     case MELEE_CHASING: {
-      if (distXZ < MELEE_TRIGGER_DIST) {
+      if (distXZ < MELEE_TRIGGER_DIST &&
+          MeleeClearLOS(game, pos->value, playerPos->value)) {
         vel->value       = (Vector3){0, 0, 0};
         me->state        = MELEE_WINDING_UP;
         me->windupTimer  = MELEE_WINDUP_TIME;
@@ -72,29 +95,28 @@ void EnemyMeleeAISystem(world_t *world, GameWorld *game,
         break;
       }
 
-      if (!me->pathPending) {
+      if (!me->pathPending && me->repathTimer <= 0.0f) {
         NavPath *path = ECS_GET(world, e, NavPath, COMP_NAVPATH);
-        bool arrived = EnemyFollowPath(world, game, e,
-                                       MELEE_CHASE_SPEED, MELEE_ROTATE_SPEED, dt);
-
-        if (arrived || (me->repathTimer <= 0.0f && path && path->count == 0)) {
-          // Request a new path toward the player
-          if (path && !me->pathPending) {
-            int cx, cy;
-            Vector3 goal = playerPos->value;
-            goal.y = terrainY;
-            if (NavGrid_WorldToCell(&game->navGrid, goal, &cx, &cy) &&
-                game->navGrid.cells[NavGrid_Index(&game->navGrid, cx, cy)].type
-                    != NAV_CELL_WALL) {
-              // Pass NULL for combat — flush will not try to set state
-              EnemyPathQueue_Submit(&game->navGrid, pos->value, goal,
-                                    path, &me->pathPending, NULL);
-            }
-            me->repathTimer = MELEE_REPATH_INTERVAL;
-          }
+        Vector3 goal  = playerPos->value;
+        // Clamp goal to within safe play radius so nav grid stays in bounds
+        float gr = sqrtf(goal.x * goal.x + goal.z * goal.z);
+        if (gr > 175.0f) {
+          float s = 175.0f / gr;
+          goal.x *= s; goal.z *= s;
         }
+        goal.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                               goal.x, goal.z);
+        int cx, cy;
+        if (NavGrid_WorldToCell(&game->navGrid, goal, &cx, &cy) &&
+            game->navGrid.cells[NavGrid_Index(&game->navGrid, cx, cy)].type
+                != NAV_CELL_WALL) {
+          EnemyPathQueue_Submit(&game->navGrid, pos->value, goal,
+                                path, &me->pathPending, NULL, e);
+        }
+        me->repathTimer = MELEE_REPATH_INTERVAL;
       }
-      // else: path request in-flight, stand still this frame
+      if (!me->pathPending)
+        EnemyFollowPath(world, game, e, MELEE_CHASE_SPEED, MELEE_ROTATE_SPEED, dt);
     } break;
 
     case MELEE_WINDING_UP: {
@@ -149,8 +171,10 @@ void EnemyMeleeAISystem(world_t *world, GameWorld *game,
       vel->value   = (Vector3){0, 0, 0};
       me->recoverTimer -= dt;
       if (me->recoverTimer <= 0.0f) {
+        NavPath *path = ECS_GET(world, e, NavPath, COMP_NAVPATH);
+        if (path) NavPath_Clear(path);
         me->state       = MELEE_CHASING;
-        me->repathTimer = 0.0f; // trigger immediate repath
+        me->repathTimer = 0.0f;
       }
     } break;
     }

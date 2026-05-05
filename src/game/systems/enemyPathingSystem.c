@@ -17,6 +17,7 @@ typedef struct {
   NavPath       *outPath;
   bool          *pendingFlag;
   CombatState_t *combat;
+  entity_t       owner;
 } PathRequest;
 
 static PathRequest s_pathQueue[PATH_QUEUE_CAP];
@@ -26,7 +27,7 @@ static int         s_pathCount = 0;
 
 bool EnemyPathQueue_Submit(NavGrid *grid, Vector3 start, Vector3 goal,
                            NavPath *outPath, bool *pendingFlag,
-                           CombatState_t *combat) {
+                           CombatState_t *combat, entity_t owner) {
   if (s_pathCount >= PATH_QUEUE_CAP) return false;
 
   s_pathQueue[s_pathTail] = (PathRequest){
@@ -36,6 +37,7 @@ bool EnemyPathQueue_Submit(NavGrid *grid, Vector3 start, Vector3 goal,
       .outPath     = outPath,
       .pendingFlag = pendingFlag,
       .combat      = combat,
+      .owner       = owner,
   };
   s_pathTail = (s_pathTail + 1) % PATH_QUEUE_CAP;
   s_pathCount++;
@@ -43,19 +45,30 @@ bool EnemyPathQueue_Submit(NavGrid *grid, Vector3 start, Vector3 goal,
   return true;
 }
 
-void EnemyPathQueue_Flush(int maxPerFrame) {
+void EnemyPathQueue_Reset(void) {
+  s_pathHead  = 0;
+  s_pathTail  = 0;
+  s_pathCount = 0;
+}
+
+void EnemyPathQueue_Flush(world_t *world, int maxPerFrame) {
   int processed = 0;
   while (s_pathCount > 0 && processed < maxPerFrame) {
     PathRequest *req = &s_pathQueue[s_pathHead];
     s_pathHead = (s_pathHead + 1) % PATH_QUEUE_CAP;
     s_pathCount--;
+    processed++;
+
+    // Skip if the requesting entity died since the request was submitted
+    if (!EntityIsAlive(&world->entityManager, req->owner)) {
+      *req->pendingFlag = false;
+      continue;
+    }
 
     bool ok = NavGrid_FindPath(req->grid, req->start, req->goal, req->outPath);
     *req->pendingFlag = false;
     if (ok && req->combat)
       req->combat->state = ENEMY_STATE_MOVING;
-    // on failure: state stays COMBAT; repath timer will allow retry
-    processed++;
   }
 }
 
@@ -220,7 +233,7 @@ void EnemyGruntAISystem(world_t *world, GameWorld *game,
               == NAV_CELL_WALL) continue;
 
           if (EnemyPathQueue_Submit(&game->navGrid, pos->value, cand, path,
-                                    &combat->pathPending, combat)) {
+                                    &combat->pathPending, combat, e)) {
             repathTimer->value = repathInterval;
             break;
           }
@@ -291,7 +304,7 @@ void EnemyRangerAISystem(world_t *world, GameWorld *game,
         ringTarget.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
                                                       ringTarget.x, ringTarget.z);
         if (EnemyPathQueue_Submit(&game->navGrid, pos->value, ringTarget, path,
-                                  &combat->pathPending, combat)) {
+                                  &combat->pathPending, combat, e)) {
           repathTimer->value = repathInterval;
         }
       }
