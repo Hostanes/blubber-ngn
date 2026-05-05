@@ -1,4 +1,4 @@
-<img width="556" height="320" alt="Pasted image 20260224033844" src="https://github.com/user-attachments/assets/88a3c71b-ad32-4a09-9d30-e8a4d694244d" />
+
 ```
   A mech fps shooter written in C and using raylib for rendering.
   Built to showcase data oriented design in a standard gaming context
