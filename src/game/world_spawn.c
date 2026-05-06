@@ -109,10 +109,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.terrainModel  = LoadModel("assets/models/terrain-level1.glb");
   strncpy(gw.terrainModelPath, "assets/models/terrain-level1.glb",
           sizeof(gw.terrainModelPath) - 1);
-  gw.ArenaModel175 = LoadModel("assets/models/175-arena-border.glb");
-  gw.ruinsModel    = LoadModel("assets/models/ruins.glb");
-  gw.obstacleModel = LoadModel("assets/models/obstacle.glb");
-  gw.skyBox        = LoadModel("assets/models/skybox.glb");
+  gw.obstacleModel      = LoadModel("assets/models/obstacle.glb");
+  gw.infoBoxMarkerModel = LoadModel("assets/models/exclamation-mark.glb");
   gw.gunModel      = LoadModel("assets/models/gun1.glb");
   gw.plasmaGunModel = LoadModel("assets/models/gun2-plasma.glb");
   gw.bulletModel   = LoadModel("assets/models/bullet.glb");
@@ -319,7 +317,7 @@ static int LoadSpawnersFromJSON(const char *text, LevelSpawner *spawners, int ma
   return count;
 }
 
-typedef struct { Vector3 pos; float halfExtent; char message[256]; float duration; } LevelInfoBox;
+typedef struct { Vector3 pos; float halfExtent; char message[256]; float duration; int triggerCount; float markerHeight; } LevelInfoBox;
 
 static int LoadInfoBoxesFromJSON(const char *text, LevelInfoBox *boxes, int maxCount) {
   const char *p = strstr(text, "\"infoboxes\"");
@@ -339,13 +337,15 @@ static int LoadInfoBoxesFromJSON(const char *text, LevelInfoBox *boxes, int maxC
     if (len >= 512) continue;
     char buf[512]; memcpy(buf, obj, len); buf[len] = '\0';
     LevelInfoBox ib = {0};
-    ib.halfExtent = 2.5f; ib.duration = 5.0f;
+    ib.halfExtent = 2.5f; ib.duration = 5.0f; ib.triggerCount = 1;
     JsonReadFloat(buf, "x",   &ib.pos.x);
     JsonReadFloat(buf, "y",   &ib.pos.y);
     JsonReadFloat(buf, "z",   &ib.pos.z);
     JsonReadFloat(buf, "ext", &ib.halfExtent);
     JsonReadFloat(buf, "dur", &ib.duration);
     JsonReadString(buf, "msg", ib.message, sizeof(ib.message));
+    { float tf = 1.0f; if (JsonReadFloat(buf, "trig", &tf)) ib.triggerCount = (int)tf; }
+    JsonReadFloat(buf, "mh", &ib.markerHeight);
     boxes[count++] = ib;
   }
   return count;
@@ -358,9 +358,6 @@ static void SpawnLevelBase(world_t *world, GameWorld *gw, const char *navmapPath
   if (!NavGrid_LoadFromImage(&gw->navGrid, navmapPath, 2, (Vector3){-180, 0, -180}))
     NavGrid_Init(&gw->navGrid, 180, 180, 2.0f, (Vector3){-180, 0, -180});
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
-  SpawnLevelModel(world, gw, gw->ruinsModel,     (Vector3){0,0,0}, (Vector3){0,0,0}, (Vector3){1,1,1});
-  SpawnLevelModel(world, gw, gw->skyBox,         (Vector3){0,0,0}, (Vector3){0,0,0}, (Vector3){1,1,1});
-  SpawnLevelModel(world, gw, gw->ArenaModel175,  (Vector3){0,0,0}, (Vector3){0,0,0}, (Vector3){1,1,1});
   SpawnBulletPool(world, gw);
   SpawnParticlePool(world, gw);
 }
@@ -405,7 +402,36 @@ void SpawnLevelFromFile(world_t *world, GameWorld *gw, const char *path) {
   NavmapPathFromLevel(path, navmapPath, sizeof(navmapPath));
   JsonReadString(text, "navmap", navmapPath, sizeof(navmapPath));
 
+  // Player spawn point — parse before SpawnLevelBase call so we can apply after
+  bool    hasSpawn = false;
+  Vector3 spawnPos = {0, 1.8f, 0};
+  {
+    const char *sp = strstr(text, "\"spawn\"");
+    if (sp) {
+      sp = strchr(sp, '{');
+      if (sp) {
+        char buf[128] = {0};
+        const char *end = strchr(sp, '}');
+        if (end && (end - sp) < (int)sizeof(buf) - 1) {
+          strncpy(buf, sp, (size_t)(end - sp + 1));
+          float sx = 0, sy = 1.8f, sz = 0;
+          JsonReadFloat(buf, "x", &sx);
+          JsonReadFloat(buf, "y", &sy);
+          JsonReadFloat(buf, "z", &sz);
+          spawnPos = (Vector3){sx, sy, sz};
+          hasSpawn = true;
+        }
+      }
+    }
+  }
+
   SpawnLevelBase(world, gw, navmapPath);
+
+  // Override player spawn position if level defines one
+  if (hasSpawn) {
+    Position *ppos = ECS_GET(world, gw->player, Position, COMP_POSITION);
+    if (ppos) ppos->value = spawnPos;
+  }
 
   static LevelBox      boxes[MAX_LEVEL_BOXES];
   static LevelSpawner  spawners[MAX_LEVEL_SPAWNERS];
@@ -422,13 +448,20 @@ void SpawnLevelFromFile(world_t *world, GameWorld *gw, const char *path) {
     SpawnBoxModel(world, gw, boxes[i].pos, boxes[i].scale);
   for (int i = 0; i < nSpawners; i++)
     SpawnEnemySpawner(world, gw, spawners[i].pos, spawners[i].enemyType);
+  bool skyboxSpawned = false;
   for (int i = 0; i < nProps; i++) {
+    bool isSkybox = (strstr(props[i].modelPath, "skybox") != NULL);
+    if (isSkybox) {
+      if (skyboxSpawned) continue;
+      skyboxSpawned = true;
+    }
     Model m = GetOrLoadPropModel(props[i].modelPath);
     SpawnProp(world, gw, m, props[i].pos, props[i].yaw, props[i].scale);
   }
   for (int i = 0; i < nInfoBoxes; i++)
     SpawnInfoBox(world, gw, infoboxes[i].pos, infoboxes[i].halfExtent,
-                 infoboxes[i].message, infoboxes[i].duration);
+                 infoboxes[i].message, infoboxes[i].duration,
+                 infoboxes[i].triggerCount, infoboxes[i].markerHeight);
 }
 
 // --- LEVEL 1 SPAWNER (hardcoded enemies) ---

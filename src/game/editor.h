@@ -31,6 +31,8 @@ typedef struct {
   float   halfExtent;
   char    message[256];
   float   duration;
+  int     triggerCount;   // 0 = infinite
+  float   markerHeight;   // Y offset of rotating model from box center
 } EditorPlacedInfoBox;
 
 typedef struct {
@@ -58,7 +60,7 @@ typedef struct {
 
   bool transformMode;  // false = place, true = select/transform
   int  selectedIndex;  // -1 = no selection
-  int  selectedType;   // 0 = box, 1 = prop (for transform mode)
+  int  selectedType;   // 0 = box, 1 = prop, 2 = info box (for transform mode)
 
   // Spawner placement
   EditorPlacedSpawner placedSpawners[EDITOR_MAX_SPAWNERS];
@@ -94,6 +96,13 @@ typedef struct {
   char  infoBoxTextBuf[256];
   int   infoBoxTextLen;
   float infoBoxDuration;
+  int   infoBoxMaxTriggers;    // 0 = infinite
+  float infoBoxMarkerHeight;   // Y offset of rotating model from box center
+  bool  infoBoxEditExisting;   // true when dialog edits an already-placed box
+
+  // Player spawn point
+  Vector3 edSpawnPoint;
+  bool    edHasSpawnPoint;
 
   // Undo history (0=box, 1=spawner, 2=prop, 4=infobox)
   uint8_t history[EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS + EDITOR_MAX_PROPS + EDITOR_MAX_INFOBOXES];

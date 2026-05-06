@@ -892,7 +892,8 @@ entity_t SpawnEnemyMelee(world_t *world, GameWorld *game, Vector3 position) {
 
 entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
                       Vector3 position, float halfExtent,
-                      const char *message, float duration) {
+                      const char *message, float duration,
+                      int maxTriggers, float markerHeight) {
   archetype_t *arch = WorldGetArchetype(world, gw->infoBoxArchId);
   entity_t e = WorldCreateEntity(world, &arch->mask);
 
@@ -901,11 +902,12 @@ entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
 
   InfoBox *ib = ECS_GET(world, e, InfoBox, COMP_INFOBOX);
   if (ib) {
-    ib->halfExtent = halfExtent;
+    ib->halfExtent    = halfExtent;
     strncpy(ib->message, message, sizeof(ib->message) - 1);
     ib->message[sizeof(ib->message) - 1] = '\0';
-    ib->duration  = duration;
-    ib->triggered = false;
+    ib->duration      = duration;
+    ib->triggersLeft  = (maxTriggers == 0) ? -1 : maxTriggers;
+    ib->markerHeight  = markerHeight;
   }
 
   Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);

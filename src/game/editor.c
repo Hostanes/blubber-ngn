@@ -135,7 +135,12 @@ void EditorInit(EditorState *ed, GameWorld *gw, world_t *world) {
   ed->infoBoxEditOpen   = false;
   ed->infoBoxTextLen    = 0;
   ed->infoBoxTextBuf[0] = '\0';
-  ed->infoBoxDuration   = 5.0f;
+  ed->infoBoxDuration     = 5.0f;
+  ed->infoBoxMaxTriggers  = 1;
+  ed->infoBoxMarkerHeight = 0.0f;
+
+  ed->edHasSpawnPoint = false;
+  ed->edSpawnPoint    = (Vector3){0, 1.8f, 0};
 
   ed->navPaintMode   = false;
   ed->navPaintType   = 0;
@@ -216,6 +221,35 @@ static int PickProp(EditorState *ed) {
     }
   }
   return best;
+}
+
+static int PickInfoBox(EditorState *ed) {
+  Vector2 center = {(float)GetScreenWidth() / 2.0f, (float)GetScreenHeight() / 2.0f};
+  Ray ray = GetScreenToWorldRay(center, ed->camera);
+  float bestT = 1e9f; int best = -1;
+  for (int i = 0; i < ed->infoBoxCount; i++) {
+    EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[i];
+    float he = ib->halfExtent;
+    BoundingBox bb = {
+        {ib->position.x - he, ib->position.y - he, ib->position.z - he},
+        {ib->position.x + he, ib->position.y + he, ib->position.z + he},
+    };
+    RayCollision col = GetRayCollisionBox(ray, bb);
+    if (col.hit && col.distance < bestT) { bestT = col.distance; best = i; }
+  }
+  return best;
+}
+
+static bool PickSpawnPoint(EditorState *ed, float *outDist) {
+  if (!ed->edHasSpawnPoint) return false;
+  Vector2 center = {(float)GetScreenWidth() / 2.0f, (float)GetScreenHeight() / 2.0f};
+  Ray ray = GetScreenToWorldRay(center, ed->camera);
+  Vector3 sp = ed->edSpawnPoint;
+  BoundingBox bb = {{sp.x - 1.0f, sp.y - 0.5f, sp.z - 1.0f},
+                    {sp.x + 1.0f, sp.y + 4.5f,  sp.z + 1.0f}};
+  RayCollision col = GetRayCollisionBox(ray, bb);
+  if (col.hit) { *outDist = col.distance; return true; }
+  return false;
 }
 
 // Pushes the placed[] entry back into its ECS entity (position, model scale, AABB).
@@ -395,6 +429,30 @@ void EditorLoad(EditorState *ed, GameWorld *gw, world_t *world, const char *path
     }
   }
 
+  // Parse player spawn point
+  {
+    ed->edHasSpawnPoint = false;
+    const char *sp = strstr(text, "\"spawn\"");
+    if (sp) {
+      sp = strchr(sp, '{');
+      if (sp) {
+        const char *ep = strchr(sp, '}');
+        if (ep) {
+          int len = (int)(ep - sp) + 1;
+          if (len < 128) {
+            char buf[128]; memcpy(buf, sp, len); buf[len] = '\0';
+            float sx = 0, sy = 1.8f, sz = 0;
+            JsonReadFloat(buf, "x", &sx);
+            JsonReadFloat(buf, "y", &sy);
+            JsonReadFloat(buf, "z", &sz);
+            ed->edSpawnPoint    = (Vector3){sx, sy, sz};
+            ed->edHasSpawnPoint = true;
+          }
+        }
+      }
+    }
+  }
+
   // Parse info boxes
   {
     ed->infoBoxCount = 0;
@@ -412,13 +470,15 @@ void EditorLoad(EditorState *ed, GameWorld *gw, world_t *world, const char *path
           if (len >= 512) continue;
           char buf[512]; memcpy(buf, obj, len); buf[len] = '\0';
           EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->infoBoxCount++];
-          ib->halfExtent = 2.5f; ib->duration = 5.0f;
+          ib->halfExtent = 2.5f; ib->duration = 5.0f; ib->triggerCount = 1;
           JsonReadFloat(buf, "x",   &ib->position.x);
           JsonReadFloat(buf, "y",   &ib->position.y);
           JsonReadFloat(buf, "z",   &ib->position.z);
           JsonReadFloat(buf, "ext", &ib->halfExtent);
           JsonReadFloat(buf, "dur", &ib->duration);
           JsonReadString(buf, "msg", ib->message, sizeof(ib->message));
+          { float tf = 1.0f; if (JsonReadFloat(buf, "trig", &tf)) ib->triggerCount = (int)tf; }
+          JsonReadFloat(buf, "mh", &ib->markerHeight);
         }
       }
     }
@@ -475,36 +535,70 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
       ed->infoBoxTextBuf[--ed->infoBoxTextLen] = '\0';
     {
       int sw2 = GetScreenWidth(), sh2 = GetScreenHeight();
-      int pw2 = 520, px2 = sw2 / 2 - pw2 / 2, py2 = sh2 / 2 - 125;
-      Vector2 mouse      = GetMousePosition();
-      Rectangle btnMinus = {(float)(px2 + 170), (float)(py2 + 115), 44, 24};
-      Rectangle btnPlus  = {(float)(px2 + 224), (float)(py2 + 115), 44, 24};
+      int pw2 = 520, px2 = sw2 / 2 - pw2 / 2, py2 = sh2 / 2 - 165;
+      Vector2 mouse       = GetMousePosition();
+      Rectangle durMinus  = {(float)(px2 + 170), (float)(py2 + 115), 44, 24};
+      Rectangle durPlus   = {(float)(px2 + 224), (float)(py2 + 115), 44, 24};
+      Rectangle trigMinus = {(float)(px2 + 170), (float)(py2 + 177), 30, 24};
+      Rectangle trigPlus  = {(float)(px2 + 210), (float)(py2 + 177), 30, 24};
+      Rectangle mhMinus   = {(float)(px2 + 170), (float)(py2 + 227), 44, 24};
+      Rectangle mhPlus    = {(float)(px2 + 224), (float)(py2 + 227), 44, 24};
       if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        if (CheckCollisionPointRec(mouse, btnMinus)) {
+        if (CheckCollisionPointRec(mouse, durMinus)) {
           ed->infoBoxDuration -= 5.0f;
           if (ed->infoBoxDuration < 1.0f) ed->infoBoxDuration = 1.0f;
         }
-        if (CheckCollisionPointRec(mouse, btnPlus)) {
+        if (CheckCollisionPointRec(mouse, durPlus)) {
           ed->infoBoxDuration += 5.0f;
           if (ed->infoBoxDuration > 120.0f) ed->infoBoxDuration = 120.0f;
+        }
+        if (CheckCollisionPointRec(mouse, trigMinus)) {
+          ed->infoBoxMaxTriggers--;
+          if (ed->infoBoxMaxTriggers < 0) ed->infoBoxMaxTriggers = 0;
+        }
+        if (CheckCollisionPointRec(mouse, trigPlus)) {
+          ed->infoBoxMaxTriggers++;
+          if (ed->infoBoxMaxTriggers > 99) ed->infoBoxMaxTriggers = 99;
+        }
+        if (CheckCollisionPointRec(mouse, mhMinus)) {
+          ed->infoBoxMarkerHeight -= 0.5f;
+          if (ed->infoBoxMarkerHeight < -10.0f) ed->infoBoxMarkerHeight = -10.0f;
+        }
+        if (CheckCollisionPointRec(mouse, mhPlus)) {
+          ed->infoBoxMarkerHeight += 0.5f;
+          if (ed->infoBoxMarkerHeight > 10.0f) ed->infoBoxMarkerHeight = 10.0f;
         }
       }
     }
     if (IsKeyPressed(KEY_ENTER) && ed->infoBoxTextLen > 0) {
-      int histCap = EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS + EDITOR_MAX_PROPS + EDITOR_MAX_INFOBOXES;
-      if (ed->infoBoxCount < EDITOR_MAX_INFOBOXES && ed->historyTop < histCap) {
-        EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->infoBoxCount++];
-        ib->position   = ed->infoBoxPendingPos;
-        ib->halfExtent = ed->infoBoxHalfExtent;
-        ib->duration   = ed->infoBoxDuration;
+      if (ed->infoBoxEditExisting) {
+        EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->selectedIndex];
+        ib->halfExtent   = ed->infoBoxHalfExtent;
+        ib->duration     = ed->infoBoxDuration;
+        ib->triggerCount = ed->infoBoxMaxTriggers;
+        ib->markerHeight = ed->infoBoxMarkerHeight;
         strncpy(ib->message, ed->infoBoxTextBuf, 255);
         ib->message[255] = '\0';
-        ed->history[ed->historyTop++] = 4;
+        ed->infoBoxEditExisting = false;
+      } else {
+        int histCap = EDITOR_MAX_BOXES + EDITOR_MAX_SPAWNERS + EDITOR_MAX_PROPS + EDITOR_MAX_INFOBOXES;
+        if (ed->infoBoxCount < EDITOR_MAX_INFOBOXES && ed->historyTop < histCap) {
+          EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->infoBoxCount++];
+          ib->position     = ed->infoBoxPendingPos;
+          ib->halfExtent   = ed->infoBoxHalfExtent;
+          ib->duration     = ed->infoBoxDuration;
+          ib->triggerCount = ed->infoBoxMaxTriggers;
+          ib->markerHeight = ed->infoBoxMarkerHeight;
+          strncpy(ib->message, ed->infoBoxTextBuf, 255);
+          ib->message[255] = '\0';
+          ed->history[ed->historyTop++] = 4;
+        }
       }
       ed->infoBoxEditOpen = false;
       DisableCursor();
     }
     if (IsKeyPressed(KEY_ESCAPE)) {
+      ed->infoBoxEditExisting = false;
       ed->infoBoxEditOpen = false;
       DisableCursor();
     }
@@ -691,7 +785,7 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
     int px = sw - 185, py = 50;
     int pw = 170, ih = 38;
     Vector2 mp = GetMousePosition();
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
       Rectangle r = {(float)px, (float)(py + i * (ih + 4)), (float)pw, (float)ih};
       if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mp, r)) {
         ed->placeType       = i;
@@ -790,12 +884,12 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
   } else if (ed->transformMode) {
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-      // Pick nearest of box or prop; prefer whichever is closer
-      int   bi = PickBox(ed),  pi = PickProp(ed);
-      float bt = 1e9f,         pt = 1e9f;
+      // Pick nearest object; select whichever ray hits closest
+      int   bi = PickBox(ed), pi = PickProp(ed), ii = PickInfoBox(ed);
+      float bt = 1e9f,        pt = 1e9f,         it = 1e9f,  st = 1e9f;
+      Vector2 c = {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f};
+      Ray ray = GetScreenToWorldRay(c, ed->camera);
       if (bi >= 0) {
-        Vector2 c = {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f};
-        Ray ray = GetScreenToWorldRay(c, ed->camera);
         BoundingBox bb = {
             Vector3Subtract(ed->placed[bi].position, Vector3Scale(ed->placed[bi].scale, 0.5f)),
             Vector3Add(ed->placed[bi].position,      Vector3Scale(ed->placed[bi].scale, 0.5f)),
@@ -803,17 +897,26 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
         bt = GetRayCollisionBox(ray, bb).distance;
       }
       if (pi >= 0) {
-        Vector2 c = {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f};
-        Ray ray = GetScreenToWorldRay(c, ed->camera);
         BoundingBox bb = {
             Vector3Subtract(ed->placedProps[pi].position, Vector3Scale(ed->placedProps[pi].scale, 0.5f)),
             Vector3Add(ed->placedProps[pi].position,      Vector3Scale(ed->placedProps[pi].scale, 0.5f)),
         };
         pt = GetRayCollisionBox(ray, bb).distance;
       }
-      if (bi >= 0 && bt <= pt) { ed->selectedIndex = bi; ed->selectedType = 0; }
-      else if (pi >= 0)        { ed->selectedIndex = pi; ed->selectedType = 1; }
-      else                     { ed->selectedIndex = -1; }
+      if (ii >= 0) {
+        float he = ed->placedInfoBoxes[ii].halfExtent;
+        Vector3 pos = ed->placedInfoBoxes[ii].position;
+        BoundingBox bb = {{pos.x-he,pos.y-he,pos.z-he},{pos.x+he,pos.y+he,pos.z+he}};
+        it = GetRayCollisionBox(ray, bb).distance;
+      }
+      PickSpawnPoint(ed, &st);
+
+      float best = fminf(bt, fminf(pt, fminf(it, st)));
+      if      (bt == best && bi >= 0) { ed->selectedIndex = bi; ed->selectedType = 0; }
+      else if (pt == best && pi >= 0) { ed->selectedIndex = pi; ed->selectedType = 1; }
+      else if (it == best && ii >= 0) { ed->selectedIndex = ii; ed->selectedType = 2; }
+      else if (st == best && st < 1e9f) { ed->selectedIndex = 0; ed->selectedType = 3; }
+      else                             { ed->selectedIndex = -1; }
     }
 
     if (ed->selectedIndex >= 0 && ed->selectedType == 0) {
@@ -881,6 +984,66 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
       }
     }
 
+    if (ed->selectedIndex >= 0 && ed->selectedType == 2) {
+      EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->selectedIndex];
+      bool ctrl  = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+      float step = ctrl ? 5.0f : 0.5f;
+
+      if (IsKeyPressed(KEY_RIGHT))     ib->position.x += step;
+      if (IsKeyPressed(KEY_LEFT))      ib->position.x -= step;
+      if (IsKeyPressed(KEY_UP))        ib->position.z -= step;
+      if (IsKeyPressed(KEY_DOWN))      ib->position.z += step;
+      if (IsKeyPressed(KEY_PAGE_UP))   ib->position.y += step;
+      if (IsKeyPressed(KEY_PAGE_DOWN)) ib->position.y -= step;
+
+      float scroll = GetMouseWheelMove();
+      if (scroll != 0.0f) {
+        if (IsKeyDown(KEY_R)) {
+          ib->markerHeight += scroll * 0.25f;
+          ib->markerHeight = fmaxf(-10.0f, fminf(10.0f, ib->markerHeight));
+        } else {
+          ib->halfExtent = fmaxf(0.5f, ib->halfExtent + scroll * 0.25f);
+        }
+      }
+
+      if (IsKeyPressed(KEY_E) && !ed->infoBoxEditOpen) {
+        ed->infoBoxHalfExtent   = ib->halfExtent;
+        ed->infoBoxDuration     = ib->duration;
+        ed->infoBoxMaxTriggers  = ib->triggerCount;
+        ed->infoBoxMarkerHeight = ib->markerHeight;
+        strncpy(ed->infoBoxTextBuf, ib->message, 255);
+        ed->infoBoxTextBuf[255] = '\0';
+        ed->infoBoxTextLen      = (int)strlen(ed->infoBoxTextBuf);
+        ed->infoBoxEditExisting = true;
+        ed->infoBoxEditOpen     = true;
+        EnableCursor();
+      }
+
+      if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) {
+        for (int i = ed->selectedIndex; i < ed->infoBoxCount - 1; i++)
+          ed->placedInfoBoxes[i] = ed->placedInfoBoxes[i + 1];
+        ed->infoBoxCount--;
+        ed->selectedIndex = -1;
+      }
+    }
+
+    if (ed->selectedIndex >= 0 && ed->selectedType == 3 && ed->edHasSpawnPoint) {
+      bool ctrl  = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+      float step = ctrl ? 5.0f : 0.5f;
+
+      if (IsKeyPressed(KEY_RIGHT))     ed->edSpawnPoint.x += step;
+      if (IsKeyPressed(KEY_LEFT))      ed->edSpawnPoint.x -= step;
+      if (IsKeyPressed(KEY_UP))        ed->edSpawnPoint.z -= step;
+      if (IsKeyPressed(KEY_DOWN))      ed->edSpawnPoint.z += step;
+      if (IsKeyPressed(KEY_PAGE_UP))   ed->edSpawnPoint.y += step;
+      if (IsKeyPressed(KEY_PAGE_DOWN)) ed->edSpawnPoint.y -= step;
+
+      if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) {
+        ed->edHasSpawnPoint = false;
+        ed->selectedIndex   = -1;
+      }
+    }
+
   } else {
     // --- Place mode ---
 
@@ -930,13 +1093,21 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
         };
         if (ed->historyTop < histCap) ed->history[ed->historyTop++] = 1;
       } else if (ed->placeType == 3 && ed->propCount < EDITOR_MAX_PROPS) {
-        float s = ed->propPlaceScale;
-        EditorPlacedProp *pp = &ed->placedProps[ed->propCount++];
-        pp->position = ed->hitPos;
-        pp->yaw      = ed->propPlaceYaw;
-        pp->scale    = (Vector3){s, s, s};
-        strncpy(pp->modelPath, ed->propPlaceModel, 255);
-        if (ed->historyTop < histCap) ed->history[ed->historyTop++] = 2;
+        bool wantSkybox = (strstr(ed->propPlaceModel, "skybox") != NULL);
+        bool hasSkybox  = false;
+        if (wantSkybox) {
+          for (int pi = 0; pi < ed->propCount; pi++)
+            if (strstr(ed->placedProps[pi].modelPath, "skybox") != NULL) { hasSkybox = true; break; }
+        }
+        if (!wantSkybox || !hasSkybox) {
+          float s = ed->propPlaceScale;
+          EditorPlacedProp *pp = &ed->placedProps[ed->propCount++];
+          pp->position = ed->hitPos;
+          pp->yaw      = ed->propPlaceYaw;
+          pp->scale    = (Vector3){s, s, s};
+          strncpy(pp->modelPath, ed->propPlaceModel, 255);
+          if (ed->historyTop < histCap) ed->history[ed->historyTop++] = 2;
+        }
       } else if (ed->placeType == 4 && ed->infoBoxCount < EDITOR_MAX_INFOBOXES
                  && !ed->infoBoxEditOpen) {
         float hy = HeightMap_GetHeightCatmullRom(
@@ -949,6 +1120,11 @@ void EditorUpdate(EditorState *ed, GameWorld *gw, world_t *world) {
         ed->infoBoxTextBuf[0] = '\0';
         ed->infoBoxEditOpen   = true;
         EnableCursor();
+      } else if (ed->placeType == 5) {
+        float hy = HeightMap_GetHeightCatmullRom(
+            &gw->terrainHeightMap, ed->hitPos.x, ed->hitPos.z);
+        ed->edSpawnPoint    = (Vector3){ed->hitPos.x, hy + 1.8f, ed->hitPos.z};
+        ed->edHasSpawnPoint = true;
       }
     }
 
@@ -984,8 +1160,7 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
   ClearBackground((Color){20, 20, 30, 255});
   BeginMode3D(ed->camera);
 
-  DrawModel(gw->terrainModel,   (Vector3){0, 0, 0}, 1.0f, WHITE);
-  DrawModel(gw->ArenaModel175,  (Vector3){0, 0, 0}, 1.0f, WHITE);
+  DrawModel(gw->terrainModel, (Vector3){0, 0, 0}, 1.0f, WHITE);
 
   gw->obstacleModel.transform = MatrixIdentity();
   for (int i = 0; i < ed->placedCount; i++) {
@@ -1025,9 +1200,10 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
   // Placed info box wireframes
   for (int i = 0; i < ed->infoBoxCount; i++) {
     EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[i];
+    bool sel = (ed->transformMode && ed->selectedType == 2 && i == ed->selectedIndex);
     float s = ib->halfExtent * 2.0f;
-    DrawCube(ib->position, s, s, s, (Color){0, 200, 180, 18});
-    DrawCubeWires(ib->position, s, s, s, (Color){0, 220, 200, 255});
+    DrawCube(ib->position, s, s, s, sel ? (Color){0, 200, 180, 55} : (Color){0, 200, 180, 18});
+    DrawCubeWires(ib->position, s, s, s, sel ? YELLOW : (Color){0, 220, 200, 255});
   }
 
   // Place-mode preview ghost
@@ -1103,6 +1279,20 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
     DrawCubeWires(ed->hitPos, dia, 0.3f, dia, col);
   }
 
+  // Player spawn point marker
+  if (ed->edHasSpawnPoint) {
+    Vector3 sp   = ed->edSpawnPoint;
+    bool    selSp = (ed->transformMode && ed->selectedType == 3 && ed->selectedIndex == 0);
+    Color   ringC = selSp ? YELLOW : (Color){50, 255, 80, 255};
+    // Vertical pole from ground to spawn height
+    DrawLine3D((Vector3){sp.x, sp.y - 1.8f, sp.z}, (Vector3){sp.x, sp.y + 2.0f, sp.z}, ringC);
+    // Sphere at the spawn position
+    DrawSphere(sp, 0.25f, ringC);
+    DrawSphereWires(sp, 0.25f, 6, 6, selSp ? YELLOW : GREEN);
+    // Ground ring
+    DrawCircle3D((Vector3){sp.x, sp.y - 1.8f, sp.z}, 0.8f, (Vector3){1,0,0}, 90.0f, ringC);
+  }
+
   EndMode3D();
 
   int cx = GetScreenWidth() / 2;
@@ -1170,16 +1360,37 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
       DrawText("[Arrows] Move XZ  [PgUp/Dn] Move Y  [Ctrl] x10\n"
                "[R]+Scroll Rotate  [Scroll] Scale  [Del] Delete",
                20, GetScreenHeight() - 42, 14, WHITE);
+    } else if (ed->selectedIndex >= 0 && ed->selectedType == 2) {
+      EditorPlacedInfoBox *ib = &ed->placedInfoBoxes[ed->selectedIndex];
+      const char *trigStr = (ib->triggerCount == 0) ? "INF" : TextFormat("%d", ib->triggerCount);
+      DrawText(TextFormat("INFO BOX  Pos X:%.2f Y:%.2f Z:%.2f",
+                          ib->position.x, ib->position.y, ib->position.z),
+               20, 74, 16, (Color){0, 220, 200, 255});
+      DrawText(TextFormat("Size: %.1fm  Dur: %.0fs  Triggers: %s  MarkerY: %.2f",
+                          ib->halfExtent * 2.0f, ib->duration, trigStr, ib->markerHeight),
+               20, 94, 16, (Color){0, 220, 200, 255});
+      DrawText(TextFormat("Msg: %.48s", ib->message), 20, 114, 14, LIGHTGRAY);
+      DrawText("[Arrows] Move XZ  [PgUp/Dn] Move Y  [Ctrl] x10\n"
+               "[Scroll] Resize  [R]+Scroll MarkerY  [E] Edit attrs  [Del] Delete",
+               20, GetScreenHeight() - 42, 14, WHITE);
+    } else if (ed->selectedIndex >= 0 && ed->selectedType == 3) {
+      DrawText(TextFormat("SPAWN POINT  X:%.2f Y:%.2f Z:%.2f",
+                          ed->edSpawnPoint.x, ed->edSpawnPoint.y, ed->edSpawnPoint.z),
+               20, 74, 16, GREEN);
+      DrawText("[Arrows] Move XZ  [PgUp/Dn] Move Y  [Ctrl] x10  [Del] Remove",
+               20, GetScreenHeight() - 28, 14, WHITE);
     } else {
-      DrawText(TextFormat("Boxes: %d  Props: %d", ed->placedCount, ed->propCount),
+      DrawText(TextFormat("Boxes: %d  Props: %d  InfoBoxes: %d  Spawn: %s",
+                          ed->placedCount, ed->propCount, ed->infoBoxCount,
+                          ed->edHasSpawnPoint ? "SET" : "NONE"),
                20, 74, 16, LIGHTGRAY);
       DrawText("[LMB] Select  [TAB] Place mode   [Ctrl+S] Save   [ESC] Menu",
                20, GetScreenHeight() - 28, 14, WHITE);
     }
   } else {
-    static const char *placeTypeNames[] = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER", "PROP (VISUAL)", "INFO BOX"};
-    static Color placeTypeColors[]      = {LIGHTGRAY, RED, BLUE, GREEN, {0,220,200,255}};
-    int pt = (ed->placeType < 5) ? ed->placeType : 0;
+    static const char *placeTypeNames[] = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER", "PROP (VISUAL)", "INFO BOX", "SPAWN POINT"};
+    static Color placeTypeColors[]      = {LIGHTGRAY, RED, BLUE, GREEN, {0,220,200,255}, {50,255,80,255}};
+    int pt = (ed->placeType < 6) ? ed->placeType : 0;
 
     const char *extraInfo = "";
     char extraBuf[64] = "";
@@ -1212,16 +1423,16 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
     }
 
     if (ed->objectPanelOpen) {
-      static const char *labels[]     = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER", "PROP (VISUAL)", "INFO BOX"};
-      static Color       itemColors[] = {LIGHTGRAY, RED, BLUE, GREEN, {0,220,200,255}};
+      static const char *labels[]     = {"BOX", "GRUNT SPAWNER", "RANGER SPAWNER", "PROP (VISUAL)", "INFO BOX", "SPAWN POINT"};
+      static Color       itemColors[] = {LIGHTGRAY, RED, BLUE, GREEN, {0,220,200,255}, {50,255,80,255}};
       int sw = GetScreenWidth();
       int px = sw - 185, py = 50;
       int pw = 170, ih = 38;
       Vector2 mp = GetMousePosition();
-      DrawRectangle(px - 4, py - 4, pw + 8, 5 * (ih + 4) + 8, (Color){10,18,10,240});
-      DrawRectangleLines(px - 4, py - 4, pw + 8, 5 * (ih + 4) + 8, SKYBLUE);
+      DrawRectangle(px - 4, py - 4, pw + 8, 6 * (ih + 4) + 8, (Color){10,18,10,240});
+      DrawRectangleLines(px - 4, py - 4, pw + 8, 6 * (ih + 4) + 8, SKYBLUE);
       DrawText("[V] Close", px + 4, py - 20, 14, GRAY);
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 6; i++) {
         bool sel = (ed->placeType == i);
         bool hov = CheckCollisionPointRec(mp,
             (Rectangle){(float)px, (float)(py + i*(ih+4)), (float)pw, (float)ih});
@@ -1358,7 +1569,7 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
   // --- Info box text input dialog ---
   if (ed->infoBoxEditOpen) {
     int sw = GetScreenWidth(), sh = GetScreenHeight();
-    int pw = 520, ph = 250;
+    int pw = 520, ph = 330;
     int px = sw / 2 - pw / 2, py = sh / 2 - ph / 2;
     DrawRectangle(0, 0, sw, sh, (Color){0, 0, 0, 140});
     DrawRectangle(px, py, pw, ph, (Color){8, 14, 28, 245});
@@ -1407,9 +1618,43 @@ void EditorRender(EditorState *ed, GameWorld *gw) {
     DrawText(TextFormat("%.1f m", ed->infoBoxHalfExtent * 2.0f), px + 130, py + 150, 18, YELLOW);
     DrawText("scroll to adjust", px + 200, py + 154, 13, GRAY);
 
-    // Hints
-    if (ed->infoBoxTextLen == 0)
-      DrawText("(type message above)", px + 16, py + 185, 13, (Color){120, 120, 120, 255});
+    // Trigger count row
+    DrawText("TRIGGERS:", px + 16, py + 192, 14, LIGHTGRAY);
+    const char *trigVal = (ed->infoBoxMaxTriggers == 0)
+        ? "INF" : TextFormat("%d", ed->infoBoxMaxTriggers);
+    DrawText(trigVal, px + 110, py + 190, 18, YELLOW);
+    {
+      Vector2 mouse      = GetMousePosition();
+      Rectangle tMinus   = {(float)(px + 170), (float)(py + 187), 30, 24};
+      Rectangle tPlus    = {(float)(px + 210), (float)(py + 187), 30, 24};
+      bool hovM = CheckCollisionPointRec(mouse, tMinus);
+      bool hovP = CheckCollisionPointRec(mouse, tPlus);
+      DrawRectangleRec(tMinus, hovM ? (Color){0,160,140,255} : (Color){0,50,45,255});
+      DrawRectangleLinesEx(tMinus, 1.0f, (Color){0,210,190,255});
+      DrawText("-",  px + 181, py + 191, 13, hovM ? WHITE : (Color){0,230,210,255});
+      DrawRectangleRec(tPlus,  hovP ? (Color){0,160,140,255} : (Color){0,50,45,255});
+      DrawRectangleLinesEx(tPlus,  1.0f, (Color){0,210,190,255});
+      DrawText("+",  px + 221, py + 191, 13, hovP ? WHITE : (Color){0,230,210,255});
+    }
+    DrawText("0=INF", px + 252, py + 194, 12, GRAY);
+
+    // Marker height row
+    DrawText("MARKER Y:", px + 16, py + 232, 14, LIGHTGRAY);
+    DrawText(TextFormat("%.1f", ed->infoBoxMarkerHeight), px + 110, py + 230, 18, YELLOW);
+    {
+      Vector2 mouse     = GetMousePosition();
+      Rectangle mhMinus = {(float)(px + 170), (float)(py + 227), 44, 24};
+      Rectangle mhPlus  = {(float)(px + 224), (float)(py + 227), 44, 24};
+      bool hovM = CheckCollisionPointRec(mouse, mhMinus);
+      bool hovP = CheckCollisionPointRec(mouse, mhPlus);
+      DrawRectangleRec(mhMinus, hovM ? (Color){0,160,140,255} : (Color){0,50,45,255});
+      DrawRectangleLinesEx(mhMinus, 1.0f, (Color){0,210,190,255});
+      DrawText("-0.5", px + 175, py + 231, 13, hovM ? WHITE : (Color){0,230,210,255});
+      DrawRectangleRec(mhPlus,  hovP ? (Color){0,160,140,255} : (Color){0,50,45,255});
+      DrawRectangleLinesEx(mhPlus,  1.0f, (Color){0,210,190,255});
+      DrawText("+0.5", px + 228, py + 231, 13, hovP ? WHITE : (Color){0,230,210,255});
+    }
+
     DrawText("[ENTER] Confirm", px + 16, py + ph - 36, 14, (Color){80, 230, 120, 255});
     DrawText("[ESC] Cancel", px + pw - 130, py + ph - 36, 14, (Color){230, 80, 80, 255});
   }
@@ -1489,11 +1734,17 @@ void EditorSave(EditorState *ed, GameWorld *gw, const char *path) {
     }
     fprintf(f,
             "    {\"x\": %.3f, \"y\": %.3f, \"z\": %.3f"
-            ", \"ext\": %.2f, \"dur\": %.1f, \"msg\": \"%s\"}%s\n",
+            ", \"ext\": %.2f, \"dur\": %.1f, \"trig\": %d"
+            ", \"mh\": %.2f, \"msg\": \"%s\"}%s\n",
             ib->position.x, ib->position.y, ib->position.z,
-            ib->halfExtent, ib->duration, safemsg, comma);
+            ib->halfExtent, ib->duration, ib->triggerCount,
+            ib->markerHeight, safemsg, comma);
   }
-  fprintf(f, "  ]\n}\n");
+  if (ed->edHasSpawnPoint)
+    fprintf(f, "  ],\n  \"spawn\": {\"x\": %.3f, \"y\": %.3f, \"z\": %.3f}\n}\n",
+            ed->edSpawnPoint.x, ed->edSpawnPoint.y, ed->edSpawnPoint.z);
+  else
+    fprintf(f, "  ]\n}\n");
   fclose(f);
 
   ExportImage(ed->navImage, navPath);

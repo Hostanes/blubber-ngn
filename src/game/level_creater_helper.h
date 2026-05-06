@@ -44,6 +44,7 @@ entity_t SpawnEnemySpawner(world_t *world, GameWorld *gw,
 
 entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
                       Vector3 position, float halfExtent,
-                      const char *message, float duration);
+                      const char *message, float duration,
+                      int maxTriggers, float markerHeight);
 
 #endif

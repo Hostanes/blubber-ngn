@@ -110,11 +110,9 @@ typedef struct GameWorld {
   HeightMap terrainHeightMap;
   Model terrainModel;
   char terrainModelPath[256];
-  Model ArenaModel175;
-  Model ruinsModel;
-  Model skyBox;
   Model obstaclesModel;
   Model obstacleModel;
+  Model infoBoxMarkerModel;
 
   NavGrid navGrid;
 

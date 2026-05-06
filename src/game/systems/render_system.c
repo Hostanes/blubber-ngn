@@ -453,7 +453,42 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
     }
   }
 
+  // Info box proximity wireframe + rotating marker model
+  {
+    archetype_t *ibArch = WorldGetArchetype(world, game->infoBoxArchId);
+    Position *ppos = ECS_GET(world, game->player, Position, COMP_POSITION);
+    if (ibArch && ppos) {
+      const float maxDist = 60.0f;
+      float yaw = (float)GetTime() * 90.0f;
+      for (uint32_t i = 0; i < ibArch->count; i++) {
+        entity_t ibe = ibArch->entities[i];
+        Active   *act = ECS_GET(world, ibe, Active,   COMP_ACTIVE);
+        if (!act || !act->value) continue;
+        InfoBox  *ib  = ECS_GET(world, ibe, InfoBox,  COMP_INFOBOX);
+        if (!ib || ib->triggersLeft == 0) continue;
+        Position *ipos = ECS_GET(world, ibe, Position, COMP_POSITION);
+        if (!ipos) continue;
+        float dx   = ppos->value.x - ipos->value.x;
+        float dz   = ppos->value.z - ipos->value.z;
+        float dist = sqrtf(dx*dx + dz*dz);
+        if (dist > maxDist) continue;
+        float alpha = 1.0f - dist / maxDist;
+        float sz    = ib->halfExtent * 2.0f;
+        DrawCubeWires(ipos->value, sz, sz, sz,
+                      ColorAlpha((Color){0, 230, 210, 255}, alpha * 0.6f));
+        Vector3 markerPos = {ipos->value.x,
+                             ipos->value.y + ib->markerHeight,
+                             ipos->value.z};
+        DrawModelEx(game->infoBoxMarkerModel, markerPos,
+                    (Vector3){0, 1, 0}, yaw,
+                    (Vector3){1.0f, 1.0f, 1.0f},
+                    ColorAlpha(WHITE, alpha));
+      }
+    }
+  }
+
   EndMode3D();
+
   DrawHealthBars(world, camera);
   DrawFPS(10, 10);
 
