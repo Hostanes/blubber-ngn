@@ -7,6 +7,33 @@
 #include <raymath.h>
 #include <string.h>
 
+static GameWorld *s_game = NULL;
+
+void LevelHelper_SetGame(GameWorld *game) { s_game = game; }
+
+void SpawnCoolant(world_t *world, GameWorld *game, Vector3 pos) {
+  archetype_t *arch = WorldGetArchetype(world, game->coolantArchId);
+  if (!arch) return;
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || active->value) continue;
+
+    active->value = true;
+    ECS_GET(world, e, Position, COMP_POSITION)->value = pos;
+
+    float vx = GetRandomValue(-150, 150) / 100.0f;
+    float vy = GetRandomValue(1200, 1600) / 100.0f;
+    float vz = GetRandomValue(-150, 150) / 100.0f;
+    ECS_GET(world, e, Velocity, COMP_VELOCITY)->value = (Vector3){vx, vy, vz};
+
+    Coolant *co = ECS_GET(world, e, Coolant, COMP_COOLANT);
+    co->lifetime      = 2.0f;
+    co->particleTimer = 0.0f;
+    return;
+  }
+}
+
 void Player_OnDeath(world_t *world, entity_t entity) {
   printf("killing player\n");
   MuzzleCollection_t *m =
@@ -43,9 +70,15 @@ void Grunt_OnDeath(world_t *world, entity_t entity) {
   }
 
   ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
-
   if (mc) {
     ModelCollectionFree(mc);
+  }
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos)
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
   }
 }
 
@@ -68,9 +101,15 @@ void Ranger_OnDeath(world_t *world, entity_t entity) {
 
   /* -------- Model Collection -------- */
   ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
-
   if (mc) {
     ModelCollectionFree(mc);
+  }
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos)
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
   }
 }
 
@@ -125,7 +164,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
 
   Model playerBody = LoadModelFromMesh(GenMeshCube(.05f, .05f, .05f));
 
-  ModelCollectionInit(mc, 5); // body + 3 guns + shadow
+  ModelCollectionInit(mc, 6); // body + 4 guns + shadow
 
   // Body (index 0)
   ModelCollectionAdd(mc, (ModelInstance_t){.model = playerBody,
@@ -159,7 +198,15 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
                                            .parentIndex = -1,
                                            .isActive = false});
 
-  // Shadow (index 4) — flat on terrain, updated each frame in
+  // Gun 4 — blunderbuss (index 4)
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->blunderbussModel,
+                                           .offset = (Vector3){0, -0.5f, 0},
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
+                                           .isActive = false});
+
+  // Shadow (index 5) — flat on terrain, updated each frame in
   // PlayerWeaponSystem
   ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->shadowModel,
                                            .scale = (Vector3){1, 1, 1},
@@ -198,8 +245,8 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
   MuzzleCollection_t *muzzles =
       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
-  muzzles->count = 3;
-  muzzles->Muzzles = calloc(3, sizeof(Muzzle_t));
+  muzzles->count = 4;
+  muzzles->Muzzles = calloc(4, sizeof(Muzzle_t));
 
   // Weapon 1: anti-health machine gun — low heat per shot, fast cooldown
   muzzles->Muzzles[0] = (Muzzle_t){
@@ -237,13 +284,33 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
 
   // Weapon 3: rocket launcher — handled by RocketLauncherSystem, not PlayerShootSystem
   muzzles->Muzzles[2] = (Muzzle_t){
+      .positionOffset      = {.value = {0.25f, -0.3f, 1.5f}},
+      .bulletType          = BULLET_TYPE_MISSILE,
+      .shieldMult          = 1.0f,
+      .healthMult          = 1.0f,
+      .fireRate            = 0.0f,
+      .heatPerShot         = 0.2f,   // 3 missiles × 0.2 = 0.6 per burst
+      .coolRate            = 0.04f,  // very slow dissipation
+      .coolRateOverheated  = 0.02f,
+      .overheatThreshold   = 0.40f,
+      .coolDelay           = 2.0f,
+  };
+
+  // Weapon 4: blunderbuss — wide spread shotgun, handled by BlunderbussSystem
+  muzzles->Muzzles[3] = (Muzzle_t){
       .positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
-      .bulletType  = BULLET_TYPE_MISSILE,
-      .shieldMult  = 1.0f,
-      .healthMult  = 1.0f,
-      .fireRate    = 0.0f,
-      .heatPerShot = 0.0f,
-      .coolRate    = 0.0f,
+      .bulletType     = BULLET_TYPE_STANDARD,
+      .shieldMult     = 0.4f,
+      .healthMult     = 2.0f,
+      .pierce         = false,
+      .spreadCount    = 10,
+      .spreadAngle    = 0.32f,
+      .fireRate       = 0.0f,
+      .heatPerShot    = 0.45f,
+      .coolRate       = 0.18f,
+      .coolRateOverheated = 0.08f,
+      .overheatThreshold  = 0.40f,
+      .coolDelay      = 1.5f,
   };
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -830,6 +897,13 @@ static void Melee_OnDeath(world_t *world, entity_t entity) {
   ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
   if (mc)
     ModelCollectionFree(mc);
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos)
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
+  }
 }
 
 entity_t SpawnEnemyMelee(world_t *world, GameWorld *game, Vector3 position) {
@@ -933,6 +1007,73 @@ entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
 
   Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);
   if (act) act->value = true;
+
+  return e;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Drone enemy                                                        */
+/* ------------------------------------------------------------------ */
+
+static void Drone_OnDeath(world_t *world, entity_t entity) {
+  ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
+  if (mc) ModelCollectionFree(mc);
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos)
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
+  }
+}
+
+entity_t SpawnEnemyDrone(world_t *world, GameWorld *game, Vector3 position) {
+  archetype_t *arch = WorldGetArchetype(world, game->enemyDroneArchId);
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                             position.x, position.z) + 3.0f;
+
+  ECS_GET(world, e, Active,    COMP_ACTIVE)->value    = true;
+  ECS_GET(world, e, Position,  COMP_POSITION)->value  = position;
+  ECS_GET(world, e, Velocity,  COMP_VELOCITY)->value  = (Vector3){0, 0, 0};
+  ECS_GET(world, e, Orientation, COMP_ORIENTATION)->yaw = 0.0f;
+
+  Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
+  hp->current = 25.0f;
+  hp->max     = 25.0f;
+
+  Shield *sh = ECS_GET(world, e, Shield, COMP_SHIELD);
+  sh->current = 120.0f;
+  sh->max     = 120.0f;
+
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+  ModelCollectionInit(mc, 1);
+  ModelCollectionAdd(mc, (ModelInstance_t){
+      .model        = game->gruntTorso,
+      .scale        = (Vector3){0.5f, 0.5f, 0.5f},
+      .offset       = (Vector3){0, 0, 0},
+      .rotation     = (Vector3){0, 0, 0},
+      .rotationMode = MODEL_ROT_YAW_ONLY,
+      .parentIndex  = -1,
+      .isActive     = true,
+  });
+
+  SphereCollider *sc = ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+  sc->radius = 0.7f;
+
+  CollisionInstance *ci = ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+  ci->type        = COLLIDER_SPHERE;
+  ci->layerMask   = 1 << LAYER_ENEMY;
+  ci->collideMask = (1 << LAYER_BULLET) | (1 << LAYER_PLAYER);
+
+  DroneEnemy *dr = ECS_GET(world, e, DroneEnemy, COMP_DRONE_ENEMY);
+  dr->hasTarget      = false;
+  dr->retargetTimer  = 0.0f;
+  dr->bobTimer       = (float)GetRandomValue(0, 628) / 100.0f;
+
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  od->fn = Drone_OnDeath;
 
   return e;
 }

@@ -48,4 +48,9 @@ entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
                       const char *message, float duration,
                       int maxTriggers, float markerHeight);
 
+void LevelHelper_SetGame(GameWorld *game);
+void SpawnCoolant(world_t *world, GameWorld *game, Vector3 pos);
+
+entity_t SpawnEnemyDrone(world_t *world, GameWorld *game, Vector3 position);
+
 #endif

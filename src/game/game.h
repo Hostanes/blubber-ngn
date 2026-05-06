@@ -67,6 +67,7 @@ typedef struct {
 } Engine;
 
 typedef enum { LOCKSTATE_IDLE = 0, LOCKSTATE_ACQUIRING, LOCKSTATE_LOCKED, LOCKSTATE_BURSTING } RocketLockState;
+typedef enum { HOOKSTATE_IDLE = 0, HOOKSTATE_FLYING, HOOKSTATE_PULLING } HookState;
 
 typedef struct GameWorld {
   entity_t player;
@@ -82,9 +83,19 @@ typedef struct GameWorld {
   int             rocketBurstIndex;      // cycles through targets
   float           rocketBurstTimer;      // countdown to next missile
   bool            rocketBurstGuided;     // true only when fully locked at release
+
+  // Blunderbuss hook state
+  HookState hookState;
+  Vector3   hookPos;      // current hook world position
+  Vector3   hookVel;      // flying velocity
+  Vector3   hookOrigin;   // position where hook was fired
+  entity_t  hookTarget;   // enemy the hook has stuck to
+
   enum gameState gameState;
 
   float gameOverTimer;
+  float damageFlash;
+  float prevPlayerHealth;
 
   uint32_t targetLevel;
   char targetLevelPath[256];
@@ -103,7 +114,8 @@ typedef struct GameWorld {
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
       tutorialBoxArchId, missileArchId, wallSegArchId, spawnerArchId,
-      particleArchId, enemyMeleeArchId, infoBoxArchId;
+      particleArchId, enemyMeleeArchId, infoBoxArchId, coolantArchId,
+      enemyDroneArchId;
 
   WaveState waveState;
 
@@ -116,6 +128,7 @@ typedef struct GameWorld {
   Model gunModel;
   Model plasmaGunModel;
   Model rocketLauncherModel;
+  Model blunderbussModel;
   Model shadowModel;
 
   Model missileEnemyModel;
@@ -132,6 +145,10 @@ typedef struct GameWorld {
   Model infoBoxMarkerModel;
 
   NavGrid navGrid;
+
+  Shader outlineShader;
+  int outlineColorLoc;
+  int outlineThicknessLoc;
 
   SoundSystem_t soundSystem;
   MessageSystem_t messageSystem;

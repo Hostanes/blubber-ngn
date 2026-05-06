@@ -69,6 +69,41 @@ void RegisterAllArchetypes(Engine *engine, GameWorld *gw, world_t *world) {
     ArchetypeAddInline(arch, COMP_ACTIVE,   sizeof(Active));
   }
 
+  // Drone enemy archetype
+  {
+    uint32_t bits[] = {
+      COMP_ACTIVE, COMP_POSITION, COMP_VELOCITY, COMP_ORIENTATION,
+      COMP_MODEL, COMP_HEALTH, COMP_SHIELD, COMP_ONDEATH,
+      COMP_SPHERE_COLLIDER, COMP_COLLISION_INSTANCE, COMP_DRONE_ENEMY
+    };
+    bitset_t mask = MakeMask(bits, 11);
+    gw->enemyDroneArchId = WorldCreateArchetype(world, &mask);
+    archetype_t *arch = WorldGetArchetype(world, gw->enemyDroneArchId);
+    ArchetypeAddInline(arch, COMP_ACTIVE,             sizeof(Active));
+    ArchetypeAddInline(arch, COMP_POSITION,           sizeof(Position));
+    ArchetypeAddInline(arch, COMP_VELOCITY,           sizeof(Velocity));
+    ArchetypeAddInline(arch, COMP_ORIENTATION,        sizeof(Orientation));
+    ArchetypeAddInline(arch, COMP_MODEL,              sizeof(ModelCollection_t));
+    ArchetypeAddInline(arch, COMP_HEALTH,             sizeof(Health));
+    ArchetypeAddInline(arch, COMP_SHIELD,             sizeof(Shield));
+    ArchetypeAddInline(arch, COMP_ONDEATH,            sizeof(OnDeath));
+    ArchetypeAddInline(arch, COMP_SPHERE_COLLIDER,    sizeof(SphereCollider));
+    ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE, sizeof(CollisionInstance));
+    ArchetypeAddInline(arch, COMP_DRONE_ENEMY,        sizeof(DroneEnemy));
+  }
+
+  // Coolant pickup archetype
+  {
+    uint32_t bits[] = {COMP_ACTIVE, COMP_POSITION, COMP_VELOCITY, COMP_COOLANT};
+    bitset_t mask = MakeMask(bits, 4);
+    gw->coolantArchId = WorldCreateArchetype(world, &mask);
+    archetype_t *arch = WorldGetArchetype(world, gw->coolantArchId);
+    ArchetypeAddInline(arch, COMP_ACTIVE,   sizeof(Active));
+    ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
+    ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
+    ArchetypeAddInline(arch, COMP_COOLANT,  sizeof(Coolant));
+  }
+
   // Bullet archetype
   {
     uint32_t bits[] = {
@@ -113,7 +148,8 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.infoBoxMarkerModel = LoadModel("assets/models/exclamation-mark.glb");
   gw.gunModel           = LoadModel("assets/models/gun1.glb");
   gw.plasmaGunModel     = LoadModel("assets/models/gun2-plasma.glb");
-  gw.rocketLauncherModel = LoadModel("assets/models/gun3.glb");
+  gw.rocketLauncherModel = LoadModel("assets/models/gun3-rocketlauncher.glb");
+  gw.blunderbussModel    = LoadModel("assets/models/gun4-blunderbus.glb");
   gw.bulletModel   = LoadModel("assets/models/bullet.glb");
   gw.shadowModel   = LoadModel("assets/models/shadow.glb");
   gw.enemyModel    = LoadModel("assets/models/enemy-target.glb");
@@ -121,6 +157,11 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.gruntSaw      = LoadModel("assets/models/enemies/grunt/saw.glb");
   gw.gruntLegs     = LoadModel("assets/models/enemies/grunt/grunt-legs.glb");
   gw.gruntTorso    = LoadModel("assets/models/enemies/grunt/grunt-torso.glb");
+
+  gw.outlineShader       = LoadShader("assets/shaders/outline.vs",
+                                      "assets/shaders/outline.fs");
+  gw.outlineColorLoc     = GetShaderLocation(gw.outlineShader, "outlineColor");
+  gw.outlineThicknessLoc = GetShaderLocation(gw.outlineShader, "outlineThickness");
 
   RegisterAllArchetypes(engine, &gw, world);
 
@@ -163,6 +204,17 @@ static void SpawnParticlePool(world_t *world, GameWorld *gw) {
   archetype_t *arch = WorldGetArchetype(world, gw->particleArchId);
   bitset_t mask = arch->mask;
   for (int i = 0; i < MAX_PARTICLES; i++) {
+    entity_t e = WorldCreateEntity(world, &mask);
+    ECS_GET(world, e, Active, COMP_ACTIVE)->value = false;
+  }
+}
+
+// --- COOLANT POOL SPAWN ---
+#define MAX_COOLANTS 64
+static void SpawnCoolantPool(world_t *world, GameWorld *gw) {
+  archetype_t *arch = WorldGetArchetype(world, gw->coolantArchId);
+  bitset_t mask = arch->mask;
+  for (int i = 0; i < MAX_COOLANTS; i++) {
     entity_t e = WorldCreateEntity(world, &mask);
     ECS_GET(world, e, Active, COMP_ACTIVE)->value = false;
   }
@@ -361,6 +413,7 @@ static void SpawnLevelBase(world_t *world, GameWorld *gw, const char *navmapPath
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
   SpawnBulletPool(world, gw);
   SpawnParticlePool(world, gw);
+  SpawnCoolantPool(world, gw);
 }
 
 // Derive a level-specific navmap path: "assets/levels/foo.json" -> "assets/levels/foo.navmap.png"

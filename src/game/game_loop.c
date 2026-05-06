@@ -1,6 +1,7 @@
 #include "components/muzzle.h"
 #include "editor.h"
 #include "game.h"
+#include "level_creater_helper.h"
 #include "rlgl.h"
 #include "systems/systems.h"
 #include "systems/wave_system.h"
@@ -306,6 +307,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
   Camera3D *camera = &engine->camera;
   static EditorState editorState = {0};
 
+  LevelHelper_SetGame(game);
+
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
 
@@ -373,6 +376,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       PlayerWeaponSystem(world, game, game->player, dt);
       PlayerShootSystem(world, game, game->player, dt);
       RocketLauncherSystem(world, game, game->player, camera, dt);
+      BlunderbussSystem(world, game, game->player, camera, dt);
       PlayerWeaponSwitchSystem(world, game, game->player);
 
       CollisionSyncSystem(world);
@@ -388,6 +392,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                           WorldGetArchetype(world, game->enemyRangerArchId), dt);
       EnemyMeleeAISystem(world, game,
                          WorldGetArchetype(world, game->enemyMeleeArchId), dt);
+      EnemyDroneAISystem(world, game,
+                         WorldGetArchetype(world, game->enemyDroneArchId), dt);
 
       EnemyAimSystem(world, game,
                      WorldGetArchetype(world, game->enemyGruntArchId), dt);
@@ -410,6 +416,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                    dt);
 
       ParticleSystem(world, WorldGetArchetype(world, game->particleArchId), dt);
+      CoolantSystem(world, game, dt);
 
       MovementSystem(world, WorldGetArchetype(world, game->missileArchId), dt);
       HomingMissileSystem(world, game,
@@ -428,6 +435,20 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                                            cosf(ori->pitch) * cosf(ori->yaw),
                                        });
       camera->up = (Vector3){0, 1, 0};
+
+      // Damage flash: trigger on health drop, fade out over ~0.8s
+      {
+        Health *ph = ECS_GET(world, game->player, Health, COMP_HEALTH);
+        if (ph) {
+          if (game->prevPlayerHealth < 0.0f)
+            game->prevPlayerHealth = ph->current;
+          if (ph->current < game->prevPlayerHealth)
+            game->damageFlash = 1.0f;
+          game->prevPlayerHealth = ph->current;
+        }
+        game->damageFlash -= dt * 1.25f;
+        if (game->damageFlash < 0.0f) game->damageFlash = 0.0f;
+      }
 
       RenderLevelSystem(world, game, camera);
 

@@ -154,6 +154,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
   archetype_t *enemyArch  = WorldGetArchetype(world, game->enemyGruntArchId);
   archetype_t *rangerArch = WorldGetArchetype(world, game->enemyRangerArchId);
   archetype_t *meleeArch  = WorldGetArchetype(world, game->enemyMeleeArchId);
+  archetype_t *droneArch  = WorldGetArchetype(world, game->enemyDroneArchId);
   archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
   archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
 
@@ -240,6 +241,7 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     CHECK_ARCH(enemyArch,    SOUND_HITMARKER, playerSoundPos);
     CHECK_ARCH(rangerArch,   SOUND_HITMARKER, playerSoundPos);
     CHECK_ARCH(meleeArch,    SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(droneArch,    SOUND_HITMARKER, playerSoundPos);
     CHECK_ARCH(obstacleArch, SOUND_CLANG,     prevPos);
     CHECK_ARCH(wallSegArch,  SOUND_CLANG,     prevPos);
 
@@ -266,8 +268,9 @@ static void SpawnExplosion(world_t *world, GameWorld *game, Vector3 center) {
       WorldGetArchetype(world, game->enemyGruntArchId),
       WorldGetArchetype(world, game->enemyRangerArchId),
       WorldGetArchetype(world, game->enemyMeleeArchId),
+      WorldGetArchetype(world, game->enemyDroneArchId),
   };
-  for (int t = 0; t < 4; t++) {
+  for (int t = 0; t < 5; t++) {
     archetype_t *arch = archs[t];
     if (!arch) continue;
     for (uint32_t i = 0; i < arch->count; i++) {
@@ -338,6 +341,7 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     archetype_t *enemyArch    = WorldGetArchetype(world, game->enemyGruntArchId);
     archetype_t *rangerArch   = WorldGetArchetype(world, game->enemyRangerArchId);
     archetype_t *meleeArch    = WorldGetArchetype(world, game->enemyMeleeArchId);
+    archetype_t *droneArch2   = WorldGetArchetype(world, game->enemyDroneArchId);
     archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
     archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
 
@@ -400,6 +404,7 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     CHECK_ARCH(enemyArch);
     CHECK_ARCH(rangerArch);
     CHECK_ARCH(meleeArch);
+    CHECK_ARCH(droneArch2);
     CHECK_ARCH(obstacleArch);
     CHECK_ARCH(wallSegArch);
 

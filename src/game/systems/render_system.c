@@ -396,6 +396,74 @@ static void DrawHealthBars(world_t *world, Camera *camera) {
   }
 }
 
+static void DrawOutlineArch(world_t *world, archetype_t *arch,
+                             Material mat) {
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value) continue;
+
+    ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+    if (!mc) continue;
+
+    for (uint32_t m = 0; m < mc->count; m++) {
+      ModelInstance_t *mi = &mc->models[m];
+      if (!mi->isActive) continue;
+      for (int k = 0; k < mi->model.meshCount; k++)
+        DrawMesh(mi->model.meshes[k], mat, mi->finalTransform);
+    }
+  }
+}
+
+static void DrawOutlinePass(world_t *world, GameWorld *game) {
+  // Build a material that uses the outline shader
+  Material mat = LoadMaterialDefault();
+  mat.shader = game->outlineShader;
+
+  const float thickness = 0.002f;
+  SetShaderValue(game->outlineShader, game->outlineThicknessLoc,
+                 &thickness, SHADER_UNIFORM_FLOAT);
+
+  // Archs to skip entirely (no outline)
+  uint32_t skipIds[] = {
+    game->enemyGruntArchId,
+    game->enemyRangerArchId,
+    game->enemyMeleeArchId,
+    game->enemyCapsuleArchId,
+    game->enemyMissileArchId,
+    game->enemyDroneArchId,
+    game->bulletArchId,
+    game->particleArchId,
+    game->missileArchId,
+    game->tutorialBoxArchId,
+    game->infoBoxArchId,
+    game->spawnerArchId,
+    game->coolantArchId,
+  };
+
+  Vector4 col = {0.0f, 0.0f, 0.0f, 1.0f};
+  SetShaderValue(game->outlineShader, game->outlineColorLoc,
+                 &col, SHADER_UNIFORM_VEC4);
+
+  rlEnableBackfaceCulling();
+  rlSetCullFace(RL_CULL_FACE_FRONT);
+
+  for (uint32_t i = 0; i < world->archetypeCount; i++) {
+    archetype_t *arch = &world->archetypes[i];
+    if (!ArchetypeHas(arch, COMP_MODEL)) continue;
+
+    bool skip = false;
+    for (int s = 0; s < (int)(sizeof(skipIds)/sizeof(skipIds[0])); s++) {
+      if (arch == WorldGetArchetype(world, skipIds[s])) { skip = true; break; }
+    }
+    if (skip) continue;
+
+    DrawOutlineArch(world, arch, mat);
+  }
+
+  rlSetCullFace(RL_CULL_FACE_BACK);
+}
+
 void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
 
   EnsureModelMask();
@@ -454,6 +522,26 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
     }
   }
 
+  // Coolant orbs
+  {
+    archetype_t *cArch = WorldGetArchetype(world, game->coolantArchId);
+    if (cArch) {
+      BeginBlendMode(BLEND_ALPHA);
+      for (uint32_t i = 0; i < cArch->count; i++) {
+        entity_t e = cArch->entities[i];
+        Active   *active = ECS_GET(world, e, Active,    COMP_ACTIVE);
+        if (!active || !active->value) continue;
+        Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+        Coolant  *co  = ECS_GET(world, e, Coolant,  COMP_COOLANT);
+        if (!pos || !co) continue;
+        float t = co->lifetime / 2.0f;
+        DrawSphere(pos->value, 0.38f,
+                   ColorAlpha((Color){30, 140, 255, 255}, 0.65f + t * 0.35f));
+      }
+      EndBlendMode();
+    }
+  }
+
   // Info box proximity wireframe + rotating marker model
   {
     archetype_t *ibArch = WorldGetArchetype(world, game->infoBoxArchId);
@@ -487,6 +575,65 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
       }
     }
   }
+
+  // Blunderbuss hook rope
+  if (game->hookState != HOOKSTATE_IDLE) {
+    Position *pp = ECS_GET(world, game->player, Position, COMP_POSITION);
+    if (pp) {
+      BeginBlendMode(BLEND_ALPHA);
+      Color ropeCol = (game->hookState == HOOKSTATE_PULLING)
+                        ? (Color){255, 200, 60, 220}   // orange when attached
+                        : (Color){200, 200, 200, 180};  // grey while flying
+      DrawLine3D(pp->value, game->hookPos, ropeCol);
+      DrawSphere(game->hookPos, 0.12f, ropeCol);
+      EndBlendMode();
+    }
+  }
+
+  // Drone shield beams — thin quadratic bezier arc from drone to its target
+  {
+    archetype_t *drArch = WorldGetArchetype(world, game->enemyDroneArchId);
+    if (drArch) {
+      BeginBlendMode(BLEND_ALPHA);
+      Color beamCol = (Color){60, 180, 255, 150};
+      for (uint32_t i = 0; i < drArch->count; i++) {
+        entity_t e = drArch->entities[i];
+        Active    *active = ECS_GET(world, e, Active,     COMP_ACTIVE);
+        if (!active || !active->value) continue;
+        Position  *pos = ECS_GET(world, e, Position,   COMP_POSITION);
+        DroneEnemy *dr = ECS_GET(world, e, DroneEnemy, COMP_DRONE_ENEMY);
+        if (!pos || !dr || !dr->hasTarget) continue;
+        Active   *ta = ECS_GET(world, dr->target, Active,   COMP_ACTIVE);
+        Position *tp = ECS_GET(world, dr->target, Position, COMP_POSITION);
+        if (!ta || !ta->value || !tp) continue;
+
+        Vector3 p0  = pos->value;
+        Vector3 p2  = tp->value;
+        // Control point: midpoint lifted to make a gentle arc
+        Vector3 ctrl = {
+          (p0.x + p2.x) * 0.5f,
+          (p0.y + p2.y) * 0.5f + 2.0f,
+          (p0.z + p2.z) * 0.5f,
+        };
+
+        Vector3 prev = p0;
+        for (int s = 1; s <= 16; s++) {
+          float t  = (float)s / 16.0f;
+          float mt = 1.0f - t;
+          Vector3 pt = {
+            mt*mt*p0.x + 2.0f*mt*t*ctrl.x + t*t*p2.x,
+            mt*mt*p0.y + 2.0f*mt*t*ctrl.y + t*t*p2.y,
+            mt*mt*p0.z + 2.0f*mt*t*ctrl.z + t*t*p2.z,
+          };
+          DrawLine3D(prev, pt, beamCol);
+          prev = pt;
+        }
+      }
+      EndBlendMode();
+    }
+  }
+
+  DrawOutlinePass(world, game);
 
   EndMode3D();
 
@@ -747,6 +894,24 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   }
 
   MessageSystem_Render(&game->messageSystem);
+
+  // Damage vignette — red edge fade on hit
+  if (game->damageFlash > 0.0f) {
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    // Ease-out: square the value so it snaps on and fades smoothly
+    float t   = game->damageFlash * game->damageFlash;
+    int   th  = sh / 4;   // vertical gradient thickness
+    int   tw  = sw / 5;   // horizontal gradient thickness
+    Color edge  = ColorAlpha((Color){200, 0, 0, 255}, t * 0.75f);
+    Color clear = (Color){0, 0, 0, 0};
+
+    BeginBlendMode(BLEND_ALPHA);
+    DrawRectangleGradientV(0,       0,        sw, th, edge, clear);   // top
+    DrawRectangleGradientV(0,       sh - th,  sw, th, clear, edge);   // bottom
+    DrawRectangleGradientH(0,       0,        tw, sh, edge, clear);   // left
+    DrawRectangleGradientH(sw - tw, 0,        tw, sh, clear, edge);   // right
+    EndBlendMode();
+  }
 
   EndDrawing();
 }

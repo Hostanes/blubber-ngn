@@ -5,20 +5,20 @@
 #define NEXT_WAVE_DELAY  5.0f
 #define FIRST_WAVE_DELAY 3.0f
 
-typedef struct { int grunts; int rangers; int melee; } WaveDef;
+typedef struct { int grunts; int rangers; int melee; int drones; } WaveDef;
 
 static const WaveDef kWaves[] = {
-  { 2, 0, 2},
-  { 4, 1, 3},
-  { 5, 2, 4},
-  { 7, 3, 4},
-  { 8, 4, 5},
-  {10, 5, 6},
+  { 2, 0, 2, 0},
+  { 4, 1, 3, 1},
+  { 5, 2, 4, 1},
+  { 7, 3, 4, 2},
+  { 8, 4, 5, 2},
+  {10, 5, 6, 3},
 };
 #define WAVE_COUNT ((int)(sizeof(kWaves) / sizeof(kWaves[0])))
 
 void WaveSystem_Init(GameWorld *gw) {
-  MissionType mt                 = gw->waveState.missionType; // preserve across init
+  MissionType mt                 = gw->waveState.missionType;
   gw->waveState.currentWave      = 0;
   gw->waveState.enemiesAlive     = 0;
   gw->waveState.nextWaveTimer    = FIRST_WAVE_DELAY;
@@ -33,8 +33,9 @@ static int CountLiveEnemies(world_t *world, GameWorld *gw) {
       WorldGetArchetype(world, gw->enemyGruntArchId),
       WorldGetArchetype(world, gw->enemyRangerArchId),
       WorldGetArchetype(world, gw->enemyMeleeArchId),
+      WorldGetArchetype(world, gw->enemyDroneArchId),
   };
-  for (int t = 0; t < 3; t++) {
+  for (int t = 0; t < 4; t++) {
     archetype_t *a = archs[t];
     if (!a) continue;
     for (uint32_t i = 0; i < a->count; i++) {
@@ -75,18 +76,18 @@ static void SpawnFromSpawners(world_t *world, GameWorld *gw, int enemyType, int 
 
   for (int i = 0; i < count; i++) {
     Vector3 p = positions[i % nPos];
-    // Small jitter so stacked spawners don't overlap
     p.x += (float)GetRandomValue(-300, 300) * 0.01f;
     p.z += (float)GetRandomValue(-300, 300) * 0.01f;
-    if (enemyType == 0)      SpawnEnemyGrunt(world, gw, p);
+    if      (enemyType == 0) SpawnEnemyGrunt(world,  gw, p);
     else if (enemyType == 1) SpawnEnemyRanger(world, gw, p);
-    else                     SpawnEnemyMelee(world, gw, p);
+    else if (enemyType == 2) SpawnEnemyMelee(world,  gw, p);
+    else                     SpawnEnemyDrone(world,  gw, p);
   }
 }
 
 static void StartWave(world_t *world, GameWorld *gw) {
   WaveState *ws = &gw->waveState;
-  int idx = ws->currentWave; // 0-indexed into kWaves
+  int idx = ws->currentWave;
   if (idx >= WAVE_COUNT) {
     ws->allWavesComplete = true;
     return;
@@ -96,6 +97,7 @@ static void StartWave(world_t *world, GameWorld *gw) {
   SpawnFromSpawners(world, gw, 0, kWaves[idx].grunts);
   SpawnFromSpawners(world, gw, 1, kWaves[idx].rangers);
   SpawnFromSpawners(world, gw, 2, kWaves[idx].melee);
+  SpawnFromSpawners(world, gw, 3, kWaves[idx].drones);
 }
 
 void WaveSystem_Update(world_t *world, GameWorld *gw, float dt) {

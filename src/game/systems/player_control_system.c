@@ -37,8 +37,8 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player,
   if (wi < 0 || wi >= muzzles->count)
     return;
 
-  // Weapon 2 (rocket launcher) is handled entirely by RocketLauncherSystem
-  if (wi == 2) return;
+  // Weapons 2 and 3 are handled by their own systems
+  if (wi == 2 || wi == 3) return;
 
   Muzzle_t *m = &muzzles->Muzzles[wi];
 
@@ -118,6 +118,9 @@ void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
 
   if (IsKeyPressed(KEY_THREE) && weaponCount >= 3)
     game->playerActiveWeapon = 2;
+
+  if (IsKeyPressed(KEY_FOUR) && weaponCount >= 4)
+    game->playerActiveWeapon = 3;
 
   // Clamp safety
   if (game->playerActiveWeapon >= weaponCount)
@@ -243,11 +246,11 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player,
   if (!mc || mc->count <= 1)
     return;
 
-  // Shadow (index 3): snap to terrain, slightly above to avoid clipping
-  if (mc->count > 3) {
+  // Shadow (last index): snap to terrain, slightly above to avoid clipping
+  if (mc->count > 1) {
     float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
                                                    pos->value.x, pos->value.z);
-    mc->models[3].offset.y = terrainY - pos->value.y + 0.1f;
+    mc->models[mc->count - 1].offset.y = terrainY - pos->value.y + 0.1f;
   }
 
   Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
@@ -401,7 +404,7 @@ void RocketLauncherSystem(world_t *world, GameWorld *game,
       if (game->rocketBurstGuided && n > 0) {
         entity_t tgt = game->rocketLockTargets[game->rocketBurstIndex % n];
         SpawnHomingMissile(world, game, player, tgt,
-                           m->worldPosition, m->forward, true, 50.0f);
+                           m->worldPosition, m->forward, true, 100.0f);
       } else {
         float yawOff = ((float)game->rocketBurstIndex - (ROCKET_BURST_COUNT - 1) * 0.5f) * 0.06f;
         float cy = cosf(yawOff), sy = sinf(yawOff);
@@ -413,6 +416,9 @@ void RocketLauncherSystem(world_t *world, GameWorld *game,
         SpawnHomingMissile(world, game, player, (entity_t){0},
                            m->worldPosition, fwd, false, 0.0f);
       }
+      m->heat += m->heatPerShot;
+      if (m->heat >= 1.0f) { m->heat = 1.0f; m->isOverheated = true; }
+      m->coolDelayTimer = m->coolDelay;
       QueueSound(&game->soundSystem, SOUND_WEAPON_FIRE, m->worldPosition, 0.8f, 0.4f);
       game->rocketBurstIndex++;
       game->rocketBurstRemaining--;
@@ -446,8 +452,13 @@ void RocketLauncherSystem(world_t *world, GameWorld *game,
     return;
   }
 
-  // Start burst on LMB release
+  // Start burst on LMB release (blocked while overheated)
   if (lmbReleased && game->rocketLockState != LOCKSTATE_IDLE) {
+    if (m->isOverheated) {
+      game->rocketLockState    = LOCKSTATE_IDLE;
+      game->rocketLockProgress = 0.0f;
+      return;
+    }
     game->rocketBurstGuided    = (game->rocketLockState == LOCKSTATE_LOCKED);
     game->rocketLockState      = LOCKSTATE_BURSTING;
     game->rocketBurstRemaining = ROCKET_BURST_COUNT;
@@ -456,7 +467,7 @@ void RocketLauncherSystem(world_t *world, GameWorld *game,
     return;
   }
 
-  if (!lmbHeld) return;
+  if (!lmbHeld || m->isOverheated) return;
 
   if (game->rocketLockState == LOCKSTATE_IDLE)
     game->rocketLockState = LOCKSTATE_ACQUIRING;

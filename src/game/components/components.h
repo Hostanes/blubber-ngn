@@ -13,6 +13,8 @@
 #include "infobox.h"
 #include "shield.h"
 #include "particle.h"
+#include "coolant.h"
+#include "drone_state.h"
 #include "melee_state.h"
 #include "movement.h"
 #include "muzzle.h"
@@ -62,4 +64,6 @@ enum {
   COMP_MELEE_ENEMY,
   COMP_TYPE_MELEE,
   COMP_INFOBOX,
+  COMP_COOLANT,
+  COMP_DRONE_ENEMY,
 };
