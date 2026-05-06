@@ -125,7 +125,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
 
   Model playerBody = LoadModelFromMesh(GenMeshCube(.05f, .05f, .05f));
 
-  ModelCollectionInit(mc, 4); // body + 2 guns + shadow
+  ModelCollectionInit(mc, 5); // body + 3 guns + shadow
 
   // Body (index 0)
   ModelCollectionAdd(mc, (ModelInstance_t){.model = playerBody,
@@ -151,7 +151,15 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
                                            .parentIndex = -1,
                                            .isActive = false});
 
-  // Shadow (index 3) — flat on terrain, updated each frame in
+  // Gun 3 — rocket launcher (index 3)
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->rocketLauncherModel,
+                                           .offset = (Vector3){0, -0.5f, 0},
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
+                                           .isActive = false});
+
+  // Shadow (index 4) — flat on terrain, updated each frame in
   // PlayerWeaponSystem
   ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->shadowModel,
                                            .scale = (Vector3){1, 1, 1},
@@ -190,8 +198,8 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
   MuzzleCollection_t *muzzles =
       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
-  muzzles->count = 2;
-  muzzles->Muzzles = calloc(2, sizeof(Muzzle_t));
+  muzzles->count = 3;
+  muzzles->Muzzles = calloc(3, sizeof(Muzzle_t));
 
   // Weapon 1: anti-health machine gun — low heat per shot, fast cooldown
   muzzles->Muzzles[0] = (Muzzle_t){
@@ -225,6 +233,17 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
       .coolRateOverheated = 0.12f,
       .overheatThreshold = 0.40f,
       .coolDelay = 0.8f,
+  };
+
+  // Weapon 3: rocket launcher — handled by RocketLauncherSystem, not PlayerShootSystem
+  muzzles->Muzzles[2] = (Muzzle_t){
+      .positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
+      .bulletType  = BULLET_TYPE_MISSILE,
+      .shieldMult  = 1.0f,
+      .healthMult  = 1.0f,
+      .fireRate    = 0.0f,
+      .heatPerShot = 0.0f,
+      .coolRate    = 0.0f,
   };
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -692,7 +711,8 @@ entity_t SpawnProp(world_t *world, GameWorld *gw, Model model, Vector3 position,
 }
 
 void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
-                        entity_t target, Vector3 position, Vector3 forward) {
+                        entity_t target, Vector3 position, Vector3 forward,
+                        bool guided, float turnSpeed) {
 
   archetype_t *arch = WorldGetArchetype(world, game->missileArchId);
   entity_t m = WorldCreateEntity(world, &arch->mask);
@@ -725,11 +745,12 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
 
   /* --- Homing Data --- */
   HomingMissile *hm = ECS_GET(world, m, HomingMissile, COMP_HOMINGMISSILE);
-  hm->owner = shooter;
-  hm->target = target;
-  hm->turnSpeed = 4.0f;
-  hm->maxSpeed = 50.0f;
-  hm->armed = false;
+  hm->owner     = shooter;
+  hm->target    = target;
+  hm->turnSpeed = turnSpeed;
+  hm->maxSpeed  = 50.0f;
+  hm->armed     = false;
+  hm->guided    = guided;
 
   /* --- Lifetime --- */
   Timer *life = ECS_GET(world, m, Timer, COMP_TIMER);

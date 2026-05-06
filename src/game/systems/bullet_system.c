@@ -79,7 +79,7 @@ void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
                 int shooterArchId, Muzzle_t *m) {
   if (m->bulletType == BULLET_TYPE_MISSILE) {
     SpawnHomingMissile(world, game, shooter, game->player,
-                       m->worldPosition, m->forward);
+                       m->worldPosition, m->forward, true, 4.0f);
     return;
   }
 
@@ -265,8 +265,9 @@ static void SpawnExplosion(world_t *world, GameWorld *game, Vector3 center) {
       WorldGetArchetype(world, game->playerArchId),
       WorldGetArchetype(world, game->enemyGruntArchId),
       WorldGetArchetype(world, game->enemyRangerArchId),
+      WorldGetArchetype(world, game->enemyMeleeArchId),
   };
-  for (int t = 0; t < 3; t++) {
+  for (int t = 0; t < 4; t++) {
     archetype_t *arch = archs[t];
     if (!arch) continue;
     for (uint32_t i = 0; i < arch->count; i++) {
@@ -303,35 +304,27 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     if (!hm || !pos || !vel || !ori)
       continue;
 
-    Position *targetPos = ECS_GET(world, hm->target, Position, COMP_POSITION);
+    // Guided missiles home toward their target; unguided fly straight
+    if (hm->guided) {
+      Position *targetPos = ECS_GET(world, hm->target, Position, COMP_POSITION);
+      if (targetPos) {
+        Vector3 toTarget  = Vector3Subtract(targetPos->value, pos->value);
+        float   distToTgt = Vector3Length(toTarget);
 
-    if (!targetPos)
-      continue;
+        if (!hm->armed && distToTgt < 20.0f)
+          hm->armed = true;
 
-    Vector3 toTarget   = Vector3Subtract(targetPos->value, pos->value);
-    float   distToTgt  = Vector3Length(toTarget);
-
-    // Arm once within x units — missile flies straight from this point on
-    if (!hm->armed && distToTgt < 20.0f)
-      hm->armed = true;
-
-    if (!hm->armed) {
-      Vector3 desiredDir = Vector3Normalize(toTarget);
-      Vector3 currentDir = Vector3Normalize(vel->value);
-
-      float maxTurn = hm->turnSpeed * dt;
-
-      Vector3 newDir = Vector3Lerp(currentDir, desiredDir, maxTurn);
-      newDir = Vector3Normalize(newDir);
-
-      float speed = Vector3Length(vel->value);
-      if (speed > hm->maxSpeed)
-        speed = hm->maxSpeed;
-
-      vel->value = Vector3Scale(newDir, speed);
-
-      ori->yaw   = atan2f(newDir.x, newDir.z);
-      ori->pitch = asinf(newDir.y);
+        if (!hm->armed) {
+          Vector3 desiredDir = Vector3Normalize(toTarget);
+          Vector3 currentDir = Vector3Normalize(vel->value);
+          Vector3 newDir     = Vector3Normalize(Vector3Lerp(currentDir, desiredDir, hm->turnSpeed * dt));
+          float   speed      = Vector3Length(vel->value);
+          if (speed > hm->maxSpeed) speed = hm->maxSpeed;
+          vel->value = Vector3Scale(newDir, speed);
+          ori->yaw   = atan2f(newDir.x, newDir.z);
+          ori->pitch = asinf(newDir.y);
+        }
+      }
     }
 
     /* --- Model orientation toward movement direction --- */

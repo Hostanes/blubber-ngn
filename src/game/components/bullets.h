@@ -22,7 +22,8 @@ typedef struct {
 typedef struct {
   entity_t owner;
   entity_t target;
-  float turnSpeed; // radians/sec
+  float turnSpeed;
   float maxSpeed;
-  bool armed; // true once within arming distance — flies straight from then on
+  bool armed;   // true once within arming distance -- flies straight from here
+  bool guided;  // false = fly straight (no homing), still explodes on impact
 } HomingMissile;

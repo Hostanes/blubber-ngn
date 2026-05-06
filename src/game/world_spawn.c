@@ -111,8 +111,9 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
           sizeof(gw.terrainModelPath) - 1);
   gw.obstacleModel      = LoadModel("assets/models/obstacle.glb");
   gw.infoBoxMarkerModel = LoadModel("assets/models/exclamation-mark.glb");
-  gw.gunModel      = LoadModel("assets/models/gun1.glb");
-  gw.plasmaGunModel = LoadModel("assets/models/gun2-plasma.glb");
+  gw.gunModel           = LoadModel("assets/models/gun1.glb");
+  gw.plasmaGunModel     = LoadModel("assets/models/gun2-plasma.glb");
+  gw.rocketLauncherModel = LoadModel("assets/models/gun3.glb");
   gw.bulletModel   = LoadModel("assets/models/bullet.glb");
   gw.shadowModel   = LoadModel("assets/models/shadow.glb");
   gw.enemyModel    = LoadModel("assets/models/enemy-target.glb");

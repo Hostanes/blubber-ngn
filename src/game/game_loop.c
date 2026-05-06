@@ -372,6 +372,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       PlayerWeaponSystem(world, game, game->player, dt);
       PlayerShootSystem(world, game, game->player, dt);
+      RocketLauncherSystem(world, game, game->player, camera, dt);
       PlayerWeaponSwitchSystem(world, game, game->player);
 
       CollisionSyncSystem(world);
@@ -430,10 +431,40 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       RenderLevelSystem(world, game, camera);
 
+      {
+        Active *pa = ECS_GET(world, game->player, Active, COMP_ACTIVE);
+        if (pa && !pa->value) {
+          game->gameState = GAMESTATE_GAMEOVER;
+          game->gameOverTimer = 0.0f;
+          EnableCursor();
+          break;
+        }
+      }
+
       if (IsKeyPressed(KEY_ESCAPE)) {
         game->gameState = GAMESTATE_PAUSED;
         EnableCursor();
       }
+    } break;
+
+    case GAMESTATE_GAMEOVER: {
+      int sw = GetScreenWidth(), sh = GetScreenHeight();
+      game->gameOverTimer += dt;
+
+      BeginDrawing();
+      ClearBackground((Color){10, 0, 0, 255});
+
+      int titleW = MeasureText("GAME OVER", 60);
+      DrawText("GAME OVER", sw / 2 - titleW / 2, sh / 2 - 160, 60, RED);
+
+      if (game->gameOverTimer > 1.5f) {
+        if (DrawButton("MAIN MENU", (Vector2){(float)(sw / 2 - 100), (float)(sh / 2 + 20)})) {
+          game->gameState = GAMESTATE_MAINMENU;
+          WorldClear(world);
+        }
+      }
+
+      EndDrawing();
     } break;
 
     case GAMESTATE_PAUSED: {

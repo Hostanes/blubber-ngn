@@ -53,6 +53,7 @@ enum gameState {
   GAMESTATE_EDITOR,
   GAMESTATE_LEVELSELECT,
   GAMESTATE_PAUSED,
+  GAMESTATE_GAMEOVER,
 };
 
 typedef struct {
@@ -65,10 +66,25 @@ typedef struct {
   ComponentRegistry componentRegistry;
 } Engine;
 
+typedef enum { LOCKSTATE_IDLE = 0, LOCKSTATE_ACQUIRING, LOCKSTATE_LOCKED, LOCKSTATE_BURSTING } RocketLockState;
+
 typedef struct GameWorld {
   entity_t player;
   uint32_t playerActiveWeapon;
+
+  // Rocket launcher lock-on state
+  RocketLockState rocketLockState;
+  entity_t        rocketLockTargets[8];  // enemies in reticle (snapshotted at fire)
+  int             rocketLockTargetCount;
+  float           rocketLockProgress;    // 0..1
+  float           rocketLockAngle;       // accumulated degrees for bracket spin
+  int             rocketBurstRemaining;  // missiles left to fire in burst
+  int             rocketBurstIndex;      // cycles through targets
+  float           rocketBurstTimer;      // countdown to next missile
+  bool            rocketBurstGuided;     // true only when fully locked at release
   enum gameState gameState;
+
+  float gameOverTimer;
 
   uint32_t targetLevel;
   char targetLevelPath[256];
@@ -99,6 +115,7 @@ typedef struct GameWorld {
   Model enemyModel;
   Model gunModel;
   Model plasmaGunModel;
+  Model rocketLauncherModel;
   Model shadowModel;
 
   Model missileEnemyModel;

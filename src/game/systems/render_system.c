@@ -1,6 +1,7 @@
 #include "../game.h"
 #include "rlgl.h"
 #include "systems.h"
+#include <math.h>
 #include <raylib.h>
 
 static bitset_t modelMask;
@@ -517,6 +518,69 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   // Vertical bottom
   DrawLineEx((Vector2){centerX, centerY + gap},
              (Vector2){centerX, centerY + gap + size}, thickness, RED);
+
+  // --- Rocket launcher lock-on HUD ---
+  if (game->playerActiveWeapon == 2 &&
+      game->rocketLockState != LOCKSTATE_IDLE) {
+    float prog   = game->rocketLockProgress;
+    bool  locked = (game->rocketLockState == LOCKSTATE_LOCKED ||
+                    game->rocketLockState == LOCKSTATE_BURSTING);
+    float angle  = game->rocketLockAngle;
+
+    Color arcCol  = locked ? RED : (Color){0, 230, 200, 255};
+    Color tgtCol  = locked ? RED : (Color){0, 230, 200, 180};
+    Color scanCol = (Color){0, 230, 200, 200};
+
+    // Progress arc around screen center
+    DrawRing((Vector2){(float)centerX, (float)centerY},
+             58.0f, 63.0f, -90.0f, -90.0f + prog * 360.0f, 48, arcCol);
+
+    // Brackets on each tracked enemy
+    int n = game->rocketLockTargetCount;
+    for (int t = 0; t < n; t++) {
+      Position *tp = ECS_GET(world, game->rocketLockTargets[t], Position, COMP_POSITION);
+      if (!tp) continue;
+      Vector2 sc  = GetWorldToScreen(tp->value, *camera);
+      float   sz  = 40.0f;
+      float   arm = sz * 0.45f;
+      for (int c = 0; c < 4; c++) {
+        float a  = (angle + 90.0f * c) * DEG2RAD;
+        float bx = sc.x + cosf(a) * sz;
+        float by = sc.y + sinf(a) * sz;
+        float tx = -sinf(a) * arm, ty = cosf(a) * arm;
+        float rx =  cosf(a) * arm, ry = sinf(a) * arm;
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx+tx, by+ty}, 2.0f, tgtCol);
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx-rx, by-ry}, 2.0f, tgtCol);
+      }
+    }
+    // "LOCKED" label under the bracket count when fully locked
+    if (locked && n > 0) {
+      char lbl[16];
+      if (n > 1)
+        snprintf(lbl, sizeof(lbl), "LOCKED x%d", n);
+      else
+        snprintf(lbl, sizeof(lbl), "LOCKED");
+      int tw = MeasureText(lbl, 14);
+      DrawText(lbl, centerX - tw/2, centerY + 72, 14, RED);
+    }
+
+    // Scanning brackets at screen center (when no targets or still acquiring)
+    if (!locked || n == 0) {
+      float sz  = 65.0f;
+      float arm = sz * 0.45f;
+      float cx  = (float)centerX;
+      float cy  = (float)centerY;
+      for (int c = 0; c < 4; c++) {
+        float a  = (angle + 90.0f * c) * DEG2RAD;
+        float bx = cx + cosf(a) * sz;
+        float by = cy + sinf(a) * sz;
+        float tx = -sinf(a) * arm, ty = cosf(a) * arm;
+        float rx =  cosf(a) * arm, ry = sinf(a) * arm;
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx+tx, by+ty}, 2.0f, scanCol);
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx-rx, by-ry}, 2.0f, scanCol);
+      }
+    }
+  }
 
   // --- Player debug info (top-right) ---
   archetype_t *playerArch = &world->archetypes[0];

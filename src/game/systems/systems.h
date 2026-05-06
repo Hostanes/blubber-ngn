@@ -18,6 +18,8 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
 void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game, entity_t player);
 void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float dt);
 void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player, float dt);
+void RocketLauncherSystem(world_t *world, GameWorld *game, entity_t player,
+                          Camera3D *camera, float dt);
 
 void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
                 int shooterArchId, Muzzle_t *m);
