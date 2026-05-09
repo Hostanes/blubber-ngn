@@ -5,11 +5,11 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#define HOOK_SPEED       50.0f
-#define HOOK_MAX_RANGE   55.0f
-#define HOOK_HIT_RADIUS   2.0f
-#define HOOK_ARRIVE_DIST  3.0f
-#define HOOK_PULL_FORCE  38.0f
+#define HOOK_SPEED        85.0f
+#define HOOK_MAX_RANGE    55.0f
+#define HOOK_HIT_SPHERE    0.4f  // sphere radius for AABB overlap test
+#define HOOK_ARRIVE_DIST   3.0f
+#define HOOK_PULL_FORCE   38.0f
 
 void BlunderbussSystem(world_t *world, GameWorld *game,
                        entity_t player, Camera3D *camera, float dt) {
@@ -69,6 +69,7 @@ void BlunderbussSystem(world_t *world, GameWorld *game,
       game->hookOrigin = m->worldPosition;
       game->hookPos    = m->worldPosition;
       game->hookVel    = Vector3Scale(forward3D, HOOK_SPEED);
+      QueueSound(&game->soundSystem, SOUND_CHAIN_PULL, m->worldPosition, .5f, 1.0f);
     } else {
       game->hookState = HOOKSTATE_IDLE;
     }
@@ -89,20 +90,23 @@ void BlunderbussSystem(world_t *world, GameWorld *game,
         game->enemyRangerArchId,
         game->enemyMeleeArchId,
         game->enemyDroneArchId,
+        game->targetStaticArchId,
+        game->targetPatrolArchId,
       };
-      for (int ai = 0; ai < 4 && game->hookState == HOOKSTATE_FLYING; ai++) {
+      for (int ai = 0; ai < 6 && game->hookState == HOOKSTATE_FLYING; ai++) {
         archetype_t *arch = WorldGetArchetype(world, archIds[ai]);
         if (!arch) continue;
         for (uint32_t i = 0; i < arch->count; i++) {
           entity_t e = arch->entities[i];
           Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);
           if (!act || !act->value) continue;
-          Position *ep = ECS_GET(world, e, Position, COMP_POSITION);
-          if (!ep) continue;
-          if (Vector3Distance(game->hookPos, ep->value) < HOOK_HIT_RADIUS) {
+          CollisionInstance *ci = ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+          if (!ci) continue;
+          if (CheckCollisionBoxSphere(ci->worldBounds, game->hookPos, HOOK_HIT_SPHERE)) {
+            Position *ep = ECS_GET(world, e, Position, COMP_POSITION);
             game->hookState  = HOOKSTATE_PULLING;
             game->hookTarget = e;
-            game->hookPos    = ep->value;
+            game->hookPos    = ep ? ep->value : game->hookPos;
             break;
           }
         }

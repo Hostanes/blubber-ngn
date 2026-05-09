@@ -104,6 +104,64 @@ void RegisterAllArchetypes(Engine *engine, GameWorld *gw, world_t *world) {
     ArchetypeAddInline(arch, COMP_COOLANT,  sizeof(Coolant));
   }
 
+  // Static target archetype (damageable, no movement)
+  {
+    uint32_t bits[] = {
+      COMP_ACTIVE, COMP_POSITION, COMP_ORIENTATION, COMP_MODEL,
+      COMP_HEALTH, COMP_SHIELD, COMP_ONDEATH,
+      COMP_CAPSULE_COLLIDER, COMP_COLLISION_INSTANCE, COMP_TARGET_DUMMY
+    };
+    bitset_t mask = MakeMask(bits, 10);
+    gw->targetStaticArchId = WorldCreateArchetype(world, &mask);
+    archetype_t *arch = WorldGetArchetype(world, gw->targetStaticArchId);
+    ArchetypeAddInline(arch, COMP_ACTIVE,             sizeof(Active));
+    ArchetypeAddInline(arch, COMP_POSITION,           sizeof(Position));
+    ArchetypeAddInline(arch, COMP_ORIENTATION,        sizeof(Orientation));
+    ArchetypeAddInline(arch, COMP_MODEL,              sizeof(ModelCollection_t));
+    ArchetypeAddInline(arch, COMP_HEALTH,             sizeof(Health));
+    ArchetypeAddInline(arch, COMP_SHIELD,             sizeof(Shield));
+    ArchetypeAddInline(arch, COMP_ONDEATH,            sizeof(OnDeath));
+    ArchetypeAddInline(arch, COMP_CAPSULE_COLLIDER,   sizeof(CapsuleCollider));
+    ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE, sizeof(CollisionInstance));
+    ArchetypeAddInline(arch, COMP_TARGET_DUMMY,       sizeof(TargetDummy));
+  }
+
+  // Patrol target archetype (damageable + moves between two points)
+  {
+    uint32_t bits[] = {
+      COMP_ACTIVE, COMP_POSITION, COMP_ORIENTATION, COMP_MODEL,
+      COMP_HEALTH, COMP_SHIELD, COMP_ONDEATH,
+      COMP_CAPSULE_COLLIDER, COMP_COLLISION_INSTANCE,
+      COMP_TARGET_DUMMY, COMP_TARGET_PATROL
+    };
+    bitset_t mask = MakeMask(bits, 11);
+    gw->targetPatrolArchId = WorldCreateArchetype(world, &mask);
+    archetype_t *arch = WorldGetArchetype(world, gw->targetPatrolArchId);
+    ArchetypeAddInline(arch, COMP_ACTIVE,             sizeof(Active));
+    ArchetypeAddInline(arch, COMP_POSITION,           sizeof(Position));
+    ArchetypeAddInline(arch, COMP_ORIENTATION,        sizeof(Orientation));
+    ArchetypeAddInline(arch, COMP_MODEL,              sizeof(ModelCollection_t));
+    ArchetypeAddInline(arch, COMP_HEALTH,             sizeof(Health));
+    ArchetypeAddInline(arch, COMP_SHIELD,             sizeof(Shield));
+    ArchetypeAddInline(arch, COMP_ONDEATH,            sizeof(OnDeath));
+    ArchetypeAddInline(arch, COMP_CAPSULE_COLLIDER,   sizeof(CapsuleCollider));
+    ArchetypeAddInline(arch, COMP_COLLISION_INSTANCE, sizeof(CollisionInstance));
+    ArchetypeAddInline(arch, COMP_TARGET_DUMMY,       sizeof(TargetDummy));
+    ArchetypeAddInline(arch, COMP_TARGET_PATROL,      sizeof(TargetPatrol));
+  }
+
+  // Health orb pickup archetype
+  {
+    uint32_t bits[] = {COMP_ACTIVE, COMP_POSITION, COMP_VELOCITY, COMP_HEALTH_ORB};
+    bitset_t mask = MakeMask(bits, 4);
+    gw->healthOrbArchId = WorldCreateArchetype(world, &mask);
+    archetype_t *arch = WorldGetArchetype(world, gw->healthOrbArchId);
+    ArchetypeAddInline(arch, COMP_ACTIVE,     sizeof(Active));
+    ArchetypeAddInline(arch, COMP_POSITION,   sizeof(Position));
+    ArchetypeAddInline(arch, COMP_VELOCITY,   sizeof(Velocity));
+    ArchetypeAddInline(arch, COMP_HEALTH_ORB, sizeof(HealthOrb));
+  }
+
   // Bullet archetype
   {
     uint32_t bits[] = {
@@ -150,18 +208,31 @@ GameWorld GameWorldCreate(Engine *engine, world_t *world) {
   gw.plasmaGunModel     = LoadModel("assets/models/gun2-plasma.glb");
   gw.rocketLauncherModel = LoadModel("assets/models/gun3-rocketlauncher.glb");
   gw.blunderbussModel    = LoadModel("assets/models/gun4-blunderbus.glb");
+  gw.missileModel        = LoadModel("assets/models/gun-3-1-missile.glb");
+  gw.harpoonModel        = LoadModel("assets/models/gun4-1-harpoon.glb");
   gw.bulletModel   = LoadModel("assets/models/bullet.glb");
-  gw.shadowModel   = LoadModel("assets/models/shadow.glb");
+  gw.sunDirection  = Vector3Normalize((Vector3){0.6f, -0.5f, 0.25f});
   gw.enemyModel    = LoadModel("assets/models/enemy-target.glb");
   gw.gruntGun      = LoadModel("assets/models/enemies/grunt/grunt-gun.glb");
   gw.gruntSaw      = LoadModel("assets/models/enemies/grunt/saw.glb");
   gw.gruntLegs     = LoadModel("assets/models/enemies/grunt/grunt-legs.glb");
   gw.gruntTorso    = LoadModel("assets/models/enemies/grunt/grunt-torso.glb");
+  gw.rangerLegs    = LoadModel("assets/models/enemies/ranger/ranger-legs.glb");
+  gw.rangerTorso   = LoadModel("assets/models/enemies/ranger/ranger-torso.glb");
 
   gw.outlineShader       = LoadShader("assets/shaders/outline.vs",
                                       "assets/shaders/outline.fs");
   gw.outlineColorLoc     = GetShaderLocation(gw.outlineShader, "outlineColor");
   gw.outlineThicknessLoc = GetShaderLocation(gw.outlineShader, "outlineThickness");
+
+  gw.terrainShader = LoadShader("assets/shaders/terrain.vs",
+                                "assets/shaders/terrain.fs");
+  for (int mi = 0; mi < gw.terrainModel.materialCount; mi++)
+    gw.terrainModel.materials[mi].shader = gw.terrainShader;
+
+  gw.shadowShader   = LoadShader("assets/shaders/shadow.vs",
+                                  "assets/shaders/shadow.fs");
+  gw.shadowAlphaLoc = GetShaderLocation(gw.shadowShader, "shadowAlpha");
 
   RegisterAllArchetypes(engine, &gw, world);
 
@@ -220,17 +291,42 @@ static void SpawnCoolantPool(world_t *world, GameWorld *gw) {
   }
 }
 
+// --- HEALTH ORB POOL SPAWN ---
+#define MAX_HEALTH_ORBS 32
+static void SpawnHealthOrbPool(world_t *world, GameWorld *gw) {
+  archetype_t *arch = WorldGetArchetype(world, gw->healthOrbArchId);
+  bitset_t mask = arch->mask;
+  for (int i = 0; i < MAX_HEALTH_ORBS; i++) {
+    entity_t e = WorldCreateEntity(world, &mask);
+    ECS_GET(world, e, Active, COMP_ACTIVE)->value = false;
+  }
+}
+
 // --- JSON LEVEL LOADING ---
 
 #define MAX_LEVEL_BOXES      1024
 #define MAX_LEVEL_SPAWNERS    256
 #define MAX_LEVEL_PROPS       512
 #define MAX_LEVEL_INFOBOXES    64
+#define MAX_LEVEL_WALLSEGS    128
+#define MAX_LEVEL_TARGETS      64
 #define MAX_PROP_MODELS         32
 
 typedef struct { Vector3 pos; Vector3 scale; } LevelBox;
 typedef struct { Vector3 pos; int enemyType; } LevelSpawner;
+typedef struct {
+  Vector3 pos;
+  float   health;
+  float   shield;
+  float   yaw;
+  int     patrol;   // 0 = static, 1 = patrol
+  Vector3 posB;
+  float   speed;
+  int     healthDrop;
+  int     coolantDrop;
+} LevelTarget;
 typedef struct { Vector3 pos; float yaw; Vector3 scale; char modelPath[256]; } LevelProp;
+typedef struct { float ax, az, bx, bz, yBottom, yTop, radius; bool blockPlayer, blockProjectiles; } LevelWallSeg;
 
 /* ---- Per-level prop model cache (avoids reloading duplicates) ---- */
 
@@ -370,7 +466,7 @@ static int LoadSpawnersFromJSON(const char *text, LevelSpawner *spawners, int ma
   return count;
 }
 
-typedef struct { Vector3 pos; float halfExtent; char message[256]; float duration; int triggerCount; float markerHeight; } LevelInfoBox;
+typedef struct { Vector3 pos; float halfExtent; char message[256]; float duration; int triggerCount; float markerHeight; int fontSize; } LevelInfoBox;
 
 static int LoadInfoBoxesFromJSON(const char *text, LevelInfoBox *boxes, int maxCount) {
   const char *p = strstr(text, "\"infoboxes\"");
@@ -399,7 +495,115 @@ static int LoadInfoBoxesFromJSON(const char *text, LevelInfoBox *boxes, int maxC
     JsonReadString(buf, "msg", ib.message, sizeof(ib.message));
     { float tf = 1.0f; if (JsonReadFloat(buf, "trig", &tf)) ib.triggerCount = (int)tf; }
     JsonReadFloat(buf, "mh", &ib.markerHeight);
+    { float fsf = 0; if (JsonReadFloat(buf, "fs", &fsf)) ib.fontSize = (int)fsf; }
+    // Convert | back to \n (saved as | to preserve single-line JSON)
+    for (int j = 0; ib.message[j]; j++)
+      if (ib.message[j] == '|') ib.message[j] = '\n';
     boxes[count++] = ib;
+  }
+  return count;
+}
+
+static int LoadWallSegsFromJSON(const char *text, LevelWallSeg *segs, int maxCount) {
+  const char *p = strstr(text, "\"wallsegs\"");
+  if (!p) return 0;
+  p = strchr(p, '[');
+  if (!p) return 0;
+  p++;
+
+  int count = 0;
+  while (*p && *p != ']' && count < maxCount) {
+    while (*p && *p != '{' && *p != ']') p++;
+    if (*p != '{') break;
+    const char *obj = p;
+    while (*p && *p != '}') p++;
+    if (!*p) break;
+    p++;
+    int len = (int)(p - obj);
+    if (len >= 256) { count++; continue; }
+    char buf[256];
+    memcpy(buf, obj, len);
+    buf[len] = '\0';
+    LevelWallSeg *ws = &segs[count++];
+    ws->ax = 0; ws->az = 0; ws->bx = 0; ws->bz = 0;
+    ws->yBottom = 0; ws->yTop = 3; ws->radius = 0.3f;
+    ws->blockPlayer = true; ws->blockProjectiles = true;
+    JsonReadFloat(buf, "ax", &ws->ax);
+    JsonReadFloat(buf, "az", &ws->az);
+    JsonReadFloat(buf, "bx", &ws->bx);
+    JsonReadFloat(buf, "bz", &ws->bz);
+    JsonReadFloat(buf, "yb", &ws->yBottom);
+    JsonReadFloat(buf, "yt", &ws->yTop);
+    JsonReadFloat(buf, "r",  &ws->radius);
+    { float v = 1; if (JsonReadFloat(buf, "bplay", &v)) ws->blockPlayer      = (v != 0); }
+    { float v = 1; if (JsonReadFloat(buf, "bproj", &v)) ws->blockProjectiles = (v != 0); }
+  }
+  return count;
+}
+
+static int LoadWavesFromJSON(const char *text, WaveDef *waves, int maxCount) {
+  const char *p = strstr(text, "\"waves\":");
+  if (!p) return 0;
+  p = strchr(p, '[');
+  if (!p) return 0;
+  p++;
+  int count = 0;
+  while (*p && *p != ']' && count < maxCount) {
+    while (*p && *p != '{' && *p != ']') p++;
+    if (*p != '{') break;
+    const char *obj = p;
+    while (*p && *p != '}') p++;
+    if (!*p) break; p++;
+    int len = (int)(p - obj);
+    if (len >= 128) continue;
+    char buf[128]; memcpy(buf, obj, len); buf[len] = '\0';
+    float g = 0, r = 0, m = 0, d = 0;
+    JsonReadFloat(buf, "g", &g); JsonReadFloat(buf, "r", &r);
+    JsonReadFloat(buf, "m", &m); JsonReadFloat(buf, "d", &d);
+    waves[count++] = (WaveDef){(int)g, (int)r, (int)m, (int)d};
+  }
+  return count;
+}
+
+static int LoadTargetsFromJSON(const char *text, LevelTarget *targets, int maxCount) {
+  const char *p = strstr(text, "\"targets\"");
+  if (!p) return 0;
+  p = strchr(p, '[');
+  if (!p) return 0;
+  p++;
+
+  int count = 0;
+  while (*p && *p != ']' && count < maxCount) {
+    while (*p && *p != '{' && *p != ']') p++;
+    if (*p != '{') break;
+    const char *obj = p;
+    while (*p && *p != '}') p++;
+    if (!*p) break;
+    p++;
+    int len = (int)(p - obj);
+    if (len >= 512) { count++; continue; }
+    char buf[512];
+    memcpy(buf, obj, len);
+    buf[len] = '\0';
+
+    LevelTarget t = {0};
+    t.health = 100.0f;
+    t.shield = 0.0f;
+    t.speed  = 5.0f;
+    JsonReadFloat(buf, "x",      &t.pos.x);
+    JsonReadFloat(buf, "y",      &t.pos.y);
+    JsonReadFloat(buf, "z",      &t.pos.z);
+    JsonReadFloat(buf, "hp",     &t.health);
+    JsonReadFloat(buf, "shield", &t.shield);
+    JsonReadFloat(buf, "yaw",    &t.yaw);
+    { float pf = 0; if (JsonReadFloat(buf, "patrol", &pf)) t.patrol = (int)pf; }
+    JsonReadFloat(buf, "x2",       &t.posB.x);
+    JsonReadFloat(buf, "y2",       &t.posB.y);
+    JsonReadFloat(buf, "z2",       &t.posB.z);
+    JsonReadFloat(buf, "speed",    &t.speed);
+    { float hd = 0; JsonReadFloat(buf, "hdrop", &hd); t.healthDrop  = (int)hd; }
+    { float cd = 0; JsonReadFloat(buf, "cdrop", &cd); t.coolantDrop = (int)cd; }
+    targets[count++] = t;
   }
   return count;
 }
@@ -410,10 +614,27 @@ static void SpawnLevelBase(world_t *world, GameWorld *gw, const char *navmapPath
       HeightMap_FromMesh(gw->terrainModel.meshes[0], MatrixIdentity());
   if (!NavGrid_LoadFromImage(&gw->navGrid, navmapPath, 2, (Vector3){-180, 0, -180}))
     NavGrid_Init(&gw->navGrid, 180, 180, 2.0f, (Vector3){-180, 0, -180});
+  // Block cells outside the circular arena so A* never routes through the
+  // rectangular grid corners (which extend to ~254 units vs 175-unit radius).
+  {
+    NavGrid *g  = &gw->navGrid;
+    float    r2 = gw->arenaRadius * gw->arenaRadius;
+    for (int y = 0; y < g->height; y++) {
+      for (int x = 0; x < g->width; x++) {
+        Vector3 c = NavGrid_CellCenter(g, x, y);
+        if (c.x * c.x + c.z * c.z > r2) {
+          int idx          = NavGrid_Index(g, x, y);
+          g->cells[idx].type = NAV_CELL_BLOCKED;
+          g->cells[idx].cost = 255;
+        }
+      }
+    }
+  }
   gw->player = SpawnPlayer(world, gw, (Vector3){0, 1.8f, 0});
   SpawnBulletPool(world, gw);
   SpawnParticlePool(world, gw);
   SpawnCoolantPool(world, gw);
+  SpawnHealthOrbPool(world, gw);
 }
 
 // Derive a level-specific navmap path: "assets/levels/foo.json" -> "assets/levels/foo.navmap.png"
@@ -449,6 +670,16 @@ void SpawnLevelFromFile(world_t *world, GameWorld *gw, const char *path) {
     JsonReadString(text, "mission", missionBuf, sizeof(missionBuf));
     gw->waveState.missionType =
         (strcmp(missionBuf, "exploration") == 0) ? MISSION_EXPLORATION : MISSION_WAVES;
+  }
+
+  // Wave composition
+  gw->waveState.waveCount = LoadWavesFromJSON(text, gw->waveState.waves, MAX_WAVES);
+
+  // Health bar fade — default on; set "hpfade": 0 in level JSON to disable
+  {
+    float hpf = 1.0f;
+    JsonReadFloat(text, "hpfade", &hpf);
+    gw->healthBarFade = (hpf != 0.0f);
   }
 
   // Navmap — use "navmap" field if present, otherwise derive from level path
@@ -491,10 +722,14 @@ void SpawnLevelFromFile(world_t *world, GameWorld *gw, const char *path) {
   static LevelSpawner  spawners[MAX_LEVEL_SPAWNERS];
   static LevelProp     props[MAX_LEVEL_PROPS];
   static LevelInfoBox  infoboxes[MAX_LEVEL_INFOBOXES];
+  static LevelWallSeg  wallsegs[MAX_LEVEL_WALLSEGS];
+  static LevelTarget   targets[MAX_LEVEL_TARGETS];
   int nBoxes     = LoadBoxesFromJSON(text,     boxes,     MAX_LEVEL_BOXES);
   int nSpawners  = LoadSpawnersFromJSON(text,  spawners,  MAX_LEVEL_SPAWNERS);
   int nProps     = LoadPropsFromJSON(text,     props,     MAX_LEVEL_PROPS);
   int nInfoBoxes = LoadInfoBoxesFromJSON(text, infoboxes, MAX_LEVEL_INFOBOXES);
+  int nWallSegs  = LoadWallSegsFromJSON(text,  wallsegs,  MAX_LEVEL_WALLSEGS);
+  int nTargets   = LoadTargetsFromJSON(text,   targets,   MAX_LEVEL_TARGETS);
   UnloadFileText(text);
 
   ClearPropModelCache();
@@ -515,7 +750,20 @@ void SpawnLevelFromFile(world_t *world, GameWorld *gw, const char *path) {
   for (int i = 0; i < nInfoBoxes; i++)
     SpawnInfoBox(world, gw, infoboxes[i].pos, infoboxes[i].halfExtent,
                  infoboxes[i].message, infoboxes[i].duration,
-                 infoboxes[i].triggerCount, infoboxes[i].markerHeight);
+                 infoboxes[i].triggerCount, infoboxes[i].markerHeight, infoboxes[i].fontSize);
+  for (int i = 0; i < nWallSegs; i++)
+    SpawnWallSegment(world, gw, (Vector3){0, 0, 0},
+                     (Vector3){wallsegs[i].ax, 0, wallsegs[i].az},
+                     (Vector3){wallsegs[i].bx, 0, wallsegs[i].bz},
+                     wallsegs[i].yBottom, wallsegs[i].yTop, wallsegs[i].radius,
+                     wallsegs[i].blockPlayer, wallsegs[i].blockProjectiles);
+  for (int i = 0; i < nTargets; i++) {
+    LevelTarget *t = &targets[i];
+    if (t->patrol)
+      SpawnTargetPatrol(world, gw, t->pos, t->posB, t->health, t->shield, t->speed, t->yaw, t->healthDrop, t->coolantDrop);
+    else
+      SpawnTargetStatic(world, gw, t->pos, t->health, t->shield, t->yaw, t->healthDrop, t->coolantDrop);
+  }
 }
 
 // --- LEVEL 1 SPAWNER (hardcoded enemies) ---
@@ -533,7 +781,7 @@ void SpawnLevel01(world_t *world, GameWorld *gw) {
   // TODO: remove — temporary diagonal test wall
   SpawnWallSegment(world, gw, (Vector3){10, 0, 5},
                    (Vector3){0, 0, 0}, (Vector3){10, 0, 10},
-                   0.0f, 4.0f, 0.5f);
+                   0.0f, 4.0f, 0.5f, true, true);
 
   SpawnBoxModel(world, gw, (Vector3){0.72,    1.35,  65.223}, (Vector3){5.47, 5.47, 5.47});
   SpawnBoxModel(world, gw, (Vector3){14.533,  1.36,  78.97},  (Vector3){5.47, 5.47, 5.47});

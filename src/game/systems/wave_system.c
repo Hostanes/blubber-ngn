@@ -5,17 +5,15 @@
 #define NEXT_WAVE_DELAY  5.0f
 #define FIRST_WAVE_DELAY 3.0f
 
-typedef struct { int grunts; int rangers; int melee; int drones; } WaveDef;
-
-static const WaveDef kWaves[] = {
-  { 2, 0, 2, 0},
+// Fallback wave composition used when a level has no "waves" array defined
+static const WaveDef kDefaultWaves[] = {
+  { 2, 1, 2, 0},
   { 4, 1, 3, 1},
   { 5, 2, 4, 1},
   { 7, 3, 4, 2},
   { 8, 4, 5, 2},
   {10, 5, 6, 3},
 };
-#define WAVE_COUNT ((int)(sizeof(kWaves) / sizeof(kWaves[0])))
 
 void WaveSystem_Init(GameWorld *gw) {
   MissionType mt                 = gw->waveState.missionType;
@@ -74,6 +72,14 @@ static void SpawnFromSpawners(world_t *world, GameWorld *gw, int enemyType, int 
     positions[nPos++] = (Vector3){0, 0, 30};
   }
 
+  // Shuffle so enemies don't always come from the same spawner sequence
+  for (int i = nPos - 1; i > 0; i--) {
+    int j = GetRandomValue(0, i);
+    Vector3 tmp = positions[i];
+    positions[i] = positions[j];
+    positions[j] = tmp;
+  }
+
   for (int i = 0; i < count; i++) {
     Vector3 p = positions[i % nPos];
     p.x += (float)GetRandomValue(-300, 300) * 0.01f;
@@ -88,16 +94,27 @@ static void SpawnFromSpawners(world_t *world, GameWorld *gw, int enemyType, int 
 static void StartWave(world_t *world, GameWorld *gw) {
   WaveState *ws = &gw->waveState;
   int idx = ws->currentWave;
-  if (idx >= WAVE_COUNT) {
+
+  const WaveDef *waves;
+  int waveCount;
+  if (ws->waveCount > 0) {
+    waves     = ws->waves;
+    waveCount = ws->waveCount;
+  } else {
+    waves     = kDefaultWaves;
+    waveCount = (int)(sizeof(kDefaultWaves) / sizeof(kDefaultWaves[0]));
+  }
+
+  if (idx >= waveCount) {
     ws->allWavesComplete = true;
     return;
   }
   ws->currentWave++;
   ws->waveActive = true;
-  SpawnFromSpawners(world, gw, 0, kWaves[idx].grunts);
-  SpawnFromSpawners(world, gw, 1, kWaves[idx].rangers);
-  SpawnFromSpawners(world, gw, 2, kWaves[idx].melee);
-  SpawnFromSpawners(world, gw, 3, kWaves[idx].drones);
+  SpawnFromSpawners(world, gw, 0, waves[idx].grunts);
+  SpawnFromSpawners(world, gw, 1, waves[idx].rangers);
+  SpawnFromSpawners(world, gw, 2, waves[idx].melee);
+  SpawnFromSpawners(world, gw, 3, waves[idx].drones);
 }
 
 void WaveSystem_Update(world_t *world, GameWorld *gw, float dt) {

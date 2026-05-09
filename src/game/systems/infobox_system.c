@@ -23,7 +23,7 @@ void InfoBoxTriggerSystem(world_t *world, GameWorld *game) {
                   fabsf(playerPos->value.z - pos->value.z) < ib->halfExtent;
 
     if (inside && !ib->playerInside) {
-      MessageSystem_Push(&game->messageSystem, ib->message, ib->duration);
+      MessageSystem_Push(&game->messageSystem, ib->message, ib->duration, ib->fontSize);
       if (ib->triggersLeft > 0) ib->triggersLeft--;
     }
     ib->playerInside = inside;

@@ -10,7 +10,10 @@ typedef enum {
   NAV_CELL_WALL,
   NAV_CELL_COVER_LOW,
   NAV_CELL_COVER_HIGH,
-  NAV_CELL_BLOCKED
+  NAV_CELL_BLOCKED,
+  NAV_CELL_SNIPE,   // ranger preferred firing position
+  NAV_CELL_FLANK,   // grunt flanking approach path
+  NAV_CELL_FENCE,   // impassable but LOS-transparent (shoot over, can't walk through)
 } NavCellType;
 
 typedef struct {
@@ -66,3 +69,4 @@ bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
                       NavPath *outPath);
 bool NavGrid_LoadFromImage(NavGrid *grid, const char *fileName, float cellSize,
                            Vector3 origin);
+bool NavGrid_HasLOS(NavGrid *g, Vector3 from, Vector3 to);

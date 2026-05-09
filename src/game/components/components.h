@@ -14,8 +14,10 @@
 #include "shield.h"
 #include "particle.h"
 #include "coolant.h"
+#include "health_orb.h"
 #include "drone_state.h"
 #include "melee_state.h"
+#include "target_dummy.h"
 #include "movement.h"
 #include "muzzle.h"
 #include "renderable.h"
@@ -65,5 +67,8 @@ enum {
   COMP_TYPE_MELEE,
   COMP_INFOBOX,
   COMP_COOLANT,
+  COMP_HEALTH_ORB,
   COMP_DRONE_ENEMY,
+  COMP_TARGET_DUMMY,
+  COMP_TARGET_PATROL,
 };

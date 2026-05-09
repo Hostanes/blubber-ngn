@@ -38,7 +38,8 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
 
 entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,
                           Vector3 localA, Vector3 localB,
-                          float localYBottom, float localYTop, float radius);
+                          float localYBottom, float localYTop, float radius,
+                          bool blockPlayer, bool blockProjectiles);
 
 entity_t SpawnEnemySpawner(world_t *world, GameWorld *gw,
                            Vector3 position, int enemyType);
@@ -46,11 +47,20 @@ entity_t SpawnEnemySpawner(world_t *world, GameWorld *gw,
 entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
                       Vector3 position, float halfExtent,
                       const char *message, float duration,
-                      int maxTriggers, float markerHeight);
+                      int maxTriggers, float markerHeight, int fontSize);
 
 void LevelHelper_SetGame(GameWorld *game);
 void SpawnCoolant(world_t *world, GameWorld *game, Vector3 pos);
+void SpawnHealthOrb(world_t *world, GameWorld *game, Vector3 pos);
 
 entity_t SpawnEnemyDrone(world_t *world, GameWorld *game, Vector3 position);
+
+entity_t SpawnTargetStatic(world_t *world, GameWorld *game, Vector3 position,
+                           float health, float shield, float yaw,
+                           int healthDropCount, int coolantDropCount);
+entity_t SpawnTargetPatrol(world_t *world, GameWorld *game,
+                           Vector3 posA, Vector3 posB,
+                           float health, float shield, float speed, float yaw,
+                           int healthDropCount, int coolantDropCount);
 
 #endif

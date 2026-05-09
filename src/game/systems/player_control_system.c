@@ -107,8 +107,8 @@ void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
   if (!mc || mc->count <= 1)
     return;
 
-  // index 0 = body, last index = shadow — weapons are indices 1..count-2
-  uint32_t weaponCount = mc->count > 2 ? mc->count - 2 : 0;
+  // index 0 = body, weapons are indices 1..count-1
+  uint32_t weaponCount = mc->count > 1 ? mc->count - 1 : 0;
 
   if (IsKeyPressed(KEY_ONE) && weaponCount >= 1)
     game->playerActiveWeapon = 0;
@@ -126,9 +126,8 @@ void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
   if (game->playerActiveWeapon >= weaponCount)
     game->playerActiveWeapon = 0;
 
-  // Update model active states (index 0 = body, last = shadow — skip both)
-  uint32_t gunEnd = mc->count > 1 ? mc->count - 1 : 1;
-  for (uint32_t i = 1; i < gunEnd; ++i) {
+  // Update model active states (index 0 = body, guns are 1..count-1)
+  for (uint32_t i = 1; i < mc->count; ++i) {
     mc->models[i].isActive = ((i - 1) == game->playerActiveWeapon);
   }
 }
@@ -246,12 +245,6 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player,
   if (!mc || mc->count <= 1)
     return;
 
-  // Shadow (last index): snap to terrain, slightly above to avoid clipping
-  if (mc->count > 1) {
-    float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
-                                                   pos->value.x, pos->value.z);
-    mc->models[mc->count - 1].offset.y = terrainY - pos->value.y + 0.1f;
-  }
 
   Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
@@ -288,9 +281,8 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player,
   if (!muzzles)
     return;
 
-  // ---- Update gun models (skip index 0 = body, skip last = shadow) ----
-  uint32_t gunEnd = mc->count > 3 ? mc->count - 1 : mc->count;
-  for (uint32_t i = 1; i < gunEnd; ++i) {
+  // ---- Update gun models (index 0 = body, skip; guns are 1..count-1) ----
+  for (uint32_t i = 1; i < mc->count; ++i) {
     ModelInstance_t *gun = &mc->models[i];
     gun->rotation.x = -ori->pitch;
 
@@ -347,9 +339,8 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player,
     m->forward = forward3D;
 
     // Tint the corresponding gun model redder as heat rises.
-    // Weapon i is at model index i+1 (index 0 = body, last = shadow).
     uint32_t modelIdx = i + 1;
-    if (modelIdx < mc->count - 1) {
+    if (modelIdx < mc->count) {
       float t = m->heat;
       unsigned char g = (unsigned char)(255.0f * (1.0f - t * 0.65f));
       unsigned char b = (unsigned char)(255.0f * (1.0f - t * 0.65f));
@@ -419,7 +410,7 @@ void RocketLauncherSystem(world_t *world, GameWorld *game,
       m->heat += m->heatPerShot;
       if (m->heat >= 1.0f) { m->heat = 1.0f; m->isOverheated = true; }
       m->coolDelayTimer = m->coolDelay;
-      QueueSound(&game->soundSystem, SOUND_WEAPON_FIRE, m->worldPosition, 0.8f, 0.4f);
+      QueueSound(&game->soundSystem, SOUND_ROCKET_FIRE, m->worldPosition, 0.9f, 1.0f);
       game->rocketBurstIndex++;
       game->rocketBurstRemaining--;
       if (game->rocketBurstRemaining <= 0) {
@@ -482,12 +473,14 @@ void RocketLauncherSystem(world_t *world, GameWorld *game,
   uint32_t archIds[] = {
     game->enemyGruntArchId,
     game->enemyRangerArchId,
-    game->enemyMeleeArchId
+    game->enemyMeleeArchId,
+    game->targetStaticArchId,
+    game->targetPatrolArchId,
   };
 
   game->rocketLockTargetCount = 0;
 
-  for (int ai = 0; ai < 3; ai++) {
+  for (int ai = 0; ai < 5; ai++) {
     archetype_t *arch = WorldGetArchetype(world, archIds[ai]);
     if (!arch) continue;
     for (uint32_t i = 0; i < arch->count; i++) {
@@ -497,6 +490,9 @@ void RocketLauncherSystem(world_t *world, GameWorld *game,
       if (!act || !act->value) continue;
       Position *epos = ECS_GET(world, e, Position, COMP_POSITION);
       if (!epos) continue;
+      Vector3 camFwd  = Vector3Normalize(Vector3Subtract(camera->target, camera->position));
+      Vector3 toEnemy = Vector3Subtract(epos->value, camera->position);
+      if (Vector3DotProduct(camFwd, toEnemy) <= 0.0f) continue;
       Vector2 screen = GetWorldToScreen(epos->value, *camera);
       if (Vector2Distance(screen, center) <= ROCKET_LOCK_RADIUS)
         game->rocketLockTargets[game->rocketLockTargetCount++] = e;

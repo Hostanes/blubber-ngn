@@ -50,6 +50,13 @@ static float BodyDotToPlayer(Orientation *ori, Position *pos,
   return Vector3DotProduct(bodyFwd, toP);
 }
 
+static inline bool EnemyIsStationary(EnemyState_e s) {
+  return s == ENEMY_STATE_COMBAT || s == ENEMY_AI_SUPPRESS || s == ENEMY_AI_COVER;
+}
+static inline bool EnemyCanFire(EnemyState_e s) {
+  return s != ENEMY_STATE_IDLE && s != ENEMY_STATE_MOVING && s != ENEMY_AI_RETREAT;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Grunt aim                                                          */
 /* ------------------------------------------------------------------ */
@@ -75,7 +82,7 @@ void EnemyAimSystem(world_t *world, GameWorld *game, archetype_t *enemyArch,
     if (!pos || !ori || !muzzles || !combat) continue;
 
     // Rotate body toward player only while in combat
-    if (combat->state == ENEMY_STATE_COMBAT) {
+    if (EnemyIsStationary(combat->state)) {
       Vector3 toPlayer = Vector3Subtract(playerAimPos, pos->value);
       float targetYaw  = atan2f(toPlayer.x, toPlayer.z);
       float delta      = targetYaw - ori->yaw;
@@ -137,10 +144,13 @@ void EnemyFireSystem(world_t *world, GameWorld *game, archetype_t *enemyArch) {
     if (!active || !active->value) continue;
 
     CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
-    if (!combat || combat->state != ENEMY_STATE_COMBAT) continue;
+    if (!combat || !EnemyCanFire(combat->state)) continue;
 
     // Settle: wait for body to rotate before firing
     if (combat->settleTimer > 0.0f) continue;
+
+    // LOS: don't fire through walls
+    if (!combat->hasLOS) continue;
 
     Timer *fireTimer = ECS_GET(world, e, Timer, COMP_GRUNT_FIRE_TIMER);
     if (!fireTimer || fireTimer->value > 0.0f) continue;
@@ -200,7 +210,7 @@ void EnemyRangerAimSystem(world_t *world, GameWorld *game,
     CombatState_t     *combat  = ECS_GET(world, e, CombatState_t,      COMP_COMBAT_STATE);
     if (!pos || !ori || !muzzles || !combat) continue;
 
-    if (combat->state == ENEMY_STATE_COMBAT) {
+    if (EnemyIsStationary(combat->state)) {
       Vector3 toPlayer = Vector3Subtract(playerAimPos, pos->value);
       float targetYaw  = atan2f(toPlayer.x, toPlayer.z);
       float delta      = targetYaw - ori->yaw;
@@ -264,7 +274,7 @@ void EnemyRangerFireSystem(world_t *world, GameWorld *game,
     if (!active || !active->value) continue;
 
     CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
-    if (!combat || combat->state != ENEMY_STATE_COMBAT) continue;
+    if (!combat || !EnemyCanFire(combat->state)) continue;
 
     Timer *fireTimer = ECS_GET(world, e, Timer, COMP_GRUNT_FIRE_TIMER);
     if (!fireTimer) continue;
@@ -319,7 +329,8 @@ void EnemyRangerFireSystem(world_t *world, GameWorld *game,
     RF_LOG("  -> Roll: %d\n", roll);
 
     if (roll < 80) {
-      // Autocannon: requires muzzle aim AND body facing
+      // Autocannon: requires LOS, muzzle aim, AND body facing
+      if (!combat->hasLOS) continue;
       if (aimAccuracy <= ENEMY_AIM_THRESHOLD) {
         RF_LOG("  -> Autocannon: muzzle not aimed (%.2f)\n", aimAccuracy);
         continue;

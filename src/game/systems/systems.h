@@ -84,4 +84,7 @@ void DrawSpawnerWireframes(world_t *world, uint32_t spawnerArchId);
 
 void InfoBoxTriggerSystem(world_t *world, GameWorld *game);
 void CoolantSystem(world_t *world, GameWorld *game, float dt);
+void HealthOrbSystem(world_t *world, GameWorld *game, float dt);
 void EnemyDroneAISystem(world_t *world, GameWorld *game, archetype_t *arch, float dt);
+void OutOfBoundsSystem(world_t *world, GameWorld *game, float dt);
+void TargetDummySystem(world_t *world, GameWorld *game, float dt);

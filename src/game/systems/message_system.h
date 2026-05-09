@@ -6,6 +6,7 @@
 typedef struct {
   char  text[MSG_TEXT_LEN];
   float duration;
+  int   fontSize;  // 0 = use default
 } MsgEntry;
 
 typedef enum {
@@ -29,9 +30,12 @@ typedef struct {
 
   char     lines[8][MSG_TEXT_LEN];
   int      lineCount;
+  int      fontSize;   // active message's font size (0 = default)
+
+  float    queuedNotifTimer;  // > 0 while "queued" badge is visible
 } MessageSystem_t;
 
 void MessageSystem_Init(MessageSystem_t *ms);
-void MessageSystem_Push(MessageSystem_t *ms, const char *text, float duration);
+void MessageSystem_Push(MessageSystem_t *ms, const char *text, float duration, int fontSize);
 void MessageSystem_Update(MessageSystem_t *ms, float dt);
 void MessageSystem_Render(const MessageSystem_t *ms);

@@ -36,6 +36,15 @@ typedef enum {
   MISSION_EXPLORATION = 1,
 } MissionType;
 
+#define MAX_WAVES 10
+
+typedef struct {
+  int grunts;
+  int rangers;
+  int melee;
+  int drones;
+} WaveDef;
+
 typedef struct {
   MissionType missionType;
   int currentWave; // 1-indexed; 0 = not started
@@ -43,6 +52,9 @@ typedef struct {
   float nextWaveTimer;
   bool waveActive;
   bool allWavesComplete;
+
+  WaveDef waves[MAX_WAVES];
+  int     waveCount;
 } WaveState;
 
 enum gameState {
@@ -101,21 +113,26 @@ typedef struct GameWorld {
   char targetLevelPath[256];
   float loadingTimer;
 
+  bool healthBarFade;  // distance-fade on enemy health bars; default true
+
   float masterVolume;
   int targetFPS;
   bool showFPS;
 
   float fov;
+  float inputCooldown;
   int resWidth;
   int resHeight;
   bool fullscreen;
+  bool debugView;
   enum gameState settingsPrevState;
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
       tutorialBoxArchId, missileArchId, wallSegArchId, spawnerArchId,
       particleArchId, enemyMeleeArchId, infoBoxArchId, coolantArchId,
-      enemyDroneArchId;
+      healthOrbArchId, enemyDroneArchId,
+      targetStaticArchId, targetPatrolArchId;
 
   WaveState waveState;
 
@@ -129,13 +146,18 @@ typedef struct GameWorld {
   Model plasmaGunModel;
   Model rocketLauncherModel;
   Model blunderbussModel;
-  Model shadowModel;
+  Model missileModel;
+  Model harpoonModel;
+  Vector3 sunDirection;  // normalized direction sun rays travel (y must be < 0)
 
   Model missileEnemyModel;
   Model gruntTorso;
   Model gruntLegs;
   Model gruntGun;
   Model gruntSaw;
+
+  Model rangerTorso;
+  Model rangerLegs;
 
   HeightMap terrainHeightMap;
   Model terrainModel;
@@ -149,6 +171,11 @@ typedef struct GameWorld {
   Shader outlineShader;
   int outlineColorLoc;
   int outlineThicknessLoc;
+
+  Shader terrainShader;
+
+  Shader shadowShader;
+  int shadowAlphaLoc;
 
   SoundSystem_t soundSystem;
   MessageSystem_t messageSystem;

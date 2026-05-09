@@ -341,6 +341,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       SpawnLevelFromFile(world, game, game->targetLevelPath);
       WaveSystem_Init(game);
 
+      game->inputCooldown = 0.4f;
       game->gameState = GAMESTATE_INLEVEL;
       DisableCursor();
       break;
@@ -369,14 +370,18 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       MessageSystem_Update(&game->messageSystem, dt);
       TimerSystem(&engine->timerPool, dt);
 
+      if (game->inputCooldown > 0.0f) game->inputCooldown -= dt;
+
       PlayerControlSystem(world, game, game->player, dt);
 
       ApplyGravity(world, game, dt);
 
-      PlayerWeaponSystem(world, game, game->player, dt);
-      PlayerShootSystem(world, game, game->player, dt);
-      RocketLauncherSystem(world, game, game->player, camera, dt);
-      BlunderbussSystem(world, game, game->player, camera, dt);
+      if (game->inputCooldown <= 0.0f) {
+        PlayerWeaponSystem(world, game, game->player, dt);
+        PlayerShootSystem(world, game, game->player, dt);
+        RocketLauncherSystem(world, game, game->player, camera, dt);
+        BlunderbussSystem(world, game, game->player, camera, dt);
+      }
       PlayerWeaponSwitchSystem(world, game, game->player);
 
       CollisionSyncSystem(world);
@@ -394,6 +399,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                          WorldGetArchetype(world, game->enemyMeleeArchId), dt);
       EnemyDroneAISystem(world, game,
                          WorldGetArchetype(world, game->enemyDroneArchId), dt);
+      OutOfBoundsSystem(world, game, dt);
 
       EnemyAimSystem(world, game,
                      WorldGetArchetype(world, game->enemyGruntArchId), dt);
@@ -417,6 +423,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
 
       ParticleSystem(world, WorldGetArchetype(world, game->particleArchId), dt);
       CoolantSystem(world, game, dt);
+      HealthOrbSystem(world, game, dt);
+      TargetDummySystem(world, game, dt);
 
       MovementSystem(world, WorldGetArchetype(world, game->missileArchId), dt);
       HomingMissileSystem(world, game,
@@ -461,6 +469,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
           break;
         }
       }
+
+      if (IsKeyPressed(KEY_F12)) game->debugView = !game->debugView;
 
       if (IsKeyPressed(KEY_ESCAPE)) {
         game->gameState = GAMESTATE_PAUSED;
