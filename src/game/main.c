@@ -56,10 +56,6 @@ static Vector3 ResolveModelRotation(const Orientation *entityOri,
 
 int main(void) {
 
-  omp_set_num_threads(omp_get_num_procs() / 2);
-
-  printf("max omp threads: %d\n", omp_get_max_threads());
-  printf("num procs: %d\n", omp_get_num_procs());
 
   Engine engine = EngineInit();
   SetupComponentRegistry(&engine.componentRegistry, &engine);
