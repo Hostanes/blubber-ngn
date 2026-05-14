@@ -3,19 +3,11 @@
 
 Engine EngineInit(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
-  InitWindow(1280, 720, "ECS FPS Test");
-  DisableCursor();
-  SetTargetFPS(60);
+  InitWindow(1280, 720, "Benchmark A - SIMD");
 
   Engine engine = {0};
-
-  engine.camera.fovy = 75.0f;
-  engine.camera.projection = CAMERA_PERSPECTIVE;
-
   engine.world = WorldCreate();
-
-  ComponentPoolInitAligned(&engine.timerPool, sizeof(float));
-
+  ComponentPoolInit(&engine.timerPool, sizeof(Timer));
   return engine;
 }
 
