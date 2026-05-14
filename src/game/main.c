@@ -1,67 +1,107 @@
-#include "component_registry_setup.h"
 #include "game.h"
-#include "omp.h"
-#include "world_spawn.h"
+#include <float.h>
+#include <math.h>
 
-/* ================= Utilities ================= */
+#define POOL_SIZE       100000
+#define WARMUP_ITERS    200
+#define MEASURE_ITERS   1000
+#define FRAME_BUDGET_MS 16.667
 
-void ModelCollectionInit(ModelCollection_t *mc, uint32_t initialCapacity) {
-  mc->count = 0;
-  mc->capacity = initialCapacity;
-  mc->models = malloc(sizeof(ModelInstance_t) * initialCapacity);
-}
+typedef struct {
+  double mean;
+  double stddev;
+  double min;
+  double max;
+} Stats;
 
-void ModelCollectionAdd(ModelCollection_t *mc, ModelInstance_t instance) {
-  if (mc->count >= mc->capacity) {
-    mc->capacity = mc->capacity ? mc->capacity * 2 : 2;
-    mc->models = realloc(mc->models, sizeof(ModelInstance_t) * mc->capacity);
+static Stats ComputeStats(double *values, int count) {
+  Stats s = {0};
+  s.min = DBL_MAX;
+  s.max = -DBL_MAX;
+
+  double sum = 0.0;
+  for (int i = 0; i < count; i++) {
+    sum += values[i];
+    if (values[i] < s.min) s.min = values[i];
+    if (values[i] > s.max) s.max = values[i];
   }
-  mc->models[mc->count++] = instance;
-}
+  s.mean = sum / count;
 
-void ModelCollectionFree(ModelCollection_t *mc) {
-  free(mc->models);
-  mc->models = NULL;
-  mc->count = mc->capacity = 0;
-}
-
-static Vector3 ResolveModelRotation(const Orientation *entityOri,
-                                    const ModelInstance_t *mi) {
-  Vector3 result = mi->rotation;
-
-  switch (mi->rotationMode) {
-  case MODEL_ROT_WORLD:
-    // no entity rotation
-    break;
-
-  case MODEL_ROT_YAW_ONLY:
-    result.y += entityOri->yaw;
-    break;
-
-  case MODEL_ROT_YAW_PITCH:
-    result.y += entityOri->yaw;
-    result.x += entityOri->pitch;
-    break;
-
-  case MODEL_ROT_FULL:
-    result.x += entityOri->pitch;
-    result.y += entityOri->yaw;
-    break;
+  double var = 0.0;
+  for (int i = 0; i < count; i++) {
+    double d = values[i] - s.mean;
+    var += d * d;
   }
-
-  return result;
+  s.stddev = sqrt(var / count);
+  return s;
 }
 
-/* ================= Main ================= */
+static void ChurnEntities(world_t *world, const bitset_t *mask,
+                          entity_t *pool, uint32_t K) {
+  for (uint32_t j = 0; j < K; j++)
+    WorldDestroyEntity(world, pool[j]);
+
+  for (uint32_t j = 0; j < K; j++) {
+    pool[j] = WorldCreateEntity(world, mask);
+    Position *p = ECS_GET(world, pool[j], Position, COMP_POSITION);
+    Velocity *v = ECS_GET(world, pool[j], Velocity, COMP_VELOCITY);
+    p->value = (Vector3){0};
+    v->value = (Vector3){0.1f, 0, 0.1f};
+  }
+}
 
 int main(void) {
-
-
   Engine engine = EngineInit();
-  SetupComponentRegistry(&engine.componentRegistry, &engine);
-  GameWorld game = GameWorldCreate(&engine, engine.world);
-  EnableCursor();
-  RunGameLoop(&engine, &game);
+
+  uint32_t bits[] = {COMP_POSITION, COMP_VELOCITY};
+  bitset_t mask = MakeMask(bits, 2);
+
+  uint32_t archId = WorldCreateArchetype(engine.world, &mask);
+  archetype_t *arch = WorldGetArchetype(engine.world, archId);
+  ArchetypeAddInline(arch, COMP_POSITION, sizeof(Position));
+  ArchetypeAddInline(arch, COMP_VELOCITY, sizeof(Velocity));
+
+  entity_t *pool = malloc(sizeof(entity_t) * POOL_SIZE);
+  for (uint32_t i = 0; i < POOL_SIZE; i++) {
+    pool[i] = WorldCreateEntity(engine.world, &mask);
+    Position *p = ECS_GET(engine.world, pool[i], Position, COMP_POSITION);
+    Velocity *v = ECS_GET(engine.world, pool[i], Velocity, COMP_VELOCITY);
+    p->value = (Vector3){0};
+    v->value = (Vector3){(float)(i % 10) * 0.1f, 0, (float)((i * 7) % 10) * 0.1f};
+  }
+
+  static const uint32_t churnRates[] = {100, 500, 1000, 5000, 10000, 50000};
+  int numRates = (int)(sizeof(churnRates) / sizeof(churnRates[0]));
+
+  double *results = malloc(sizeof(double) * MEASURE_ITERS);
+
+  printf("=== Benchmark C: Entity Churn ===\n");
+  printf("Pool: %d entities | Components: Position + Velocity\n", POOL_SIZE);
+  printf("Frame budget: %.2f ms (60 fps)\n\n", FRAME_BUDGET_MS);
+  printf("%-10s  %-10s  %-10s  %-10s  %-10s  %s\n",
+         "K (churn)", "Mean ms", "StdDev", "Min ms", "Max ms", "60fps?");
+  printf("----------------------------------------------------------------------\n");
+
+  for (int r = 0; r < numRates; r++) {
+    uint32_t K = churnRates[r];
+
+    for (int w = 0; w < WARMUP_ITERS; w++)
+      ChurnEntities(engine.world, &mask, pool, K);
+
+    for (int i = 0; i < MEASURE_ITERS; i++) {
+      double start = GetTime();
+      ChurnEntities(engine.world, &mask, pool, K);
+      results[i] = (GetTime() - start) * 1000.0;
+    }
+
+    Stats s = ComputeStats(results, MEASURE_ITERS);
+    printf("%-10u  %-10.3f  %-10.3f  %-10.3f  %-10.3f  %s\n",
+           K, s.mean, s.stddev, s.min, s.max,
+           s.mean <= FRAME_BUDGET_MS ? "YES" : "NO");
+  }
+
+  free(results);
+  free(pool);
   EngineShutdown(&engine);
   return 0;
 }
