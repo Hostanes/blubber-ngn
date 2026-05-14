@@ -1,7 +1,10 @@
 #include "../game.h"
+#include "../level_creater_helper.h"
 #include "rlgl.h"
 #include "systems.h"
+#include <math.h>
 #include <raylib.h>
+#include <raymath.h>
 
 static bitset_t modelMask;
 static bool modelMaskInit = false;
@@ -39,11 +42,17 @@ void DrawNavGridBatched(NavGrid *grid) {
     for (int x = 0; x < grid->width; x++) {
       NavCell *cell = &grid->cells[NavGrid_Index(grid, x, y)];
 
-      Color c = GREEN;
-      if (cell->type == NAV_CELL_WALL)
-        c = RED;
-      else if (cell->type == NAV_CELL_COVER_LOW)
-        c = BLUE;
+      Color c;
+      switch (cell->type) {
+        case NAV_CELL_WALL:       c = (Color){180, 60,  60,  255}; break;
+        case NAV_CELL_COVER_LOW:  c = (Color){60,  100, 255, 255}; break;
+        case NAV_CELL_COVER_HIGH: c = (Color){60,  200, 60,  255}; break;
+        case NAV_CELL_BLOCKED:    c = (Color){110, 15,  15,  255}; break;
+        case NAV_CELL_SNIPE:      c = (Color){230, 220, 50,  255}; break;
+        case NAV_CELL_FLANK:      c = (Color){210, 60,  210, 255}; break;
+        case NAV_CELL_FENCE:      c = (Color){60,  210, 210, 255}; break;
+        default:                  c = (Color){60,  60,  60,  255}; break;
+      }
 
       rlColor4ub(c.r, c.g, c.b, 255);
 
@@ -317,7 +326,93 @@ void ComputeArchetypeTransforms(world_t *world, archetype_t *arch) {
   }
 }
 
-static void DrawHealthBars(world_t *world, Camera *camera) {
+static void DrawPlanarShadows(world_t *world, GameWorld *game) {
+  return; // disabled
+  Vector3 sun = game->sunDirection;
+  if (sun.y >= -0.01f) return;
+
+  static Material shadowMat;
+  static bool shadowMatInit = false;
+  if (!shadowMatInit) {
+    shadowMat = LoadMaterialDefault();
+    shadowMatInit = true;
+  }
+  shadowMat.shader = game->shadowShader;
+
+  uint32_t archIds[] = {
+    game->playerArchId,
+    game->enemyGruntArchId,
+    game->enemyRangerArchId,
+    game->enemyMeleeArchId,
+    game->enemyDroneArchId,
+    game->enemyMissileArchId,
+    game->obstacleArchId,
+    game->targetStaticArchId,
+    game->targetPatrolArchId,
+  };
+  int numArchs = (int)(sizeof(archIds) / sizeof(archIds[0]));
+
+  BeginBlendMode(BLEND_ALPHA);
+  rlDisableDepthTest();
+  rlDisableDepthMask();
+  rlDisableBackfaceCulling();
+
+  for (int ai = 0; ai < numArchs; ai++) {
+    archetype_t *arch = WorldGetArchetype(world, archIds[ai]);
+    if (!arch) continue;
+
+    for (uint32_t j = 0; j < arch->count; j++) {
+      entity_t e = arch->entities[j];
+      Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);
+      if (!act || !act->value) continue;
+
+      Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+      ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+      if (!pos || !mc) continue;
+
+      float terrainY = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                                      pos->value.x, pos->value.z);
+      float h = pos->value.y - terrainY;
+      if (h < 0.0f) h = 0.0f;
+      if (h > 18.0f) continue;
+
+      float intensity = fmaxf(0.0f, 1.0f - h / 12.0f);
+      if (intensity < 0.02f) continue;
+
+      // Planar shadow matrix: project vertices onto y = yp along sun direction
+      float yp  = terrainY + 0.02f;
+      float ily = 1.0f / sun.y;      // sun.y < 0 so ily < 0
+
+      Matrix S = {
+        1.0f,         -sun.x * ily, 0.0f, sun.x * yp * ily,
+        0.0f,          0.0f,        0.0f, yp,
+        0.0f,         -sun.z * ily, 1.0f, sun.z * yp * ily,
+        0.0f,          0.0f,        0.0f, 1.0f
+      };
+
+      float alpha = 0.50f * intensity;
+      SetShaderValue(game->shadowShader, game->shadowAlphaLoc,
+                     &alpha, SHADER_UNIFORM_FLOAT);
+
+      for (uint32_t m = 0; m < mc->count; m++) {
+        ModelInstance_t *mi = &mc->models[m];
+        if (!mi->isActive) continue;
+
+        Matrix shadowTransform = MatrixMultiply(S, mi->finalTransform);
+
+        for (int k = 0; k < mi->model.meshCount; k++)
+          DrawMesh(mi->model.meshes[k], shadowMat, shadowTransform);
+      }
+    }
+  }
+
+  rlEnableBackfaceCulling();
+  rlEnableDepthMask();
+  rlEnableDepthTest();
+  EndBlendMode();
+}
+
+static void DrawHealthBars(world_t *world, Camera *camera, bool fade) {
   const int BAR_W      = 60;
   const int BAR_H      = 5;
   const int Y_OFFSET   = 40; // pixels above projected position
@@ -349,6 +444,12 @@ static void DrawHealthBars(world_t *world, Camera *camera) {
       Vector3 toEntity  = Vector3Subtract(above, camera->position);
       if (Vector3DotProduct(camFwd, toEntity) < 0.1f) continue;
 
+      // Distance fade: fully visible up to 75m, sharp fade over last 6m, gone at 81m
+      float dist = Vector3Length(toEntity);
+      if (fade && dist >= 81.0f) continue;
+      float fadeAlpha = (fade && dist > 75.0f) ? 1.0f - (dist - 75.0f) / 6.0f : 1.0f;
+#define FA(a) ((unsigned char)((a) * fadeAlpha))
+
       Vector2 screen = GetWorldToScreen(above, *camera);
 
       if (screen.x < -BAR_W || screen.x > GetScreenWidth() + BAR_W) continue;
@@ -373,10 +474,11 @@ static void DrawHealthBars(world_t *world, Camera *camera) {
 
         Color hpColor = hpRatio > 0.5f ? RED
                       : hpRatio > 0.25f ? ORANGE : MAROON;
+        hpColor.a = FA(255);
 
-        DrawRectangle(bx,       by, hpW, BAR_H, (Color){50, 10, 10, 200});
+        DrawRectangle(bx,       by, hpW, BAR_H, (Color){50, 10, 10, FA(200)});
         DrawRectangle(bx,       by, hpFill, BAR_H, hpColor);
-        DrawRectangleLines(bx,  by, hpW, BAR_H, (Color){200, 80, 80, 200});
+        DrawRectangleLines(bx,  by, hpW, BAR_H, (Color){200, 80, 80, FA(200)});
       }
 
       // --- Shield section (right) ---
@@ -384,13 +486,216 @@ static void DrawHealthBars(world_t *world, Camera *camera) {
         float shRatio = (sh->current > 0.0f) ? (sh->current / sh->max) : 0.0f;
         int   shFill  = (int)(shW * shRatio);
 
-        DrawRectangle(bx + hpW,       by, shW, BAR_H, (Color){10, 20, 60, 200});
-        DrawRectangle(bx + hpW,       by, shFill, BAR_H, (Color){60, 140, 255, 230});
-        DrawRectangleLines(bx + hpW,  by, shW, BAR_H, (Color){80, 160, 255, 200});
+        DrawRectangle(bx + hpW,       by, shW, BAR_H, (Color){10, 20, 60, FA(200)});
+        DrawRectangle(bx + hpW,       by, shFill, BAR_H, (Color){60, 140, 255, FA(230)});
+        DrawRectangleLines(bx + hpW,  by, shW, BAR_H, (Color){80, 160, 255, FA(200)});
       }
 
       // Outer border encompassing the full bar
-      DrawRectangleLines(bx, by, BAR_W, BAR_H, (Color){180, 180, 180, 160});
+      DrawRectangleLines(bx, by, BAR_W, BAR_H, (Color){180, 180, 180, FA(160)});
+#undef FA
+    }
+  }
+}
+
+static void DrawOutlineEntity(world_t *world, entity_t e, Material mat) {
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+  if (!mc) return;
+  for (uint32_t m = 0; m < mc->count; m++) {
+    ModelInstance_t *mi = &mc->models[m];
+    if (!mi->isActive) continue;
+    for (int k = 0; k < mi->model.meshCount; k++)
+      DrawMesh(mi->model.meshes[k], mat, mi->finalTransform);
+  }
+}
+
+static void DrawOutlineArch(world_t *world, archetype_t *arch,
+                             Material mat) {
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || !active->value) continue;
+
+    ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+    if (!mc) continue;
+
+    for (uint32_t m = 0; m < mc->count; m++) {
+      ModelInstance_t *mi = &mc->models[m];
+      if (!mi->isActive) continue;
+      for (int k = 0; k < mi->model.meshCount; k++)
+        DrawMesh(mi->model.meshes[k], mat, mi->finalTransform);
+    }
+  }
+}
+
+static void DrawOutlinePass(world_t *world, GameWorld *game) {
+  // Build a material that uses the outline shader
+  Material mat = LoadMaterialDefault();
+  mat.shader = game->outlineShader;
+
+  const float thickness = 0.002f;
+  SetShaderValue(game->outlineShader, game->outlineThicknessLoc,
+                 &thickness, SHADER_UNIFORM_FLOAT);
+
+  // Archs to skip entirely (no outline)
+  uint32_t skipIds[] = {
+    game->enemyGruntArchId,
+    game->enemyRangerArchId,
+    game->enemyMeleeArchId,
+    game->enemyCapsuleArchId,
+    game->enemyMissileArchId,
+    game->enemyDroneArchId,
+    game->bulletArchId,
+    game->particleArchId,
+    game->missileArchId,
+    game->tutorialBoxArchId,
+    game->infoBoxArchId,
+    game->spawnerArchId,
+    game->coolantArchId,
+  };
+
+  Vector4 col = {0.0f, 0.0f, 0.0f, 1.0f};
+  SetShaderValue(game->outlineShader, game->outlineColorLoc,
+                 &col, SHADER_UNIFORM_VEC4);
+
+  rlEnableBackfaceCulling();
+  rlSetCullFace(RL_CULL_FACE_FRONT);
+
+  for (uint32_t i = 0; i < world->archetypeCount; i++) {
+    archetype_t *arch = &world->archetypes[i];
+    if (!ArchetypeHas(arch, COMP_MODEL)) continue;
+
+    bool skip = false;
+    for (int s = 0; s < (int)(sizeof(skipIds)/sizeof(skipIds[0])); s++) {
+      if (arch == WorldGetArchetype(world, skipIds[s])) { skip = true; break; }
+    }
+    if (skip) continue;
+
+    DrawOutlineArch(world, arch, mat);
+  }
+
+  rlSetCullFace(RL_CULL_FACE_BACK);
+}
+
+static void DrawProjectileOutlines(world_t *world, GameWorld *game) {
+  Material mat = LoadMaterialDefault();
+  mat.shader = game->outlineShader;
+
+  const float thickness = 0.006f;
+  SetShaderValue(game->outlineShader, game->outlineThicknessLoc,
+                 &thickness, SHADER_UNIFORM_FLOAT);
+
+  static const Vector4 colPlayer = {1.0f, 1.0f, 1.0f, 1.0f};
+  static const Vector4 colEnemy  = {1.0f, 0.08f, 0.08f, 1.0f};
+
+  rlEnableBackfaceCulling();
+  rlSetCullFace(RL_CULL_FACE_FRONT);
+
+  // Regular bullets
+  archetype_t *bulletArch = WorldGetArchetype(world, game->bulletArchId);
+  if (bulletArch) {
+    for (uint32_t i = 0; i < bulletArch->count; i++) {
+      entity_t e = bulletArch->entities[i];
+      Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+      if (!active || !active->value) continue;
+
+      BulletType *bt = ECS_GET(world, e, BulletType, COMP_BULLETTYPE);
+      if (!bt) continue;
+
+      bool isPlayer = (bt->type == BULLET_TYPE_STANDARD ||
+                       bt->type == BULLET_TYPE_PLASMA    ||
+                       bt->type == BULLET_TYPE_BUCKSHOT);
+      const Vector4 *col = isPlayer ? &colPlayer : &colEnemy;
+      SetShaderValue(game->outlineShader, game->outlineColorLoc,
+                     col, SHADER_UNIFORM_VEC4);
+      DrawOutlineEntity(world, e, mat);
+    }
+  }
+
+  // Homing missiles
+  archetype_t *missileArch = WorldGetArchetype(world, game->missileArchId);
+  if (missileArch) {
+    for (uint32_t i = 0; i < missileArch->count; i++) {
+      entity_t e = missileArch->entities[i];
+      Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+      if (!active || !active->value) continue;
+
+      HomingMissile *hm = ECS_GET(world, e, HomingMissile, COMP_HOMINGMISSILE);
+      if (!hm) continue;
+
+      const Vector4 *col = (hm->owner.id == game->player.id) ? &colPlayer : &colEnemy;
+      SetShaderValue(game->outlineShader, game->outlineColorLoc,
+                     col, SHADER_UNIFORM_VEC4);
+      DrawOutlineEntity(world, e, mat);
+    }
+  }
+
+  rlSetCullFace(RL_CULL_FACE_BACK);
+}
+
+static void DrawAIStateLabels(world_t *world, GameWorld *game, Camera *camera) {
+  int sw = GetScreenWidth(), sh = GetScreenHeight();
+
+  for (uint32_t ai = 0; ai < world->archetypeCount; ai++) {
+    archetype_t *arch = &world->archetypes[ai];
+    if (!ArchetypeHas(arch, COMP_POSITION)) continue;
+    if (!ArchetypeHas(arch, COMP_ACTIVE))   continue;
+    if (ArchetypeHas(arch, COMP_TYPE_PLAYER)) continue;
+
+    bool hasCombat = ArchetypeHas(arch, COMP_COMBAT_STATE);
+    bool hasMelee  = ArchetypeHas(arch, COMP_MELEE_ENEMY);
+    bool hasDrone  = ArchetypeHas(arch, COMP_DRONE_ENEMY);
+    if (!hasCombat && !hasMelee && !hasDrone) continue;
+
+    for (uint32_t ei = 0; ei < arch->count; ei++) {
+      entity_t e = arch->entities[ei];
+      Active   *act = ECS_GET(world, e, Active,   COMP_ACTIVE);
+      if (!act || !act->value) continue;
+      Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+      if (!pos) continue;
+
+      Vector3 above    = {pos->value.x, pos->value.y + 3.8f, pos->value.z};
+      Vector3 camFwd   = Vector3Normalize(Vector3Subtract(camera->target, camera->position));
+      Vector3 toEntity = Vector3Subtract(above, camera->position);
+      if (Vector3DotProduct(camFwd, toEntity) < 0.1f) continue;
+
+      Vector2 sc = GetWorldToScreen(above, *camera);
+      if (sc.x < -80 || sc.x > sw + 80 || sc.y < 0 || sc.y > sh) continue;
+
+      const char *label = "?";
+      if (hasCombat) {
+        CombatState_t *cs = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
+        if (cs) switch (cs->state) {
+          case ENEMY_STATE_IDLE:    label = "IDLE";       break;
+          case ENEMY_STATE_MOVING:  label = "MOVING";     break;
+          case ENEMY_STATE_COMBAT:  label = "COMBAT";     break;
+          case ENEMY_AI_ADVANCE:    label = "ADVANCE";    break;
+          case ENEMY_AI_SUPPRESS:   label = "SUPPRESS";   break;
+          case ENEMY_AI_COVER:      label = "COVER";      break;
+          case ENEMY_AI_RETREAT:    label = "RETREAT";    break;
+          case ENEMY_AI_REPOSITION: label = "REPOSITION"; break;
+          default:                  label = "?";          break;
+        }
+      } else if (hasMelee) {
+        MeleeEnemy *me = ECS_GET(world, e, MeleeEnemy, COMP_MELEE_ENEMY);
+        if (me) switch (me->state) {
+          case MELEE_CHASING:    label = "CHASING"; break;
+          case MELEE_WINDING_UP: label = "WINDUP";  break;
+          case MELEE_LUNGING:    label = "LUNGE";   break;
+          case MELEE_RECOVERING: label = "RECOVER"; break;
+          default:               label = "?";       break;
+        }
+      } else if (hasDrone) {
+        DroneEnemy *dr = ECS_GET(world, e, DroneEnemy, COMP_DRONE_ENEMY);
+        label = (dr && dr->hasTarget) ? "SHIELDING" : "PATROL";
+      }
+
+      int fs = 12;
+      int tw = MeasureText(label, fs);
+      int bx = (int)sc.x - tw / 2 - 4;
+      int by = (int)sc.y - 2;
+      DrawRectangle(bx, by, tw + 8, fs + 6, (Color){0, 0, 0, 160});
+      DrawText(label, bx + 4, by + 3, fs, (Color){0, 255, 180, 255});
     }
   }
 }
@@ -415,6 +720,7 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   BeginMode3D(*camera);
 
   DrawModel(game->terrainModel, (Vector3){0, 0, 0}, 1.0f, WHITE);
+  DrawPlanarShadows(world, game);
 
   for (uint32_t i = 0; i < world->archetypeCount; ++i) {
     archetype_t *arch = &world->archetypes[i];
@@ -424,9 +730,49 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
     RenderArchetype(world, arch);
   }
 
-  DrawTriggerAABBs(world, game->tutorialBoxArchId);
-  DrawWallSegmentWireframes(world, game->wallSegArchId);
-  DrawSpawnerWireframes(world, game->spawnerArchId);
+  if (game->debugView) {
+    DrawTriggerAABBs(world, game->tutorialBoxArchId);
+    DrawWallSegmentWireframes(world, game->wallSegArchId);
+    DrawSpawnerWireframes(world, game->spawnerArchId);
+    DrawNavGridBatched(&game->navGrid);
+
+    // Capsule colliders — every archetype that has one
+    for (uint32_t ai = 0; ai < world->archetypeCount; ai++) {
+      archetype_t *arch = &world->archetypes[ai];
+      if (!ArchetypeHas(arch, COMP_CAPSULE_COLLIDER)) continue;
+      for (uint32_t ei = 0; ei < arch->count; ei++) {
+        entity_t e = arch->entities[ei];
+        Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);
+        if (!act || !act->value) continue;
+        CapsuleCollider *cap = ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+        if (!cap) continue;
+        Color cc = {0, 255, 100, 200};
+        DrawLine3D(cap->worldA, cap->worldB, cc);
+        DrawSphereWires(cap->worldA, cap->radius, 6, 6, cc);
+        DrawSphereWires(cap->worldB, cap->radius, 6, 6, cc);
+      }
+    }
+
+    // Muzzle world positions — yellow dot + forward ray for each muzzle
+    for (uint32_t ai = 0; ai < world->archetypeCount; ai++) {
+      archetype_t *arch = &world->archetypes[ai];
+      if (!ArchetypeHas(arch, COMP_MUZZLES)) continue;
+      for (uint32_t ei = 0; ei < arch->count; ei++) {
+        entity_t e = arch->entities[ei];
+        Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);
+        if (!act || !act->value) continue;
+        MuzzleCollection_t *mc = ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
+        if (!mc) continue;
+        for (int mi = 0; mi < mc->count; mi++) {
+          Muzzle_t *mz = &mc->Muzzles[mi];
+          DrawSphere(mz->worldPosition, 0.06f, YELLOW);
+          DrawLine3D(mz->worldPosition,
+                     Vector3Add(mz->worldPosition, Vector3Scale(mz->forward, 0.5f)),
+                     YELLOW);
+        }
+      }
+    }
+  }
 
   // Draw particles (explosion fire + smoke) with alpha blending
   {
@@ -453,12 +799,219 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
     }
   }
 
+  // Health orbs
+  {
+    archetype_t *hoArch = WorldGetArchetype(world, game->healthOrbArchId);
+    if (hoArch) {
+      BeginBlendMode(BLEND_ALPHA);
+      for (uint32_t i = 0; i < hoArch->count; i++) {
+        entity_t e = hoArch->entities[i];
+        Active   *active = ECS_GET(world, e, Active,    COMP_ACTIVE);
+        if (!active || !active->value) continue;
+        Position  *pos = ECS_GET(world, e, Position,  COMP_POSITION);
+        HealthOrb *ho  = ECS_GET(world, e, HealthOrb, COMP_HEALTH_ORB);
+        if (!pos || !ho) continue;
+        float t = ho->lifetime / 2.5f;
+        DrawSphere(pos->value, 0.34f,
+                   ColorAlpha((Color){50, 220, 80, 255}, 0.60f + t * 0.40f));
+      }
+      EndBlendMode();
+    }
+  }
+
+  // Coolant orbs
+  {
+    archetype_t *cArch = WorldGetArchetype(world, game->coolantArchId);
+    if (cArch) {
+      BeginBlendMode(BLEND_ALPHA);
+      for (uint32_t i = 0; i < cArch->count; i++) {
+        entity_t e = cArch->entities[i];
+        Active   *active = ECS_GET(world, e, Active,    COMP_ACTIVE);
+        if (!active || !active->value) continue;
+        Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
+        Coolant  *co  = ECS_GET(world, e, Coolant,  COMP_COOLANT);
+        if (!pos || !co) continue;
+        float t = co->lifetime / 2.0f;
+        DrawSphere(pos->value, 0.38f,
+                   ColorAlpha((Color){30, 140, 255, 255}, 0.65f + t * 0.35f));
+      }
+      EndBlendMode();
+    }
+  }
+
+  // Info box proximity wireframe + rotating marker model
+  {
+    archetype_t *ibArch = WorldGetArchetype(world, game->infoBoxArchId);
+    Position *ppos = ECS_GET(world, game->player, Position, COMP_POSITION);
+    if (ibArch && ppos) {
+      const float maxDist = 60.0f;
+      float yaw = (float)GetTime() * 90.0f;
+      for (uint32_t i = 0; i < ibArch->count; i++) {
+        entity_t ibe = ibArch->entities[i];
+        Active   *act = ECS_GET(world, ibe, Active,   COMP_ACTIVE);
+        if (!act || !act->value) continue;
+        InfoBox  *ib  = ECS_GET(world, ibe, InfoBox,  COMP_INFOBOX);
+        if (!ib || ib->triggersLeft == 0) continue;
+        Position *ipos = ECS_GET(world, ibe, Position, COMP_POSITION);
+        if (!ipos) continue;
+        float dx   = ppos->value.x - ipos->value.x;
+        float dz   = ppos->value.z - ipos->value.z;
+        float dist = sqrtf(dx*dx + dz*dz);
+        if (dist > maxDist) continue;
+        float alpha = 1.0f - dist / maxDist;
+        float sz    = ib->halfExtent * 2.0f;
+        DrawCubeWires(ipos->value, sz, sz, sz,
+                      ColorAlpha((Color){0, 230, 210, 255}, alpha * 0.6f));
+        Vector3 markerPos = {ipos->value.x,
+                             ipos->value.y + ib->markerHeight,
+                             ipos->value.z};
+        DrawModelEx(game->infoBoxMarkerModel, markerPos,
+                    (Vector3){0, 1, 0}, yaw,
+                    (Vector3){1.0f, 1.0f, 1.0f},
+                    ColorAlpha(WHITE, alpha));
+      }
+    }
+  }
+
+  // Blunderbuss hook rope + harpoon head
+  if (game->hookState != HOOKSTATE_IDLE) {
+    Position *pp = ECS_GET(world, game->player, Position, COMP_POSITION);
+    if (pp) {
+      Color ropeCol = (game->hookState == HOOKSTATE_PULLING)
+                        ? (Color){255, 200, 60, 220}
+                        : (Color){210, 210, 210, 200};
+      DrawLine3D(pp->value, game->hookPos, ropeCol);
+
+      // Orient harpoon toward its flight direction
+      Vector3 dir;
+      if (game->hookState == HOOKSTATE_FLYING) {
+        float len = Vector3Length(game->hookVel);
+        dir = len > 0.001f ? Vector3Scale(game->hookVel, 1.0f / len)
+                           : (Vector3){0, 0, 1};
+      } else {
+        // Attached: point back toward player
+        Vector3 d = Vector3Subtract(pp->value, game->hookPos);
+        float len = Vector3Length(d);
+        dir = len > 0.001f ? Vector3Scale(d, 1.0f / len) : (Vector3){0, 0, 1};
+      }
+      float yaw   = atan2f(dir.x, dir.z);
+      float pitch = -asinf(Clamp(dir.y, -1.0f, 1.0f));
+      Matrix matR = MatrixMultiply(MatrixRotateX(pitch), MatrixRotateY(yaw));
+      Matrix matT = MatrixTranslate(game->hookPos.x, game->hookPos.y, game->hookPos.z);
+      Matrix mat  = MatrixMultiply(matR, matT);
+      for (int mi = 0; mi < game->harpoonModel.meshCount; mi++)
+        DrawMesh(game->harpoonModel.meshes[mi],
+                 game->harpoonModel.materials[game->harpoonModel.meshMaterial[mi]],
+                 mat);
+
+      // White outline — same inverse-hull pass as other projectiles
+      {
+        Material outMat = LoadMaterialDefault();
+        outMat.shader = game->outlineShader;
+        const float thickness = 0.002f;
+        const Vector4 white   = {1.0f, 1.0f, 1.0f, 1.0f};
+        SetShaderValue(game->outlineShader, game->outlineThicknessLoc,
+                       &thickness, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(game->outlineShader, game->outlineColorLoc,
+                       &white, SHADER_UNIFORM_VEC4);
+        rlEnableBackfaceCulling();
+        rlSetCullFace(RL_CULL_FACE_FRONT);
+        for (int mi = 0; mi < game->harpoonModel.meshCount; mi++)
+          DrawMesh(game->harpoonModel.meshes[mi], outMat, mat);
+        rlSetCullFace(RL_CULL_FACE_BACK);
+      }
+    }
+  }
+
+  // Drone shield beams — thin quadratic bezier arc from drone to its target
+  {
+    archetype_t *drArch = WorldGetArchetype(world, game->enemyDroneArchId);
+    if (drArch) {
+      BeginBlendMode(BLEND_ALPHA);
+      Color beamCol = (Color){60, 180, 255, 150};
+      for (uint32_t i = 0; i < drArch->count; i++) {
+        entity_t e = drArch->entities[i];
+        Active    *active = ECS_GET(world, e, Active,     COMP_ACTIVE);
+        if (!active || !active->value) continue;
+        Position  *pos = ECS_GET(world, e, Position,   COMP_POSITION);
+        DroneEnemy *dr = ECS_GET(world, e, DroneEnemy, COMP_DRONE_ENEMY);
+        if (!pos || !dr || !dr->hasTarget) continue;
+        Active   *ta = ECS_GET(world, dr->target, Active,   COMP_ACTIVE);
+        Position *tp = ECS_GET(world, dr->target, Position, COMP_POSITION);
+        if (!ta || !ta->value || !tp) continue;
+
+        Vector3 p0  = pos->value;
+        Vector3 p2  = tp->value;
+        // Control point: midpoint lifted to make a gentle arc
+        Vector3 ctrl = {
+          (p0.x + p2.x) * 0.5f,
+          (p0.y + p2.y) * 0.5f + 2.0f,
+          (p0.z + p2.z) * 0.5f,
+        };
+
+        Vector3 prev = p0;
+        for (int s = 1; s <= 16; s++) {
+          float t  = (float)s / 16.0f;
+          float mt = 1.0f - t;
+          Vector3 pt = {
+            mt*mt*p0.x + 2.0f*mt*t*ctrl.x + t*t*p2.x,
+            mt*mt*p0.y + 2.0f*mt*t*ctrl.y + t*t*p2.y,
+            mt*mt*p0.z + 2.0f*mt*t*ctrl.z + t*t*p2.z,
+          };
+          DrawLine3D(prev, pt, beamCol);
+          prev = pt;
+        }
+      }
+      EndBlendMode();
+    }
+  }
+
+  DrawOutlinePass(world, game);
+  DrawProjectileOutlines(world, game);
+
   EndMode3D();
-  DrawHealthBars(world, camera);
+
+  DrawHealthBars(world, camera, game->healthBarFade);
+  if (game->debugView) DrawAIStateLabels(world, game, camera);
   DrawFPS(10, 10);
 
   int screenW = GetScreenWidth();
   int screenH = GetScreenHeight();
+
+  // --- Debug overlay HUD ---
+  if (game->debugView) {
+    const int pw = 160, ph = 122, px = screenW - pw - 4, py = 180;
+    DrawRectangle(px, py, pw, ph, (Color){0, 0, 0, 180});
+    DrawRectangleLines(px, py, pw, ph, (Color){255, 80, 0, 200});
+    DrawText("DEBUG [F12]", px + 6, py + 5, 11, (Color){255, 80, 0, 255});
+
+    Vector2 mouse = GetMousePosition();
+
+    // Row helper: draw a clickable button and return true on click
+    #define DBG_BTN(label, bx, by, bw, bh) \
+      (CheckCollisionPointRec(mouse, (Rectangle){(float)(bx),(float)(by),(float)(bw),(float)(bh)}) \
+        ? (DrawRectangle(bx,by,bw,bh,(Color){255,80,0,200}), \
+           DrawRectangleLines(bx,by,bw,bh,(Color){255,140,60,255}), \
+           DrawText(label, bx+4, by+4, 12, WHITE), \
+           IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) \
+        : (DrawRectangle(bx,by,bw,bh,(Color){60,20,0,180}), \
+           DrawRectangleLines(bx,by,bw,bh,(Color){200,80,0,180}), \
+           DrawText(label, bx+4, by+4, 12, (Color){220,150,100,255}), \
+           false))
+
+    Position *dbgPPos = ECS_GET(world, game->player, Position, COMP_POSITION);
+    Vector3 spawnPos  = dbgPPos ? dbgPPos->value : (Vector3){0,0,0};
+    spawnPos.x += 3.0f;
+
+    if (DBG_BTN("SPAWN GRUNT",  px+6, py+24, pw-12, 22))
+      SpawnEnemyGrunt(world, game, spawnPos);
+    if (DBG_BTN("SPAWN RANGER", px+6, py+52, pw-12, 22))
+      SpawnEnemyRanger(world, game, spawnPos);
+    if (DBG_BTN("SPAWN MELEE",  px+6, py+80, pw-12, 22))
+      SpawnEnemyMelee(world, game, spawnPos);
+
+    #undef DBG_BTN
+  }
 
   int centerX = screenW / 2;
   int centerY = screenH / 2;
@@ -482,6 +1035,71 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   // Vertical bottom
   DrawLineEx((Vector2){centerX, centerY + gap},
              (Vector2){centerX, centerY + gap + size}, thickness, RED);
+
+  // --- Rocket launcher lock-on HUD ---
+  if (game->playerActiveWeapon == 2 &&
+      game->rocketLockState != LOCKSTATE_IDLE) {
+    float prog   = game->rocketLockProgress;
+    bool  locked = (game->rocketLockState == LOCKSTATE_LOCKED ||
+                    game->rocketLockState == LOCKSTATE_BURSTING);
+    float angle  = game->rocketLockAngle;
+
+    Color arcCol  = locked ? RED : (Color){0, 230, 200, 255};
+    Color tgtCol  = locked ? RED : (Color){0, 230, 200, 180};
+    Color scanCol = (Color){0, 230, 200, 200};
+
+    // Progress arc around screen center
+    DrawRing((Vector2){(float)centerX, (float)centerY},
+             58.0f, 63.0f, -90.0f, -90.0f + prog * 360.0f, 48, arcCol);
+
+    // Brackets on each tracked enemy
+    int n = game->rocketLockTargetCount;
+    for (int t = 0; t < n; t++) {
+      Position *tp = ECS_GET(world, game->rocketLockTargets[t], Position, COMP_POSITION);
+      if (!tp) continue;
+      Vector2 sc  = GetWorldToScreen(tp->value, *camera);
+      float   sz  = 40.0f;
+      float   arm = sz * 0.45f;
+      for (int c = 0; c < 4; c++) {
+        float a   = (angle + 45.0f + 90.0f * c) * DEG2RAD;
+        float bx  = sc.x + cosf(a) * sz;
+        float by  = sc.y + sinf(a) * sz;
+        float sa  = sinf(a), ca = cosf(a);
+        float ax1 = (sa - ca) * 0.7071f * arm, ay1 = -(ca + sa) * 0.7071f * arm;
+        float ax2 = -(sa + ca) * 0.7071f * arm, ay2 = (ca - sa) * 0.7071f * arm;
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx+ax1, by+ay1}, 2.0f, tgtCol);
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx+ax2, by+ay2}, 2.0f, tgtCol);
+      }
+    }
+    // "LOCKED" label under the bracket count when fully locked
+    if (locked && n > 0) {
+      char lbl[16];
+      if (n > 1)
+        snprintf(lbl, sizeof(lbl), "LOCKED x%d", n);
+      else
+        snprintf(lbl, sizeof(lbl), "LOCKED");
+      int tw = MeasureText(lbl, 14);
+      DrawText(lbl, centerX - tw/2, centerY + 72, 14, RED);
+    }
+
+    // Scanning brackets at screen center (when no targets or still acquiring)
+    if (!locked || n == 0) {
+      float sz  = 65.0f;
+      float arm = sz * 0.45f;
+      float cx  = (float)centerX;
+      float cy  = (float)centerY;
+      for (int c = 0; c < 4; c++) {
+        float a   = (angle + 45.0f + 90.0f * c) * DEG2RAD;
+        float bx  = cx + cosf(a) * sz;
+        float by  = cy + sinf(a) * sz;
+        float sa  = sinf(a), ca = cosf(a);
+        float ax1 = (sa - ca) * 0.7071f * arm, ay1 = -(ca + sa) * 0.7071f * arm;
+        float ax2 = -(sa + ca) * 0.7071f * arm, ay2 = (ca - sa) * 0.7071f * arm;
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx+ax1, by+ay1}, 2.0f, scanCol);
+        DrawLineEx((Vector2){bx, by}, (Vector2){bx+ax2, by+ay2}, 2.0f, scanCol);
+      }
+    }
+  }
 
   // --- Player debug info (top-right) ---
   archetype_t *playerArch = &world->archetypes[0];
@@ -648,6 +1266,24 @@ void RenderLevelSystem(world_t *world, GameWorld *game, Camera *camera) {
   }
 
   MessageSystem_Render(&game->messageSystem);
+
+  // Damage vignette — red edge fade on hit
+  if (game->damageFlash > 0.0f) {
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    // Ease-out: square the value so it snaps on and fades smoothly
+    float t   = game->damageFlash * game->damageFlash;
+    int   th  = sh / 4;   // vertical gradient thickness
+    int   tw  = sw / 5;   // horizontal gradient thickness
+    Color edge  = ColorAlpha((Color){200, 0, 0, 255}, t * 0.75f);
+    Color clear = (Color){0, 0, 0, 0};
+
+    BeginBlendMode(BLEND_ALPHA);
+    DrawRectangleGradientV(0,       0,        sw, th, edge, clear);   // top
+    DrawRectangleGradientV(0,       sh - th,  sw, th, clear, edge);   // bottom
+    DrawRectangleGradientH(0,       0,        tw, sh, edge, clear);   // left
+    DrawRectangleGradientH(sw - tw, 0,        tw, sh, clear, edge);   // right
+    EndBlendMode();
+  }
 
   EndDrawing();
 }

@@ -79,7 +79,7 @@ void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
                 int shooterArchId, Muzzle_t *m) {
   if (m->bulletType == BULLET_TYPE_MISSILE) {
     SpawnHomingMissile(world, game, shooter, game->player,
-                       m->worldPosition, m->forward);
+                       m->worldPosition, m->forward, true, 4.0f);
     return;
   }
 
@@ -150,12 +150,15 @@ static bool SweptSphereVsAABB(Vector3 start, Vector3 end, float radius,
 
 void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
                   float dt) {
-  archetype_t *playerArch = WorldGetArchetype(world, game->playerArchId);
-  archetype_t *enemyArch  = WorldGetArchetype(world, game->enemyGruntArchId);
-  archetype_t *rangerArch = WorldGetArchetype(world, game->enemyRangerArchId);
-  archetype_t *meleeArch  = WorldGetArchetype(world, game->enemyMeleeArchId);
-  archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
-  archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
+  archetype_t *playerArch       = WorldGetArchetype(world, game->playerArchId);
+  archetype_t *enemyArch        = WorldGetArchetype(world, game->enemyGruntArchId);
+  archetype_t *rangerArch       = WorldGetArchetype(world, game->enemyRangerArchId);
+  archetype_t *meleeArch        = WorldGetArchetype(world, game->enemyMeleeArchId);
+  archetype_t *droneArch        = WorldGetArchetype(world, game->enemyDroneArchId);
+  archetype_t *targetStaticArch = WorldGetArchetype(world, game->targetStaticArchId);
+  archetype_t *targetPatrolArch = WorldGetArchetype(world, game->targetPatrolArchId);
+  archetype_t *obstacleArch     = WorldGetArchetype(world, game->obstacleArchId);
+  archetype_t *wallSegArch      = WorldGetArchetype(world, game->wallSegArchId);
 
   Position *playerPos = ECS_GET(world, game->player, Position, COMP_POSITION);
   Vector3 playerSoundPos = playerPos ? playerPos->value : (Vector3){0,0,0};
@@ -236,12 +239,38 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
     continue;
 
     /* --- Collision checks --- */
-    CHECK_ARCH(playerArch,   SOUND_HITMARKER, playerSoundPos);
-    CHECK_ARCH(enemyArch,    SOUND_HITMARKER, playerSoundPos);
-    CHECK_ARCH(rangerArch,   SOUND_HITMARKER, playerSoundPos);
-    CHECK_ARCH(meleeArch,    SOUND_HITMARKER, playerSoundPos);
-    CHECK_ARCH(obstacleArch, SOUND_CLANG,     prevPos);
-    CHECK_ARCH(wallSegArch,  SOUND_CLANG,     prevPos);
+    CHECK_ARCH(playerArch,       SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(enemyArch,        SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(rangerArch,       SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(meleeArch,        SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(droneArch,        SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(targetStaticArch, SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(targetPatrolArch, SOUND_HITMARKER, playerSoundPos);
+    CHECK_ARCH(obstacleArch,     SOUND_CLANG,     prevPos);
+
+    // Wall segments: bidirectional collideMask check so blockProjectiles works
+    for (uint32_t j = 0; j < wallSegArch->count; j++) {
+      entity_t target = wallSegArch->entities[j];
+      if (owner && target.id == owner->eId && wallSegArch->id == owner->archId)
+        continue;
+      Active *targetActive = ECS_GET(world, target, Active, COMP_ACTIVE);
+      if (!targetActive || !targetActive->value) continue;
+      CollisionInstance *ci = ECS_GET(world, target, CollisionInstance, COMP_COLLISION_INSTANCE);
+      if (!ci) continue;
+      CollisionInstance *bulletCI = ECS_GET(world, b, CollisionInstance, COMP_COLLISION_INSTANCE);
+      if (!(bulletCI->collideMask & ci->layerMask)) continue;
+      if (!(ci->collideMask & bulletCI->layerMask)) continue;
+      if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {
+        active->value = false;
+        pos->value    = prevPos;
+        ApplyDamage(world, target, wallSegArch, bulletDamages[bulletType->type],
+                    bulletType->shieldMult, bulletType->healthMult);
+        QueueSound(&game->soundSystem, SOUND_CLANG, prevPos, 0.2f, 1.0f);
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
 
 #undef CHECK_ARCH
 
@@ -250,9 +279,9 @@ void BulletSystem(world_t *world, GameWorld *game, archetype_t *bulletArch,
   }
 }
 
-static void SpawnExplosion(world_t *world, GameWorld *game, Vector3 center) {
+static void SpawnExplosion(world_t *world, GameWorld *game, Vector3 center,
+                           float maxDamage) {
   const float blastRadius = 8.0f;
-  const float maxDamage   = 80.0f;
 
   QueueSound(&game->soundSystem, SOUND_EXPLOSION, center, 1.0f, 1.0f);
 
@@ -265,8 +294,12 @@ static void SpawnExplosion(world_t *world, GameWorld *game, Vector3 center) {
       WorldGetArchetype(world, game->playerArchId),
       WorldGetArchetype(world, game->enemyGruntArchId),
       WorldGetArchetype(world, game->enemyRangerArchId),
+      WorldGetArchetype(world, game->enemyMeleeArchId),
+      WorldGetArchetype(world, game->enemyDroneArchId),
+      WorldGetArchetype(world, game->targetStaticArchId),
+      WorldGetArchetype(world, game->targetPatrolArchId),
   };
-  for (int t = 0; t < 3; t++) {
+  for (int t = 0; t < 7; t++) {
     archetype_t *arch = archs[t];
     if (!arch) continue;
     for (uint32_t i = 0; i < arch->count; i++) {
@@ -295,6 +328,13 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     if (!active || !active->value)
       continue;
 
+    Timer *life = ECS_GET(world, e, Timer, COMP_TIMER);
+    if (life && life->value <= 0.0f) {
+      StopLoopSound(&game->soundSystem, e);
+      TryKillEntity(world, e);
+      continue;
+    }
+
     HomingMissile *hm = ECS_GET(world, e, HomingMissile, COMP_HOMINGMISSILE);
     Position *pos = ECS_GET(world, e, Position, COMP_POSITION);
     Velocity *vel = ECS_GET(world, e, Velocity, COMP_VELOCITY);
@@ -303,35 +343,29 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     if (!hm || !pos || !vel || !ori)
       continue;
 
-    Position *targetPos = ECS_GET(world, hm->target, Position, COMP_POSITION);
+    TickLoopSound(&game->soundSystem, LOOP_SOUND_ROCKET, e, pos->value, 0.9f, 1.0f);
 
-    if (!targetPos)
-      continue;
+    // Guided missiles home toward their target; unguided fly straight
+    if (hm->guided) {
+      Position *targetPos = ECS_GET(world, hm->target, Position, COMP_POSITION);
+      if (targetPos) {
+        Vector3 toTarget  = Vector3Subtract(targetPos->value, pos->value);
+        float   distToTgt = Vector3Length(toTarget);
 
-    Vector3 toTarget   = Vector3Subtract(targetPos->value, pos->value);
-    float   distToTgt  = Vector3Length(toTarget);
+        if (!hm->armed && distToTgt < 20.0f)
+          hm->armed = true;
 
-    // Arm once within x units — missile flies straight from this point on
-    if (!hm->armed && distToTgt < 20.0f)
-      hm->armed = true;
-
-    if (!hm->armed) {
-      Vector3 desiredDir = Vector3Normalize(toTarget);
-      Vector3 currentDir = Vector3Normalize(vel->value);
-
-      float maxTurn = hm->turnSpeed * dt;
-
-      Vector3 newDir = Vector3Lerp(currentDir, desiredDir, maxTurn);
-      newDir = Vector3Normalize(newDir);
-
-      float speed = Vector3Length(vel->value);
-      if (speed > hm->maxSpeed)
-        speed = hm->maxSpeed;
-
-      vel->value = Vector3Scale(newDir, speed);
-
-      ori->yaw   = atan2f(newDir.x, newDir.z);
-      ori->pitch = asinf(newDir.y);
+        if (!hm->armed) {
+          Vector3 desiredDir = Vector3Normalize(toTarget);
+          Vector3 currentDir = Vector3Normalize(vel->value);
+          Vector3 newDir     = Vector3Normalize(Vector3Lerp(currentDir, desiredDir, hm->turnSpeed * dt));
+          float   speed      = Vector3Length(vel->value);
+          if (speed > hm->maxSpeed) speed = hm->maxSpeed;
+          vel->value = Vector3Scale(newDir, speed);
+          ori->yaw   = atan2f(newDir.x, newDir.z);
+          ori->pitch = asinf(newDir.y);
+        }
+      }
     }
 
     /* --- Model orientation toward movement direction --- */
@@ -341,12 +375,15 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
       mc->models[0].rotation = (Vector3){-ori->pitch, 0.0f, 0.0f};
     }
 
-    archetype_t *playerArch   = WorldGetArchetype(world, game->playerArchId);
-    archetype_t *enemyArch    = WorldGetArchetype(world, game->enemyGruntArchId);
-    archetype_t *rangerArch   = WorldGetArchetype(world, game->enemyRangerArchId);
-    archetype_t *meleeArch    = WorldGetArchetype(world, game->enemyMeleeArchId);
-    archetype_t *obstacleArch = WorldGetArchetype(world, game->obstacleArchId);
-    archetype_t *wallSegArch  = WorldGetArchetype(world, game->wallSegArchId);
+    archetype_t *playerArch        = WorldGetArchetype(world, game->playerArchId);
+    archetype_t *enemyArch         = WorldGetArchetype(world, game->enemyGruntArchId);
+    archetype_t *rangerArch        = WorldGetArchetype(world, game->enemyRangerArchId);
+    archetype_t *meleeArch         = WorldGetArchetype(world, game->enemyMeleeArchId);
+    archetype_t *droneArch2        = WorldGetArchetype(world, game->enemyDroneArchId);
+    archetype_t *targetStaticArch2 = WorldGetArchetype(world, game->targetStaticArchId);
+    archetype_t *targetPatrolArch2 = WorldGetArchetype(world, game->targetPatrolArchId);
+    archetype_t *obstacleArch      = WorldGetArchetype(world, game->obstacleArchId);
+    archetype_t *wallSegArch       = WorldGetArchetype(world, game->wallSegArchId);
 
     SphereCollider *missileSphere =
         ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
@@ -362,7 +399,8 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
 
     /* --- Terrain collision --- */
     if (prevPos.y <= terrainY) {
-      SpawnExplosion(world, game, prevPos);
+      SpawnExplosion(world, game, prevPos, hm->blastDamage);
+      StopLoopSound(&game->soundSystem, e);
       TryKillEntity(world, e);
       continue;
     }
@@ -393,7 +431,8 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
       continue;                                                                \
                                                                                \
     if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {        \
-      SpawnExplosion(world, game, prevPos);                                    \
+      SpawnExplosion(world, game, prevPos, hm->blastDamage);                  \
+      StopLoopSound(&game->soundSystem, e);                                    \
       TryKillEntity(world, e);                                                 \
       pos->value = prevPos;                                                    \
       hit = true;                                                              \
@@ -407,8 +446,31 @@ void HomingMissileSystem(world_t *world, GameWorld *game, archetype_t *arch,
     CHECK_ARCH(enemyArch);
     CHECK_ARCH(rangerArch);
     CHECK_ARCH(meleeArch);
+    CHECK_ARCH(droneArch2);
+    CHECK_ARCH(targetStaticArch2);
+    CHECK_ARCH(targetPatrolArch2);
     CHECK_ARCH(obstacleArch);
-    CHECK_ARCH(wallSegArch);
+
+    // Wall segments: bidirectional collideMask check so blockProjectiles works
+    for (uint32_t j = 0; j < wallSegArch->count; j++) {
+      entity_t target = wallSegArch->entities[j];
+      if (target.id == e.id || target.id == hm->owner.id) continue;
+      Active *targetActive = ECS_GET(world, target, Active, COMP_ACTIVE);
+      if (!targetActive || !targetActive->value) continue;
+      CollisionInstance *ci = ECS_GET(world, target, CollisionInstance, COMP_COLLISION_INSTANCE);
+      if (!ci) continue;
+      if (!(missileCI->collideMask & ci->layerMask)) continue;
+      if (!(ci->collideMask & missileCI->layerMask)) continue;
+      if (SweptSphereVsAABB(prevPos, nextPos, radius, ci->worldBounds)) {
+        SpawnExplosion(world, game, prevPos, hm->blastDamage);
+        StopLoopSound(&game->soundSystem, e);
+        TryKillEntity(world, e);
+        pos->value = prevPos;
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
 
 #undef CHECK_ARCH
 

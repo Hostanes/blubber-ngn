@@ -7,6 +7,56 @@
 #include <raymath.h>
 #include <string.h>
 
+static GameWorld *s_game = NULL;
+
+void LevelHelper_SetGame(GameWorld *game) { s_game = game; }
+
+void SpawnCoolant(world_t *world, GameWorld *game, Vector3 pos) {
+  archetype_t *arch = WorldGetArchetype(world, game->coolantArchId);
+  if (!arch) return;
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || active->value) continue;
+
+    active->value = true;
+    ECS_GET(world, e, Position, COMP_POSITION)->value = pos;
+
+    float vx = GetRandomValue(-150, 150) / 100.0f;
+    float vy = GetRandomValue(1200, 1600) / 100.0f;
+    float vz = GetRandomValue(-150, 150) / 100.0f;
+    ECS_GET(world, e, Velocity, COMP_VELOCITY)->value = (Vector3){vx, vy, vz};
+
+    Coolant *co = ECS_GET(world, e, Coolant, COMP_COOLANT);
+    co->lifetime      = 2.0f;
+    co->particleTimer = 0.0f;
+    return;
+  }
+}
+
+void SpawnHealthOrb(world_t *world, GameWorld *game, Vector3 pos) {
+  archetype_t *arch = WorldGetArchetype(world, game->healthOrbArchId);
+  if (!arch) return;
+  for (uint32_t i = 0; i < arch->count; i++) {
+    entity_t e = arch->entities[i];
+    Active *active = ECS_GET(world, e, Active, COMP_ACTIVE);
+    if (!active || active->value) continue;
+
+    active->value = true;
+    ECS_GET(world, e, Position, COMP_POSITION)->value = pos;
+
+    float vx = GetRandomValue(-150, 150) / 100.0f;
+    float vy = GetRandomValue(1200, 1600) / 100.0f;
+    float vz = GetRandomValue(-150, 150) / 100.0f;
+    ECS_GET(world, e, Velocity, COMP_VELOCITY)->value = (Vector3){vx, vy, vz};
+
+    HealthOrb *ho = ECS_GET(world, e, HealthOrb, COMP_HEALTH_ORB);
+    ho->lifetime      = 2.5f;
+    ho->particleTimer = 0.0f;
+    return;
+  }
+}
+
 void Player_OnDeath(world_t *world, entity_t entity) {
   printf("killing player\n");
   MuzzleCollection_t *m =
@@ -43,9 +93,18 @@ void Grunt_OnDeath(world_t *world, entity_t entity) {
   }
 
   ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
-
   if (mc) {
     ModelCollectionFree(mc);
+  }
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos) {
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
+      if (GetRandomValue(0, 99) < 30)
+        SpawnHealthOrb(world, s_game, pos->value);
+    }
   }
 }
 
@@ -68,9 +127,18 @@ void Ranger_OnDeath(world_t *world, entity_t entity) {
 
   /* -------- Model Collection -------- */
   ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
-
   if (mc) {
     ModelCollectionFree(mc);
+  }
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos) {
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
+      if (GetRandomValue(0, 99) < 45)
+        SpawnHealthOrb(world, s_game, pos->value);
+    }
   }
 }
 
@@ -125,7 +193,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
 
   Model playerBody = LoadModelFromMesh(GenMeshCube(.05f, .05f, .05f));
 
-  ModelCollectionInit(mc, 4); // body + 2 guns + shadow
+  ModelCollectionInit(mc, 5); // body + 4 guns
 
   // Body (index 0)
   ModelCollectionAdd(mc, (ModelInstance_t){.model = playerBody,
@@ -151,13 +219,21 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
                                            .parentIndex = -1,
                                            .isActive = false});
 
-  // Shadow (index 3) — flat on terrain, updated each frame in
-  // PlayerWeaponSystem
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->shadowModel,
+  // Gun 3 — rocket launcher (index 3)
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->rocketLauncherModel,
+                                           .offset = (Vector3){0, -0.5f, 0},
                                            .scale = (Vector3){1, 1, 1},
-                                           .rotationMode = MODEL_ROT_WORLD,
+                                           .rotationMode = MODEL_ROT_FULL,
                                            .parentIndex = -1,
-                                           .isActive = true});
+                                           .isActive = false});
+
+  // Gun 4 — blunderbuss (index 4)
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = gw->blunderbussModel,
+                                           .offset = (Vector3){0, -0.5f, 0},
+                                           .scale = (Vector3){1, 1, 1},
+                                           .rotationMode = MODEL_ROT_FULL,
+                                           .parentIndex = -1,
+                                           .isActive = false});
 
   /* ---------------- Collision ---------------- */
 
@@ -190,8 +266,8 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
   MuzzleCollection_t *muzzles =
       ECS_GET(world, e, MuzzleCollection_t, COMP_MUZZLES);
 
-  muzzles->count = 2;
-  muzzles->Muzzles = calloc(2, sizeof(Muzzle_t));
+  muzzles->count = 4;
+  muzzles->Muzzles = calloc(4, sizeof(Muzzle_t));
 
   // Weapon 1: anti-health machine gun — low heat per shot, fast cooldown
   muzzles->Muzzles[0] = (Muzzle_t){
@@ -203,7 +279,7 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
       .spreadCount = 1,
       .spreadAngle = 0.0f,
       .fireRate = 3.0f,
-      .heatPerShot = 0.08f,
+      .heatPerShot = 0.12f,
       .coolRate = 0.20f,
       .coolRateOverheated = 0.12f,
       .overheatThreshold = 0.40f,
@@ -220,11 +296,42 @@ entity_t SpawnPlayer(world_t *world, GameWorld *gw, Vector3 position) {
       .spreadCount = 1,
       .spreadAngle = 0.05f,
       .fireRate = 15.0f,
-      .heatPerShot = 0.02f,
+      .heatPerShot = 0.04f,
       .coolRate = 0.25f,
       .coolRateOverheated = 0.12f,
       .overheatThreshold = 0.40f,
       .coolDelay = 0.8f,
+  };
+
+  // Weapon 3: rocket launcher — handled by RocketLauncherSystem, not PlayerShootSystem
+  muzzles->Muzzles[2] = (Muzzle_t){
+      .positionOffset      = {.value = {0.25f, -0.3f, 1.5f}},
+      .bulletType          = BULLET_TYPE_MISSILE,
+      .shieldMult          = 1.0f,
+      .healthMult          = 1.0f,
+      .fireRate            = 0.0f,
+      .heatPerShot         = 0.2f,   // 3 missiles × 0.2 = 0.6 per burst
+      .coolRate            = 0.04f,  // very slow dissipation
+      .coolRateOverheated  = 0.02f,
+      .overheatThreshold   = 0.40f,
+      .coolDelay           = 2.0f,
+  };
+
+  // Weapon 4: blunderbuss — tight buckshot, handled by BlunderbussSystem
+  muzzles->Muzzles[3] = (Muzzle_t){
+      .positionOffset = {.value = {0.25f, -0.3f, 1.5f}},
+      .bulletType     = BULLET_TYPE_BUCKSHOT,
+      .shieldMult     = 0.4f,
+      .healthMult     = 2.0f,
+      .pierce         = false,
+      .spreadCount    = 10,
+      .spreadAngle    = 0.14f,
+      .fireRate       = 0.0f,
+      .heatPerShot    = 0.45f,
+      .coolRate       = 0.18f,
+      .coolRateOverheated = 0.08f,
+      .overheatThreshold  = 0.40f,
+      .coolDelay      = 1.5f,
   };
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -328,16 +435,21 @@ entity_t SpawnEnemyGrunt(world_t *world, GameWorld *game, Vector3 position) {
 
   CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
   if (combat) {
-    combat->combatYaw = PI / 4;
-    combat->aimPitch = 0.0f;
-    combat->moveYaw = PI / 4;
-    combat->isAiming = false;
-    combat->state = ENEMY_STATE_COMBAT;
-    combat->settleTimer = 1.2f;
-    combat->pathPending = false;
-    combat->burstShotsRemaining = 0;
-    combat->burstTimer = 0.0f;
-    combat->burstType = 0;
+    combat->combatYaw            = PI / 4;
+    combat->aimPitch             = 0.0f;
+    combat->moveYaw              = PI / 4;
+    combat->isAiming             = false;
+    combat->state                = ENEMY_AI_SUPPRESS;
+    combat->settleTimer          = 1.0f + GetRandomValue(0, 10) * 0.1f;
+    combat->pathPending          = false;
+    combat->burstShotsRemaining  = 0;
+    combat->burstTimer           = 0.0f;
+    combat->burstType            = 0;
+    combat->claimedCX            = -1;
+    combat->claimedCY            = -1;
+    combat->repositionTimer      = 0.5f + GetRandomValue(0, 20) * 0.1f;
+    combat->losCheckTimer        = 0.0f;
+    combat->hasLOS               = true;
   }
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -374,13 +486,13 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
 
   ModelCollectionInit(mc, 3);
 
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntLegs,
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->rangerLegs,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_YAW_ONLY,
                                            .parentIndex = -1,
                                            .isActive = true});
 
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->gruntTorso,
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->rangerTorso,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL,
                                            .parentIndex = -1,
@@ -437,16 +549,21 @@ entity_t SpawnEnemyRanger(world_t *world, GameWorld *game, Vector3 position) {
 
   CombatState_t *combat = ECS_GET(world, e, CombatState_t, COMP_COMBAT_STATE);
   if (combat) {
-    combat->combatYaw = PI / 4;
-    combat->aimPitch = 0.0f;
-    combat->moveYaw = PI / 4;
-    combat->isAiming = false;
-    combat->state = ENEMY_STATE_MOVING;
-    combat->settleTimer = 0.0f; // will be set when path completes
-    combat->pathPending = false;
-    combat->burstShotsRemaining = 0;
-    combat->burstTimer = 0.0f;
-    combat->burstType = 0;
+    combat->combatYaw            = PI / 4;
+    combat->aimPitch             = 0.0f;
+    combat->moveYaw              = PI / 4;
+    combat->isAiming             = false;
+    combat->state                = ENEMY_AI_ADVANCE;
+    combat->settleTimer          = 0.5f;
+    combat->pathPending          = false;
+    combat->burstShotsRemaining  = 0;
+    combat->burstTimer           = 0.0f;
+    combat->burstType            = 0;
+    combat->claimedCX            = -1;
+    combat->claimedCY            = -1;
+    combat->repositionTimer      = GetRandomValue(5, 15) * 0.1f;
+    combat->losCheckTimer        = 0.0f;
+    combat->hasLOS               = true;
   }
 
   OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
@@ -692,7 +809,8 @@ entity_t SpawnProp(world_t *world, GameWorld *gw, Model model, Vector3 position,
 }
 
 void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
-                        entity_t target, Vector3 position, Vector3 forward) {
+                        entity_t target, Vector3 position, Vector3 forward,
+                        bool guided, float turnSpeed) {
 
   archetype_t *arch = WorldGetArchetype(world, game->missileArchId);
   entity_t m = WorldCreateEntity(world, &arch->mask);
@@ -715,7 +833,7 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
   ModelCollection_t *mc = ECS_GET(world, m, ModelCollection_t, COMP_MODEL);
 
   ModelCollectionInit(mc, 1);
-  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->bulletModel,
+  ModelCollectionAdd(mc, (ModelInstance_t){.model = game->missileModel,
                                            .scale = (Vector3){1, 1, 1},
                                            .rotationMode = MODEL_ROT_FULL,
                                            .parentIndex = -1,
@@ -725,15 +843,17 @@ void SpawnHomingMissile(world_t *world, GameWorld *game, entity_t shooter,
 
   /* --- Homing Data --- */
   HomingMissile *hm = ECS_GET(world, m, HomingMissile, COMP_HOMINGMISSILE);
-  hm->owner = shooter;
-  hm->target = target;
-  hm->turnSpeed = 4.0f;
-  hm->maxSpeed = 50.0f;
-  hm->armed = false;
+  hm->owner       = shooter;
+  hm->target      = target;
+  hm->turnSpeed   = turnSpeed;
+  hm->maxSpeed    = 50.0f;
+  hm->blastDamage = (shooter.id == game->player.id) ? 80.0f : 28.0f;
+  hm->armed       = false;
+  hm->guided      = guided;
 
   /* --- Lifetime --- */
   Timer *life = ECS_GET(world, m, Timer, COMP_TIMER);
-  life->value = 6.0f;
+  life->value = 15.0f;
 
   /* --- Collider --- */
   SphereCollider *sphere =
@@ -769,7 +889,8 @@ entity_t SpawnEnemySpawner(world_t *world, GameWorld *gw, Vector3 position,
 
 entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,
                           Vector3 localA, Vector3 localB, float localYBottom,
-                          float localYTop, float radius) {
+                          float localYTop, float radius,
+                          bool blockPlayer, bool blockProjectiles) {
   archetype_t *arch = WorldGetArchetype(world, gw->wallSegArchId);
   entity_t e = WorldCreateEntity(world, &arch->mask);
 
@@ -789,8 +910,9 @@ entity_t SpawnWallSegment(world_t *world, GameWorld *gw, Vector3 position,
   ci->owner = e;
   ci->type = COLLIDER_WALL_SEGMENT;
   ci->layerMask = 1 << LAYER_WORLD;
-  ci->collideMask =
-      (1 << LAYER_PLAYER) | (1 << LAYER_BULLET) | (1 << LAYER_ENEMY);
+  ci->collideMask = 1 << LAYER_ENEMY;
+  if (blockPlayer)      ci->collideMask |= 1 << LAYER_PLAYER;
+  if (blockProjectiles) ci->collideMask |= 1 << LAYER_BULLET;
 
   Collision_UpdateWallSegment(ci, wall, position);
 
@@ -809,6 +931,16 @@ static void Melee_OnDeath(world_t *world, entity_t entity) {
   ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
   if (mc)
     ModelCollectionFree(mc);
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos) {
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
+      if (GetRandomValue(0, 99) < 35)
+        SpawnHealthOrb(world, s_game, pos->value);
+    }
+  }
 }
 
 entity_t SpawnEnemyMelee(world_t *world, GameWorld *game, Vector3 position) {
@@ -892,7 +1024,8 @@ entity_t SpawnEnemyMelee(world_t *world, GameWorld *game, Vector3 position) {
 
 entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
                       Vector3 position, float halfExtent,
-                      const char *message, float duration) {
+                      const char *message, float duration,
+                      int maxTriggers, float markerHeight, int fontSize) {
   archetype_t *arch = WorldGetArchetype(world, gw->infoBoxArchId);
   entity_t e = WorldCreateEntity(world, &arch->mask);
 
@@ -901,15 +1034,206 @@ entity_t SpawnInfoBox(world_t *world, GameWorld *gw,
 
   InfoBox *ib = ECS_GET(world, e, InfoBox, COMP_INFOBOX);
   if (ib) {
-    ib->halfExtent = halfExtent;
+    ib->halfExtent    = halfExtent;
     strncpy(ib->message, message, sizeof(ib->message) - 1);
     ib->message[sizeof(ib->message) - 1] = '\0';
-    ib->duration  = duration;
-    ib->triggered = false;
+    ib->duration      = duration;
+    ib->triggersLeft  = (maxTriggers == 0) ? -1 : maxTriggers;
+    ib->markerHeight  = markerHeight;
+    ib->fontSize      = fontSize;
   }
 
   Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);
   if (act) act->value = true;
+
+  return e;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Drone enemy                                                        */
+/* ------------------------------------------------------------------ */
+
+static void Drone_OnDeath(world_t *world, entity_t entity) {
+  ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
+  if (mc) ModelCollectionFree(mc);
+
+  if (s_game) {
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos) {
+      for (int i = 0; i < 3; i++)
+        SpawnCoolant(world, s_game, pos->value);
+      if (GetRandomValue(0, 99) < 25)
+        SpawnHealthOrb(world, s_game, pos->value);
+    }
+  }
+}
+
+entity_t SpawnEnemyDrone(world_t *world, GameWorld *game, Vector3 position) {
+  archetype_t *arch = WorldGetArchetype(world, game->enemyDroneArchId);
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                             position.x, position.z) + 3.0f;
+
+  ECS_GET(world, e, Active,    COMP_ACTIVE)->value    = true;
+  ECS_GET(world, e, Position,  COMP_POSITION)->value  = position;
+  ECS_GET(world, e, Velocity,  COMP_VELOCITY)->value  = (Vector3){0, 0, 0};
+  ECS_GET(world, e, Orientation, COMP_ORIENTATION)->yaw = 0.0f;
+
+  Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
+  hp->current = 25.0f;
+  hp->max     = 25.0f;
+
+  Shield *sh = ECS_GET(world, e, Shield, COMP_SHIELD);
+  sh->current = 120.0f;
+  sh->max     = 120.0f;
+
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+  ModelCollectionInit(mc, 1);
+  ModelCollectionAdd(mc, (ModelInstance_t){
+      .model        = game->gruntTorso,
+      .scale        = (Vector3){0.5f, 0.5f, 0.5f},
+      .offset       = (Vector3){0, 0, 0},
+      .rotation     = (Vector3){0, 0, 0},
+      .rotationMode = MODEL_ROT_YAW_ONLY,
+      .parentIndex  = -1,
+      .isActive     = true,
+  });
+
+  SphereCollider *sc = ECS_GET(world, e, SphereCollider, COMP_SPHERE_COLLIDER);
+  sc->radius = 0.7f;
+
+  CollisionInstance *ci = ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+  ci->type        = COLLIDER_SPHERE;
+  ci->layerMask   = 1 << LAYER_ENEMY;
+  ci->collideMask = (1 << LAYER_BULLET) | (1 << LAYER_PLAYER);
+
+  DroneEnemy *dr = ECS_GET(world, e, DroneEnemy, COMP_DRONE_ENEMY);
+  dr->hasTarget      = false;
+  dr->retargetTimer  = 0.0f;
+  dr->bobTimer       = (float)GetRandomValue(0, 628) / 100.0f;
+
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  od->fn = Drone_OnDeath;
+
+  return e;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Target dummies                                                      */
+/* ------------------------------------------------------------------ */
+
+static void Target_OnDeath(world_t *world, entity_t entity) {
+  ModelCollection_t *mc = ECS_GET(world, entity, ModelCollection_t, COMP_MODEL);
+  if (mc) for (int i = 0; i < mc->count; i++) mc->models[i].isActive = false;
+
+  CollisionInstance *ci = ECS_GET(world, entity, CollisionInstance, COMP_COLLISION_INSTANCE);
+  if (ci) { ci->layerMask = 0; ci->collideMask = 0; }
+
+  TargetDummy *td = ECS_GET(world, entity, TargetDummy, COMP_TARGET_DUMMY);
+  if (td) {
+    td->respawnTimer = 5.0f;
+    Position *pos = ECS_GET(world, entity, Position, COMP_POSITION);
+    if (pos && s_game) {
+      for (int n = 0; n < td->healthDropCount; n++)
+        SpawnHealthOrb(world, s_game, pos->value);
+      for (int n = 0; n < td->coolantDropCount; n++)
+        SpawnCoolant(world, s_game, pos->value);
+    }
+  }
+}
+
+static void SpawnTargetCommon(world_t *world, GameWorld *game, entity_t e,
+                              Vector3 position, float health, float shield, float yaw) {
+  position.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap,
+                                             position.x, position.z);
+
+  ECS_GET(world, e, Active,      COMP_ACTIVE)->value      = true;
+  ECS_GET(world, e, Position,    COMP_POSITION)->value    = position;
+  ECS_GET(world, e, Orientation, COMP_ORIENTATION)->yaw   = yaw;
+  ECS_GET(world, e, Orientation, COMP_ORIENTATION)->pitch = 0.0f;
+
+  Health *hp = ECS_GET(world, e, Health, COMP_HEALTH);
+  hp->max = health; hp->current = health;
+
+  Shield *sh = ECS_GET(world, e, Shield, COMP_SHIELD);
+  sh->max = shield; sh->current = shield;
+
+  ModelCollection_t *mc = ECS_GET(world, e, ModelCollection_t, COMP_MODEL);
+  ModelCollectionInit(mc, 2);
+  ModelCollectionAdd(mc, (ModelInstance_t){
+    .model        = game->gruntLegs,
+    .scale        = (Vector3){1, 1, 1},
+    .rotationMode = MODEL_ROT_YAW_ONLY,
+    .parentIndex  = -1,
+    .isActive     = true,
+  });
+  ModelCollectionAdd(mc, (ModelInstance_t){
+    .model        = game->gruntTorso,
+    .scale        = (Vector3){1, 1, 1},
+    .rotationMode = MODEL_ROT_YAW_ONLY,
+    .parentIndex  = -1,
+    .isActive     = true,
+  });
+
+  CapsuleCollider *cap = ECS_GET(world, e, CapsuleCollider, COMP_CAPSULE_COLLIDER);
+  cap->radius = 1.0f;
+  cap->localA = (Vector3){0, 0.0f, 0};
+  cap->localB = (Vector3){0, 2.5f, 0};
+  Capsule_UpdateWorld(cap, position);
+
+  CollisionInstance *ci = ECS_GET(world, e, CollisionInstance, COMP_COLLISION_INSTANCE);
+  ci->owner       = e;
+  ci->type        = COLLIDER_CAPSULE;
+  ci->layerMask   = 1 << LAYER_ENEMY;
+  ci->collideMask = 1 << LAYER_BULLET;
+  ci->worldBounds = Capsule_ComputeAABB(cap);
+
+  TargetDummy *td = ECS_GET(world, e, TargetDummy, COMP_TARGET_DUMMY);
+  td->respawnTimer = 0.0f;
+  td->maxHealth    = health;
+  td->maxShield    = shield;
+  td->spawnPos     = position;
+  td->spawnYaw     = yaw;
+
+  OnDeath *od = ECS_GET(world, e, OnDeath, COMP_ONDEATH);
+  od->fn = Target_OnDeath;
+}
+
+entity_t SpawnTargetStatic(world_t *world, GameWorld *game, Vector3 position,
+                           float health, float shield, float yaw,
+                           int healthDropCount, int coolantDropCount) {
+  archetype_t *arch = WorldGetArchetype(world, game->targetStaticArchId);
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+  SpawnTargetCommon(world, game, e, position, health, shield, yaw);
+  TargetDummy *td = ECS_GET(world, e, TargetDummy, COMP_TARGET_DUMMY);
+  td->healthDropCount  = healthDropCount;
+  td->coolantDropCount = coolantDropCount;
+  return e;
+}
+
+entity_t SpawnTargetPatrol(world_t *world, GameWorld *game,
+                           Vector3 posA, Vector3 posB,
+                           float health, float shield, float speed, float yaw,
+                           int healthDropCount, int coolantDropCount) {
+  archetype_t *arch = WorldGetArchetype(world, game->targetPatrolArchId);
+  entity_t e = WorldCreateEntity(world, &arch->mask);
+
+  posA.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap, posA.x, posA.z);
+  posB.y = HeightMap_GetHeightCatmullRom(&game->terrainHeightMap, posB.x, posB.z);
+
+  SpawnTargetCommon(world, game, e, posA, health, shield, yaw);
+
+  TargetPatrol *tp = ECS_GET(world, e, TargetPatrol, COMP_TARGET_PATROL);
+  tp->pointA = posA;
+  tp->pointB = posB;
+  tp->speed  = speed;
+  tp->t      = 0.0f;
+  tp->dir    = 1;
+
+  TargetDummy *td = ECS_GET(world, e, TargetDummy, COMP_TARGET_DUMMY);
+  td->healthDropCount  = healthDropCount;
+  td->coolantDropCount = coolantDropCount;
 
   return e;
 }

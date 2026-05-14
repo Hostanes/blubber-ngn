@@ -1,6 +1,7 @@
 #include "components/muzzle.h"
 #include "editor.h"
 #include "game.h"
+#include "level_creater_helper.h"
 #include "rlgl.h"
 #include "systems/systems.h"
 #include "systems/wave_system.h"
@@ -306,6 +307,8 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
   Camera3D *camera = &engine->camera;
   static EditorState editorState = {0};
 
+  LevelHelper_SetGame(game);
+
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
 
@@ -338,6 +341,7 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       SpawnLevelFromFile(world, game, game->targetLevelPath);
       WaveSystem_Init(game);
 
+      game->inputCooldown = 0.4f;
       game->gameState = GAMESTATE_INLEVEL;
       DisableCursor();
       break;
@@ -366,12 +370,18 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
       MessageSystem_Update(&game->messageSystem, dt);
       TimerSystem(&engine->timerPool, dt);
 
+      if (game->inputCooldown > 0.0f) game->inputCooldown -= dt;
+
       PlayerControlSystem(world, game, game->player, dt);
 
       ApplyGravity(world, game, dt);
 
-      PlayerWeaponSystem(world, game, game->player, dt);
-      PlayerShootSystem(world, game, game->player, dt);
+      if (game->inputCooldown <= 0.0f) {
+        PlayerWeaponSystem(world, game, game->player, dt);
+        PlayerShootSystem(world, game, game->player, dt);
+        RocketLauncherSystem(world, game, game->player, camera, dt);
+        BlunderbussSystem(world, game, game->player, camera, dt);
+      }
       PlayerWeaponSwitchSystem(world, game, game->player);
 
       CollisionSyncSystem(world);
@@ -387,6 +397,9 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                           WorldGetArchetype(world, game->enemyRangerArchId), dt);
       EnemyMeleeAISystem(world, game,
                          WorldGetArchetype(world, game->enemyMeleeArchId), dt);
+      EnemyDroneAISystem(world, game,
+                         WorldGetArchetype(world, game->enemyDroneArchId), dt);
+      OutOfBoundsSystem(world, game, dt);
 
       EnemyAimSystem(world, game,
                      WorldGetArchetype(world, game->enemyGruntArchId), dt);
@@ -409,6 +422,9 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                    dt);
 
       ParticleSystem(world, WorldGetArchetype(world, game->particleArchId), dt);
+      CoolantSystem(world, game, dt);
+      HealthOrbSystem(world, game, dt);
+      TargetDummySystem(world, game, dt);
 
       MovementSystem(world, WorldGetArchetype(world, game->missileArchId), dt);
       HomingMissileSystem(world, game,
@@ -428,12 +444,58 @@ void RunGameLoop(Engine *engine, GameWorld *game) {
                                        });
       camera->up = (Vector3){0, 1, 0};
 
+      // Damage flash: trigger on health drop, fade out over ~0.8s
+      {
+        Health *ph = ECS_GET(world, game->player, Health, COMP_HEALTH);
+        if (ph) {
+          if (game->prevPlayerHealth < 0.0f)
+            game->prevPlayerHealth = ph->current;
+          if (ph->current < game->prevPlayerHealth)
+            game->damageFlash = 1.0f;
+          game->prevPlayerHealth = ph->current;
+        }
+        game->damageFlash -= dt * 1.25f;
+        if (game->damageFlash < 0.0f) game->damageFlash = 0.0f;
+      }
+
       RenderLevelSystem(world, game, camera);
+
+      {
+        Active *pa = ECS_GET(world, game->player, Active, COMP_ACTIVE);
+        if (pa && !pa->value) {
+          game->gameState = GAMESTATE_GAMEOVER;
+          game->gameOverTimer = 0.0f;
+          EnableCursor();
+          break;
+        }
+      }
+
+      if (IsKeyPressed(KEY_F12)) game->debugView = !game->debugView;
 
       if (IsKeyPressed(KEY_ESCAPE)) {
         game->gameState = GAMESTATE_PAUSED;
         EnableCursor();
       }
+    } break;
+
+    case GAMESTATE_GAMEOVER: {
+      int sw = GetScreenWidth(), sh = GetScreenHeight();
+      game->gameOverTimer += dt;
+
+      BeginDrawing();
+      ClearBackground((Color){10, 0, 0, 255});
+
+      int titleW = MeasureText("GAME OVER", 60);
+      DrawText("GAME OVER", sw / 2 - titleW / 2, sh / 2 - 160, 60, RED);
+
+      if (game->gameOverTimer > 1.5f) {
+        if (DrawButton("MAIN MENU", (Vector2){(float)(sw / 2 - 100), (float)(sh / 2 + 20)})) {
+          game->gameState = GAMESTATE_MAINMENU;
+          WorldClear(world);
+        }
+      }
+
+      EndDrawing();
     } break;
 
     case GAMESTATE_PAUSED: {

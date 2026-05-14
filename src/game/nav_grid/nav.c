@@ -36,7 +36,7 @@ void NavGrid_SetCell(NavGrid *g, int x, int y, NavCellType type) {
   if (!NavGrid_InBounds(g, x, y)) return;
   int idx = NavGrid_Index(g, x, y);
   g->cells[idx].type = type;
-  if (type == NAV_CELL_WALL) g->cells[idx].cost = 255;
+  if (type == NAV_CELL_WALL || type == NAV_CELL_FENCE) g->cells[idx].cost = 255;
 }
 
 void NavPath_Init(NavPath *path, int initialCapacity) {
@@ -195,15 +195,18 @@ bool NavGrid_FindPath(NavGrid *grid, Vector3 startWorld, Vector3 goalWorld,
       if (!NavGrid_InBounds(grid, nx, ny)) continue;
 
       int neighborIndex = NavGrid_Index(grid, nx, ny);
-      if (grid->cells[neighborIndex].type == NAV_CELL_WALL) continue;
+      { NavCellType _t = grid->cells[neighborIndex].type;
+        if (_t == NAV_CELL_WALL || _t == NAV_CELL_BLOCKED || _t == NAV_CELL_FENCE) continue; }
       if (s_nodes[neighborIndex].closed) continue;
 
       bool isDiagonal = (dirs[i][0] != 0 && dirs[i][1] != 0);
       if (isDiagonal) {
         int adj1 = NavGrid_Index(grid, cx + dirs[i][0], cy);
         int adj2 = NavGrid_Index(grid, cx, cy + dirs[i][1]);
-        if (grid->cells[adj1].type == NAV_CELL_WALL ||
-            grid->cells[adj2].type == NAV_CELL_WALL) continue;
+        if (grid->cells[adj1].type == NAV_CELL_WALL || grid->cells[adj1].type == NAV_CELL_FENCE ||
+            grid->cells[adj1].type == NAV_CELL_BLOCKED ||
+            grid->cells[adj2].type == NAV_CELL_WALL || grid->cells[adj2].type == NAV_CELL_FENCE ||
+            grid->cells[adj2].type == NAV_CELL_BLOCKED) continue;
       }
 
       int moveCost = isDiagonal ? 14 : 10;
@@ -287,6 +290,9 @@ bool NavGrid_LoadFromImage(NavGrid *grid, const char *fileName, float cellSize,
       else if (c.r == 0   && c.g == 0   && c.b == 255) { type = NAV_CELL_COVER_LOW;  cost = 2;   }
       else if (c.r == 0   && c.g == 255 && c.b == 0)   { type = NAV_CELL_COVER_HIGH; cost = 3;   }
       else if (c.r == 255 && c.g == 0   && c.b == 0)   { type = NAV_CELL_BLOCKED;    cost = 255; }
+      else if (c.r == 255 && c.g == 255 && c.b == 0)   { type = NAV_CELL_SNIPE;  cost = 2;   }
+      else if (c.r == 255 && c.g == 0   && c.b == 255) { type = NAV_CELL_FLANK;  cost = 2;   }
+      else if (c.r == 0   && c.g == 255 && c.b == 255) { type = NAV_CELL_FENCE;  cost = 255; }
 
       int idx = NavGrid_Index(grid, x, flippedY);
       grid->cells[idx].type = type;
@@ -296,5 +302,27 @@ bool NavGrid_LoadFromImage(NavGrid *grid, const char *fileName, float cellSize,
 
   UnloadImageColors(pixels);
   UnloadImage(img);
+  return true;
+}
+
+bool NavGrid_HasLOS(NavGrid *g, Vector3 from, Vector3 to) {
+  int x0, y0, x1, y1;
+  if (!NavGrid_WorldToCell(g, from, &x0, &y0)) return false;
+  if (!NavGrid_WorldToCell(g, to,   &x1, &y1)) return false;
+  int dx = abs(x1 - x0), dy = abs(y1 - y0);
+  int sx = (x0 < x1) ? 1 : -1, sy = (y0 < y1) ? 1 : -1;
+  int err = dx - dy;
+  int x = x0, y = y0;
+  while (x != x1 || y != y1) {
+    if (!(x == x0 && y == y0)) {
+      if (!NavGrid_InBounds(g, x, y)) return false;
+      NavCellType t = g->cells[NavGrid_Index(g, x, y)].type;
+      if (t == NAV_CELL_WALL || t == NAV_CELL_BLOCKED) return false;
+      // FENCE, COVER_LOW, COVER_HIGH are LOS-transparent
+    }
+    int e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x += sx; }
+    if (e2 <  dx) { err += dx; y += sy; }
+  }
   return true;
 }

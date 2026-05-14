@@ -36,6 +36,15 @@ typedef enum {
   MISSION_EXPLORATION = 1,
 } MissionType;
 
+#define MAX_WAVES 10
+
+typedef struct {
+  int grunts;
+  int rangers;
+  int melee;
+  int drones;
+} WaveDef;
+
 typedef struct {
   MissionType missionType;
   int currentWave; // 1-indexed; 0 = not started
@@ -43,6 +52,9 @@ typedef struct {
   float nextWaveTimer;
   bool waveActive;
   bool allWavesComplete;
+
+  WaveDef waves[MAX_WAVES];
+  int     waveCount;
 } WaveState;
 
 enum gameState {
@@ -53,6 +65,7 @@ enum gameState {
   GAMESTATE_EDITOR,
   GAMESTATE_LEVELSELECT,
   GAMESTATE_PAUSED,
+  GAMESTATE_GAMEOVER,
 };
 
 typedef struct {
@@ -65,29 +78,61 @@ typedef struct {
   ComponentRegistry componentRegistry;
 } Engine;
 
+typedef enum { LOCKSTATE_IDLE = 0, LOCKSTATE_ACQUIRING, LOCKSTATE_LOCKED, LOCKSTATE_BURSTING } RocketLockState;
+typedef enum { HOOKSTATE_IDLE = 0, HOOKSTATE_FLYING, HOOKSTATE_PULLING } HookState;
+
 typedef struct GameWorld {
   entity_t player;
   uint32_t playerActiveWeapon;
+
+  // Rocket launcher lock-on state
+  RocketLockState rocketLockState;
+  entity_t        rocketLockTargets[8];  // enemies in reticle (snapshotted at fire)
+  int             rocketLockTargetCount;
+  float           rocketLockProgress;    // 0..1
+  float           rocketLockAngle;       // accumulated degrees for bracket spin
+  int             rocketBurstRemaining;  // missiles left to fire in burst
+  int             rocketBurstIndex;      // cycles through targets
+  float           rocketBurstTimer;      // countdown to next missile
+  bool            rocketBurstGuided;     // true only when fully locked at release
+
+  // Blunderbuss hook state
+  HookState hookState;
+  Vector3   hookPos;      // current hook world position
+  Vector3   hookVel;      // flying velocity
+  Vector3   hookOrigin;   // position where hook was fired
+  entity_t  hookTarget;   // enemy the hook has stuck to
+
   enum gameState gameState;
+
+  float gameOverTimer;
+  float damageFlash;
+  float prevPlayerHealth;
 
   uint32_t targetLevel;
   char targetLevelPath[256];
   float loadingTimer;
+
+  bool healthBarFade;  // distance-fade on enemy health bars; default true
 
   float masterVolume;
   int targetFPS;
   bool showFPS;
 
   float fov;
+  float inputCooldown;
   int resWidth;
   int resHeight;
   bool fullscreen;
+  bool debugView;
   enum gameState settingsPrevState;
 
   uint32_t playerArchId, bulletArchId, enemyCapsuleArchId, enemyGruntArchId,
       enemyMissileArchId, enemyRangerArchId, obstacleArchId, levelModelArchId,
       tutorialBoxArchId, missileArchId, wallSegArchId, spawnerArchId,
-      particleArchId, enemyMeleeArchId, infoBoxArchId;
+      particleArchId, enemyMeleeArchId, infoBoxArchId, coolantArchId,
+      healthOrbArchId, enemyDroneArchId,
+      targetStaticArchId, targetPatrolArchId;
 
   WaveState waveState;
 
@@ -99,7 +144,11 @@ typedef struct GameWorld {
   Model enemyModel;
   Model gunModel;
   Model plasmaGunModel;
-  Model shadowModel;
+  Model rocketLauncherModel;
+  Model blunderbussModel;
+  Model missileModel;
+  Model harpoonModel;
+  Vector3 sunDirection;  // normalized direction sun rays travel (y must be < 0)
 
   Model missileEnemyModel;
   Model gruntTorso;
@@ -107,16 +156,26 @@ typedef struct GameWorld {
   Model gruntGun;
   Model gruntSaw;
 
+  Model rangerTorso;
+  Model rangerLegs;
+
   HeightMap terrainHeightMap;
   Model terrainModel;
   char terrainModelPath[256];
-  Model ArenaModel175;
-  Model ruinsModel;
-  Model skyBox;
   Model obstaclesModel;
   Model obstacleModel;
+  Model infoBoxMarkerModel;
 
   NavGrid navGrid;
+
+  Shader outlineShader;
+  int outlineColorLoc;
+  int outlineThicknessLoc;
+
+  Shader terrainShader;
+
+  Shader shadowShader;
+  int shadowAlphaLoc;
 
   SoundSystem_t soundSystem;
   MessageSystem_t messageSystem;

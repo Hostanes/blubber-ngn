@@ -18,6 +18,10 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
 void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game, entity_t player);
 void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float dt);
 void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player, float dt);
+void RocketLauncherSystem(world_t *world, GameWorld *game, entity_t player,
+                          Camera3D *camera, float dt);
+void BlunderbussSystem(world_t *world, GameWorld *game, entity_t player,
+                       Camera3D *camera, float dt);
 
 void FireMuzzle(world_t *world, GameWorld *game, entity_t shooter,
                 int shooterArchId, Muzzle_t *m);
@@ -79,3 +83,8 @@ void EnemyMeleeAISystem(world_t *world, GameWorld *game,
 void DrawSpawnerWireframes(world_t *world, uint32_t spawnerArchId);
 
 void InfoBoxTriggerSystem(world_t *world, GameWorld *game);
+void CoolantSystem(world_t *world, GameWorld *game, float dt);
+void HealthOrbSystem(world_t *world, GameWorld *game, float dt);
+void EnemyDroneAISystem(world_t *world, GameWorld *game, archetype_t *arch, float dt);
+void OutOfBoundsSystem(world_t *world, GameWorld *game, float dt);
+void TargetDummySystem(world_t *world, GameWorld *game, float dt);

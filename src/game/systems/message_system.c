@@ -26,15 +26,22 @@ static const Color C_SCAN    = {0,   0,   0,   36};
 static const Color C_BAR     = {0,   200, 180, 255};
 static const Color C_BARBASE = {0,   40,  36,  255};
 
-static int BuildLines(const char *text, char lines[][MSG_TEXT_LEN], int maxLines) {
+static int BuildLines(const char *text, char lines[][MSG_TEXT_LEN], int maxLines, int fs) {
   int lineIdx = 0;
   lines[0][0] = '\0';
   int lineLen  = 0;
   const char *p = text;
 
   while (*p && lineIdx < maxLines) {
+    if (*p == '\n') {
+      p++;
+      lineIdx++;
+      if (lineIdx < maxLines) { lines[lineIdx][0] = '\0'; lineLen = 0; }
+      continue;
+    }
+
     const char *wStart = p;
-    while (*p && *p != ' ') p++;
+    while (*p && *p != ' ' && *p != '\n') p++;
     int wLen = (int)(p - wStart);
     if (*p == ' ') p++;
     if (wLen == 0) continue;
@@ -45,7 +52,7 @@ static int BuildLines(const char *text, char lines[][MSG_TEXT_LEN], int maxLines
     else
       snprintf(candidate, sizeof(candidate), "%.*s", wLen, wStart);
 
-    if (MeasureText(candidate, BODY_FONT) > PANEL_TEXT_W && lineLen > 0) {
+    if (MeasureText(candidate, fs) > PANEL_TEXT_W && lineLen > 0) {
       lineIdx++;
       if (lineIdx >= maxLines) break;
       snprintf(lines[lineIdx], MSG_TEXT_LEN, "%.*s", wLen, wStart);
@@ -59,9 +66,9 @@ static int BuildLines(const char *text, char lines[][MSG_TEXT_LEN], int maxLines
   return lineIdx + 1;
 }
 
-static int PanelH(int lineCount) {
-  // top_pad + header + gap + separator + gap + lines + gap + bar + bot_pad
-  return 12 + (HEADER_FONT + 4) + 4 + 1 + 10 + lineCount * LINE_H + 10 + 6 + 12;
+static int PanelH(int lineCount, int fs) {
+  int lineH = fs + 6;
+  return 12 + (HEADER_FONT + 4) + 4 + 1 + 10 + lineCount * lineH + 10 + 6 + 12;
 }
 
 void MessageSystem_Init(MessageSystem_t *ms) {
@@ -69,16 +76,22 @@ void MessageSystem_Init(MessageSystem_t *ms) {
   ms->slideY = OFFSCREEN_Y;
 }
 
-void MessageSystem_Push(MessageSystem_t *ms, const char *text, float duration) {
+void MessageSystem_Push(MessageSystem_t *ms, const char *text, float duration, int fontSize) {
   if (ms->qCount >= MSG_QUEUE_CAP) return;
+  if (ms->state != MSG_IDLE)
+    ms->queuedNotifTimer = 2.5f;
   int tail = (ms->qHead + ms->qCount) % MSG_QUEUE_CAP;
   strncpy(ms->queue[tail].text, text, MSG_TEXT_LEN - 1);
   ms->queue[tail].text[MSG_TEXT_LEN - 1] = '\0';
   ms->queue[tail].duration = duration;
+  ms->queue[tail].fontSize = fontSize;
   ms->qCount++;
 }
 
 void MessageSystem_Update(MessageSystem_t *ms, float dt) {
+  if (ms->queuedNotifTimer > 0.0f)
+    ms->queuedNotifTimer -= dt;
+
   switch (ms->state) {
   case MSG_IDLE:
     if (ms->qCount > 0) {
@@ -89,9 +102,10 @@ void MessageSystem_Update(MessageSystem_t *ms, float dt) {
       ms->text[MSG_TEXT_LEN - 1] = '\0';
       ms->duration   = entry.duration;
       ms->timer      = entry.duration;
+      ms->fontSize   = entry.fontSize > 0 ? entry.fontSize : BODY_FONT;
       ms->slideY     = OFFSCREEN_Y;
       ms->charsShown = 0.0f;
-      ms->lineCount  = BuildLines(ms->text, ms->lines, 8);
+      ms->lineCount  = BuildLines(ms->text, ms->lines, 8, ms->fontSize);
       ms->state      = MSG_SLIDING_IN;
     }
     break;
@@ -129,7 +143,9 @@ void MessageSystem_Render(const MessageSystem_t *ms) {
   if (ms->state == MSG_IDLE) return;
 
   int sw     = GetScreenWidth();
-  int panelH = PanelH(ms->lineCount);
+  int fs     = ms->fontSize > 0 ? ms->fontSize : BODY_FONT;
+  int lineH  = fs + 6;
+  int panelH = PanelH(ms->lineCount, fs);
   int px     = sw / 2 - PANEL_W / 2;
   int py     = (int)ms->slideY;
 
@@ -176,17 +192,17 @@ void MessageSystem_Render(const MessageSystem_t *ms) {
     char partial[MSG_TEXT_LEN];
     memcpy(partial, ms->lines[i], draw);
     partial[draw] = '\0';
-    DrawText(partial, px + PANEL_PAD, y, BODY_FONT, C_BODY);
+    DrawText(partial, px + PANEL_PAD, y, fs, C_BODY);
 
     // Blinking cursor on the line currently being typed
     if (charsLeft >= 0 && charsLeft < len) {
-      int cx = px + PANEL_PAD + MeasureText(partial, BODY_FONT);
+      int cx = px + PANEL_PAD + MeasureText(partial, fs);
       if (((int)(GetTime() * 6)) % 2 == 0)
-        DrawText("_", cx, y, BODY_FONT, C_CURSOR);
+        DrawText("_", cx, y, fs, C_CURSOR);
     }
 
     charsLeft -= len;
-    y += LINE_H;
+    y += lineH;
   }
 
   y += 10;
@@ -197,4 +213,43 @@ void MessageSystem_Render(const MessageSystem_t *ms) {
   int barW = PANEL_W - PANEL_PAD * 2;
   DrawRectangle(px + PANEL_PAD, y, barW, 6, C_BARBASE);
   DrawRectangle(px + PANEL_PAD, y, (int)(barW * progress), 6, C_BAR);
+
+  // "Queued" notification badge — appears to the right of the main panel
+  if (ms->qCount > 0 && ms->queuedNotifTimer > 0.0f) {
+    const float FADE_START = 0.5f;
+    float fade = (ms->queuedNotifTimer < FADE_START)
+                 ? (ms->queuedNotifTimer / FADE_START) : 1.0f;
+    unsigned char a  = (unsigned char)(255 * fade);
+    unsigned char ab = (unsigned char)(200 * fade);
+
+    const int NW = 172;
+    const int NH = 38;
+    const int NFS = 12;
+    int nx = px + PANEL_W + 10;
+    int ny = py;
+
+    char label[32];
+    snprintf(label, sizeof(label), "// +%d QUEUED //", ms->qCount);
+
+    DrawRectangle(nx, ny, NW, NH, (Color){5, 10, 22, ab});
+    for (int sy = ny; sy < ny + NH; sy += 4)
+      DrawRectangle(nx, sy, NW, 2, (Color){0, 0, 0, (unsigned char)(30 * fade)});
+    DrawRectangleLines(nx, ny, NW, NH, (Color){0, 210, 190, a});
+
+    // Corner brackets
+    int cs = 7;
+    Color cc = {0, 255, 230, a};
+    DrawRectangle(nx,           ny,           cs, 2,  cc);
+    DrawRectangle(nx,           ny,           2,  cs, cc);
+    DrawRectangle(nx + NW - cs, ny,           cs, 2,  cc);
+    DrawRectangle(nx + NW - 2,  ny,           2,  cs, cc);
+    DrawRectangle(nx,           ny + NH - 2,  cs, 2,  cc);
+    DrawRectangle(nx,           ny + NH - cs, 2,  cs, cc);
+    DrawRectangle(nx + NW - cs, ny + NH - 2,  cs, 2,  cc);
+    DrawRectangle(nx + NW - 2,  ny + NH - cs, 2,  cs, cc);
+
+    int tw = MeasureText(label, NFS);
+    DrawText(label, nx + NW / 2 - tw / 2, ny + NH / 2 - NFS / 2,
+             NFS, (Color){0, 255, 230, a});
+  }
 }

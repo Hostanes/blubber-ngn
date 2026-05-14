@@ -1,5 +1,6 @@
 #include "../../engine/util/bitset.h"
 #include "../game.h"
+#include "../level_creater_helper.h"
 #include "systems.h"
 #include <raymath.h>
 
@@ -36,6 +37,9 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player,
   if (wi < 0 || wi >= muzzles->count)
     return;
 
+  // Weapons 2 and 3 are handled by their own systems
+  if (wi == 2 || wi == 3) return;
+
   Muzzle_t *m = &muzzles->Muzzles[wi];
 
   if (m->fireTimer > 0.0f) {
@@ -53,18 +57,33 @@ void PlayerShootSystem(world_t *world, GameWorld *game, entity_t player,
 
   FireMuzzle(world, game, player, game->playerArchId, m);
 
-  float fireVol = (wi == 1) ? 0.45f : 0.8f;
-  QueueSound(&game->soundSystem, SOUND_WEAPON_FIRE, m->worldPosition, fireVol, 1.0f);
+  float fireVol = (wi == 1) ? 0.45f : 0.45f;
+  float firePitch;
+  switch (wi) {
+  case 0:
+    firePitch = 0.8;
+    break;
+  case 1:
+    firePitch = 1.5;
+    break;
+  case 2:
+    firePitch = 0.5;
+  default:
+    firePitch = 1.0f;
+    break;
+  }
+  QueueSound(&game->soundSystem, SOUND_WEAPON_FIRE, m->worldPosition, fireVol,
+             firePitch);
 
   m->recoil += 0.15f;
-  if (m->recoil > 0.25f) m->recoil = 0.25f;
+  if (m->recoil > 0.25f)
+    m->recoil = 0.25f;
 
   // Gunshot particles — 2 small puffs that drift upward with jitter
   for (int p = 0; p < 2; p++) {
     float jx = ((float)GetRandomValue(-80, 80)) / 100.0f;
     float jz = ((float)GetRandomValue(-80, 80)) / 100.0f;
-    Vector3 pvel = {jx * 0.4f,
-                    0.6f + ((float)GetRandomValue(20, 60)) / 100.0f,
+    Vector3 pvel = {jx * 0.4f, 0.6f + ((float)GetRandomValue(20, 60)) / 100.0f,
                     jz * 0.4f};
     Color pCol = {255, 200, 80, 200};
     SpawnParticle(world, game, m->worldPosition, pvel, 0.06f, 0.35f, pCol);
@@ -88,8 +107,8 @@ void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
   if (!mc || mc->count <= 1)
     return;
 
-  // index 0 = body, last index = shadow — weapons are indices 1..count-2
-  uint32_t weaponCount = mc->count > 2 ? mc->count - 2 : 0;
+  // index 0 = body, weapons are indices 1..count-1
+  uint32_t weaponCount = mc->count > 1 ? mc->count - 1 : 0;
 
   if (IsKeyPressed(KEY_ONE) && weaponCount >= 1)
     game->playerActiveWeapon = 0;
@@ -100,13 +119,15 @@ void PlayerWeaponSwitchSystem(world_t *world, GameWorld *game,
   if (IsKeyPressed(KEY_THREE) && weaponCount >= 3)
     game->playerActiveWeapon = 2;
 
+  if (IsKeyPressed(KEY_FOUR) && weaponCount >= 4)
+    game->playerActiveWeapon = 3;
+
   // Clamp safety
   if (game->playerActiveWeapon >= weaponCount)
     game->playerActiveWeapon = 0;
 
-  // Update model active states (index 0 = body, last = shadow — skip both)
-  uint32_t gunEnd = mc->count > 1 ? mc->count - 1 : 1;
-  for (uint32_t i = 1; i < gunEnd; ++i) {
+  // Update model active states (index 0 = body, guns are 1..count-1)
+  for (uint32_t i = 1; i < mc->count; ++i) {
     mc->models[i].isActive = ((i - 1) == game->playerActiveWeapon);
   }
 }
@@ -204,16 +225,18 @@ void PlayerControlSystem(world_t *world, GameWorld *game, entity_t player,
   // Footstep sound — play while grounded and moving
   static float stepTimer = 0.0f;
   stepTimer -= dt;
-  float horizSpeed = sqrtf(vel->value.x * vel->value.x + vel->value.z * vel->value.z);
+  float horizSpeed =
+      sqrtf(vel->value.x * vel->value.x + vel->value.z * vel->value.z);
   if (*isgrounded && horizSpeed > 1.0f && stepTimer <= 0.0f) {
     float interval = 0.45f - 0.15f * Clamp(horizSpeed / 15.0f, 0.0f, 1.0f);
-    QueueSound(&game->soundSystem, SOUND_FOOTSTEP, pos->value,
-               0.4f, 0.9f + GetRandomValue(-10, 10) / 100.0f);
+    QueueSound(&game->soundSystem, SOUND_FOOTSTEP, pos->value, 0.1f,
+               0.9f + GetRandomValue(-10, 10) / 100.0f);
     stepTimer = interval;
   }
 }
 
-void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float dt) {
+void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player,
+                        float dt) {
   Orientation *ori = ECS_GET(world, player, Orientation, COMP_ORIENTATION);
   Velocity *vel = ECS_GET(world, player, Velocity, COMP_VELOCITY);
   Position *pos = ECS_GET(world, player, Position, COMP_POSITION);
@@ -222,12 +245,6 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
   if (!mc || mc->count <= 1)
     return;
 
-  // Shadow (index 3): snap to terrain, slightly above to avoid clipping
-  if (mc->count > 3) {
-    float terrainY = HeightMap_GetHeightCatmullRom(
-        &game->terrainHeightMap, pos->value.x, pos->value.z);
-    mc->models[3].offset.y = terrainY - pos->value.y + 0.1f;
-  }
 
   Vector3 forward = {sinf(ori->yaw), 0.0f, cosf(ori->yaw)};
   Vector3 right = {cosf(ori->yaw), 0.0f, -sinf(ori->yaw)};
@@ -264,9 +281,8 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
   if (!muzzles)
     return;
 
-  // ---- Update gun models (skip index 0 = body, skip last = shadow) ----
-  uint32_t gunEnd = mc->count > 3 ? mc->count - 1 : mc->count;
-  for (uint32_t i = 1; i < gunEnd; ++i) {
+  // ---- Update gun models (index 0 = body, skip; guns are 1..count-1) ----
+  for (uint32_t i = 1; i < mc->count; ++i) {
     ModelInstance_t *gun = &mc->models[i];
     gun->rotation.x = -ori->pitch;
 
@@ -276,11 +292,13 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
     if (mi < (uint32_t)muzzles->count) {
       Muzzle_t *mz = &muzzles->Muzzles[mi];
       mz->recoil *= 1.0f - 14.0f * dt;
-      if (mz->recoil < 0.001f) mz->recoil = 0.0f;
+      if (mz->recoil < 0.001f)
+        mz->recoil = 0.0f;
       recoilZ = -mz->recoil;
     }
 
-    gun->offset = (Vector3){finalOffset.x, finalOffset.y, finalOffset.z + recoilZ};
+    gun->offset =
+        (Vector3){finalOffset.x, finalOffset.y, finalOffset.z + recoilZ};
   }
 
   // ---- Update all muzzles ----
@@ -303,7 +321,8 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
     } else {
       float rate = m->isOverheated ? m->coolRateOverheated : m->coolRate;
       m->heat -= rate * dt;
-      if (m->heat < 0.0f) m->heat = 0.0f;
+      if (m->heat < 0.0f)
+        m->heat = 0.0f;
       if (m->isOverheated && m->heat <= m->overheatThreshold)
         m->isOverheated = false;
     }
@@ -320,9 +339,8 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
     m->forward = forward3D;
 
     // Tint the corresponding gun model redder as heat rises.
-    // Weapon i is at model index i+1 (index 0 = body, last = shadow).
     uint32_t modelIdx = i + 1;
-    if (modelIdx < mc->count - 1) {
+    if (modelIdx < mc->count) {
       float t = m->heat;
       unsigned char g = (unsigned char)(255.0f * (1.0f - t * 0.65f));
       unsigned char b = (unsigned char)(255.0f * (1.0f - t * 0.65f));
@@ -348,5 +366,149 @@ void PlayerWeaponSystem(world_t *world, GameWorld *game, entity_t player, float 
     } else {
       m->smokeTimer = 0.0f;
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rocket launcher — lock-on weapon (weapon slot 2)
+// ---------------------------------------------------------------------------
+
+#define ROCKET_LOCK_TIME      1.2f
+#define ROCKET_LOCK_RADIUS    180.0f  // pixels from screen center
+#define ROCKET_BURST_COUNT    3
+#define ROCKET_BURST_INTERVAL 0.15f   // seconds between missiles
+#define ROCKET_MAX_TARGETS    3
+
+void RocketLauncherSystem(world_t *world, GameWorld *game,
+                          entity_t player, Camera3D *camera, float dt) {
+
+  MuzzleCollection_t *mc = ECS_GET(world, player, MuzzleCollection_t, COMP_MUZZLES);
+  if (!mc || mc->count < 3) return;
+  Muzzle_t *m = &mc->Muzzles[2];
+
+  // --- Burst in progress: fire missiles one at a time ---
+  if (game->rocketLockState == LOCKSTATE_BURSTING) {
+    game->rocketLockAngle += 360.0f * dt;
+    game->rocketBurstTimer -= dt;
+    if (game->rocketBurstTimer <= 0.0f) {
+      int n = game->rocketLockTargetCount;
+      if (game->rocketBurstGuided && n > 0) {
+        entity_t tgt = game->rocketLockTargets[game->rocketBurstIndex % n];
+        SpawnHomingMissile(world, game, player, tgt,
+                           m->worldPosition, m->forward, true, 100.0f);
+      } else {
+        float yawOff = ((float)game->rocketBurstIndex - (ROCKET_BURST_COUNT - 1) * 0.5f) * 0.06f;
+        float cy = cosf(yawOff), sy = sinf(yawOff);
+        Vector3 fwd = {
+          m->forward.x * cy + m->forward.z * sy,
+          m->forward.y,
+          -m->forward.x * sy + m->forward.z * cy,
+        };
+        SpawnHomingMissile(world, game, player, (entity_t){0},
+                           m->worldPosition, fwd, false, 0.0f);
+      }
+      m->heat += m->heatPerShot;
+      if (m->heat >= 1.0f) { m->heat = 1.0f; m->isOverheated = true; }
+      m->coolDelayTimer = m->coolDelay;
+      QueueSound(&game->soundSystem, SOUND_ROCKET_FIRE, m->worldPosition, 0.9f, 1.0f);
+      game->rocketBurstIndex++;
+      game->rocketBurstRemaining--;
+      if (game->rocketBurstRemaining <= 0) {
+        game->rocketLockState       = LOCKSTATE_IDLE;
+        game->rocketLockProgress    = 0.0f;
+        game->rocketLockTargetCount = 0;
+      } else {
+        game->rocketBurstTimer = ROCKET_BURST_INTERVAL;
+      }
+    }
+    return;
+  }
+
+  if (game->playerActiveWeapon != 2) {
+    game->rocketLockState       = LOCKSTATE_IDLE;
+    game->rocketLockProgress    = 0.0f;
+    game->rocketLockTargetCount = 0;
+    return;
+  }
+
+  bool lmbHeld     = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+  bool lmbReleased = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+  bool rmbPressed  = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+
+  // Cancel: RMB while charging
+  if (rmbPressed && lmbHeld) {
+    game->rocketLockState       = LOCKSTATE_IDLE;
+    game->rocketLockProgress    = 0.0f;
+    game->rocketLockTargetCount = 0;
+    return;
+  }
+
+  // Start burst on LMB release (blocked while overheated)
+  if (lmbReleased && game->rocketLockState != LOCKSTATE_IDLE) {
+    if (m->isOverheated) {
+      game->rocketLockState    = LOCKSTATE_IDLE;
+      game->rocketLockProgress = 0.0f;
+      return;
+    }
+    game->rocketBurstGuided    = (game->rocketLockState == LOCKSTATE_LOCKED);
+    game->rocketLockState      = LOCKSTATE_BURSTING;
+    game->rocketBurstRemaining = ROCKET_BURST_COUNT;
+    game->rocketBurstIndex     = 0;
+    game->rocketBurstTimer     = 0.0f;
+    return;
+  }
+
+  if (!lmbHeld || m->isOverheated) return;
+
+  if (game->rocketLockState == LOCKSTATE_IDLE)
+    game->rocketLockState = LOCKSTATE_ACQUIRING;
+
+  float spinRate = (game->rocketLockState == LOCKSTATE_LOCKED) ? 360.0f : 180.0f;
+  game->rocketLockAngle += spinRate * dt;
+
+  // Scan ALL enemies in reticle, collect up to ROCKET_MAX_TARGETS
+  int sw = GetScreenWidth(), sh = GetScreenHeight();
+  Vector2 center = {(float)(sw / 2), (float)(sh / 2)};
+
+  uint32_t archIds[] = {
+    game->enemyGruntArchId,
+    game->enemyRangerArchId,
+    game->enemyMeleeArchId,
+    game->targetStaticArchId,
+    game->targetPatrolArchId,
+  };
+
+  game->rocketLockTargetCount = 0;
+
+  for (int ai = 0; ai < 5; ai++) {
+    archetype_t *arch = WorldGetArchetype(world, archIds[ai]);
+    if (!arch) continue;
+    for (uint32_t i = 0; i < arch->count; i++) {
+      if (game->rocketLockTargetCount >= ROCKET_MAX_TARGETS) break;
+      entity_t e = arch->entities[i];
+      Active *act = ECS_GET(world, e, Active, COMP_ACTIVE);
+      if (!act || !act->value) continue;
+      Position *epos = ECS_GET(world, e, Position, COMP_POSITION);
+      if (!epos) continue;
+      Vector3 camFwd  = Vector3Normalize(Vector3Subtract(camera->target, camera->position));
+      Vector3 toEnemy = Vector3Subtract(epos->value, camera->position);
+      if (Vector3DotProduct(camFwd, toEnemy) <= 0.0f) continue;
+      Vector2 screen = GetWorldToScreen(epos->value, *camera);
+      if (Vector2Distance(screen, center) <= ROCKET_LOCK_RADIUS)
+        game->rocketLockTargets[game->rocketLockTargetCount++] = e;
+    }
+  }
+
+  if (game->rocketLockTargetCount > 0) {
+    game->rocketLockProgress += dt / ROCKET_LOCK_TIME;
+    if (game->rocketLockProgress >= 1.0f) {
+      game->rocketLockProgress = 1.0f;
+      game->rocketLockState    = LOCKSTATE_LOCKED;
+    }
+  } else {
+    game->rocketLockProgress -= dt * 2.0f;
+    if (game->rocketLockProgress < 0.0f) game->rocketLockProgress = 0.0f;
+    if (game->rocketLockState == LOCKSTATE_LOCKED)
+      game->rocketLockState = LOCKSTATE_ACQUIRING;
   }
 }
